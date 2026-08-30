@@ -1,0 +1,38 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "host-debug",
+            "displayName": "Host Debug",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/build/host",
+            "cacheVariables": {
+                "BUILD_TESTING": "ON",
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "aarch64-release",
+            "displayName": "AArch64 Release",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/build/aarch64",
+            "toolchainFile": "${sourceDir}/cmake/toolchains/aarch64-linux-gnu.cmake",
+            "cacheVariables": {
+                "BUILD_TESTING": "OFF",
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "host-debug",
+            "configurePreset": "host-debug"
+        },
+        {
+            "name": "aarch64-release",
+            "configurePreset": "aarch64-release"
+        }
+    ]
+}

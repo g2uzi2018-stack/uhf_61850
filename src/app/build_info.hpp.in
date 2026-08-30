@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-only
+#pragma once
+
+#include <string_view>
+
+namespace uhf::app {
+
+inline constexpr std::string_view kProductName{"uhf-gatewayd"};
+inline constexpr std::string_view kVersion{"@PROJECT_VERSION@"};
+
+}  // namespace uhf::app
