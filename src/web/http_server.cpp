@@ -1941,7 +1941,8 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
         }
         request_path = "/login.html";
     } else if (request_path == "/index.html" || request_path == "/overview" ||
-               request_path == "/overview.html" || request_path == "/settings.html") {
+               request_path == "/overview.html" || request_path == "/settings.html" ||
+               request_path == "/logs.html" || request_path == "/storage.html") {
         if (parsed.method != "GET") {
             send_method_not_allowed(client_fd, tls, "GET");
             return false;

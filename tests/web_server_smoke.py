@@ -189,6 +189,11 @@ def main() -> int:
             assert_status(settings_status, 200, "authenticated settings")
             if "采集与转发".encode("utf-8") not in settings_body:
                 fail("authenticated settings page was not served")
+            for page, marker in (("/logs.html", "日志与健康"), ("/storage.html", "存储与日志")):
+                page_status, page_body, _ = request(port, "GET", page, headers={"Cookie": cookie})
+                assert_status(page_status, 200, f"authenticated {page}")
+                if marker.encode("utf-8") not in page_body:
+                    fail(f"authenticated page was not served: {page}")
 
             config_status, config_body, _ = request(
                 port, "GET", "/api/v1/config", headers={"Cookie": cookie}
