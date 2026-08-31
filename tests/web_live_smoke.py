@@ -188,6 +188,11 @@ def main() -> int:
                 fail(f"Modbus TCP health is not up: {health_payload!r}")
             if health_payload.get("storage", {}).get("status") != "up":
                 fail(f"storage health is not up: {health_payload!r}")
+            overview_status, overview_body, _ = request(
+                port, "GET", "/overview.html", headers={"Cookie": cookie}
+            )
+            if overview_status != 200 or "实时总览".encode("utf-8") not in overview_body:
+                fail("authenticated live overview was not served")
             print("web live smoke: OK")
             return 0
         finally:

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="UHF 61850 局放监测管理机实时总览">
+    <title>实时总览 · UHF 61850</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-mark">U</div>
+                <div class="brand-copy"><strong>UHF 61850</strong><span>局放监测管理机</span></div>
+            </div>
+            <div class="preview-chip"><span class="chip-dot"></span>本地开发模式</div>
+            <nav class="primary-nav" aria-label="主导航">
+                <a class="nav-item active" href="/overview.html" aria-current="page"><span class="nav-icon">⌂</span><span>总览</span></a>
+                <a class="nav-item" href="/"><span class="nav-icon">♙</span><span>用户管理</span></a>
+                <a class="nav-item" href="#"><span class="nav-icon">◈</span><span>采集与转发</span></a>
+                <a class="nav-item" href="#"><span class="nav-icon">⇄</span><span>网络设置</span></a>
+                <a class="nav-item" href="#"><span class="nav-icon">▣</span><span>存储与日志</span></a>
+                <a class="nav-item" href="#"><span class="nav-icon">◌</span><span>IEC 61850</span></a>
+                <div class="nav-section-label">安全与维护</div>
+                <a class="nav-item" href="#"><span class="nav-icon">⚙</span><span>系统维护</span></a>
+            </nav>
+            <div class="sidebar-footer"><span>版本 0.1.0</span><span>开发机预览</span></div>
+        </aside>
+
+        <main class="main-content">
+            <header class="topbar">
+                <div class="topbar-status"><span class="status-dot" id="runtime-status-dot"></span><span id="runtime-status">采集状态读取中</span></div>
+                <div class="topbar-account">
+                    <div class="account-summary"><div class="mini-avatar">A</div><div><strong>admin</strong><span>系统管理员</span></div></div>
+                    <button class="logout-button" type="button" data-action="logout">退出登录</button>
+                </div>
+            </header>
+
+            <div class="page-content overview-content">
+                <div class="breadcrumb"><span>运行监测</span><b>/</b><strong>实时总览</strong></div>
+                <div class="page-heading">
+                    <div><div class="heading-kicker">LIVE MONITORING</div><h1>实时总览</h1><p>查看最新完整快照、局放谱图和各服务运行状态。</p></div>
+                    <span class="heading-badge" id="snapshot-badge"><i></i>等待快照</span>
+                </div>
+
+                <div class="metric-grid" aria-label="测量值">
+                    <article class="metric-card"><span>平均值</span><strong data-measurement="average">--</strong><em>dBm</em></article>
+                    <article class="metric-card"><span>放电频次</span><strong data-measurement="frequency">--</strong><em>次/秒</em></article>
+                    <article class="metric-card"><span>峰值</span><strong data-measurement="peak">--</strong><em>dBm</em></article>
+                    <article class="metric-card"><span>峰值相位</span><strong data-measurement="phase">--</strong><em>°</em></article>
+                    <article class="metric-card"><span>背景噪声</span><strong data-measurement="noise">--</strong><em>mV</em></article>
+                </div>
+
+                <div class="overview-grid">
+                    <section class="panel chart-panel">
+                        <div class="panel-header"><div><h2>PRPD 相位分布</h2><p>50 个周期 × 72 个相位分箱，颜色表示幅值 dBm</p></div><span class="count-badge" id="snapshot-generation">generation --</span></div>
+                        <div class="chart-wrap"><canvas id="prpd-canvas" aria-label="PRPD 热力图"></canvas></div>
+                        <div class="chart-axis"><span>0°</span><span>180°</span><span>360°</span></div>
+                    </section>
+                    <section class="panel chart-panel">
+                        <div class="panel-header"><div><h2>PRPS 时序散点</h2><p>按周期和相位显示有效局放点</p></div><span class="count-badge" id="snapshot-time">--</span></div>
+                        <div class="chart-wrap"><canvas id="prps-canvas" aria-label="PRPS 散点图"></canvas></div>
+                        <div class="chart-axis"><span>早期周期</span><span>时间 / 周期</span><span>最新周期</span></div>
+                    </section>
+                </div>
+
+                <div class="overview-lower-grid">
+                    <section class="panel status-panel">
+                        <div class="panel-header"><div><h2>服务健康</h2><p>来自网关运行时的实时状态</p></div><span class="count-badge" id="health-overall">读取中</span></div>
+                        <div class="health-list">
+                            <div><span>PD1000 采集</span><strong data-health="acquisition">--</strong></div>
+                            <div><span>Modbus/TCP</span><strong data-health="modbus_tcp">--</strong></div>
+                            <div><span>Modbus RTU</span><strong data-health="modbus_rtu">--</strong></div>
+                            <div><span>存储与清理</span><strong data-health="storage">--</strong></div>
+                            <div><span>IEC 61850</span><strong data-health="iec61850">--</strong></div>
+                        </div>
+                    </section>
+                    <section class="panel snapshot-panel">
+                        <div class="panel-header"><div><h2>快照信息</h2><p>只有完整 31 块采集才会生成新 generation</p></div><span class="heading-badge dev-badge"><i></i>HTTP 降级拉取</span></div>
+                        <dl class="snapshot-details">
+                            <div><dt>载荷质量</dt><dd id="payload-status">--</dd></div>
+                            <div><dt>轮询耗时</dt><dd id="poll-duration">--</dd></div>
+                            <div><dt>最后成功</dt><dd id="last-success">--</dd></div>
+                            <div><dt>谱图点数</dt><dd id="spectrum-count">--</dd></div>
+                        </dl>
+                    </section>
+                </div>
+                <footer class="page-footer"><span>UHF 61850 局放监测管理机</span><span>本地开发服务 · v0.1.0</span></footer>
+            </div>
+        </main>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <noscript>此页面需要启用 JavaScript 才能查看实时数据。</noscript>
+    <script src="overview.js"></script>
+</body>
+</html>

@@ -176,6 +176,12 @@ def main() -> int:
             assert_status(page_status, 200, "authenticated root")
             if "用户管理".encode("utf-8") not in page_body:
                 fail("authenticated root page was not served")
+            overview_status, overview_body, _ = request(
+                port, "GET", "/overview.html", headers={"Cookie": cookie}
+            )
+            assert_status(overview_status, 200, "authenticated overview")
+            if "实时总览".encode("utf-8") not in overview_body:
+                fail("authenticated overview page was not served")
 
             password_payload = {
                 "current_password": initial_password,

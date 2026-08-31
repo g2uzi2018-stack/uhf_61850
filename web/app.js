@@ -83,6 +83,29 @@
         });
     }
 
+    function loadRuntimeStatus() {
+        fetch("/api/v1/health", {credentials: "same-origin"}).then(function (response) {
+            if (response.status === 401) {
+                redirectToLogin();
+                return null;
+            }
+            if (!response.ok) {
+                throw new Error("health request failed");
+            }
+            return response.json();
+        }).then(function (health) {
+            if (!health) {
+                return;
+            }
+            var acquisition = health.acquisition || {};
+            var status = acquisition.status === "up" ? "采集正常" : acquisition.status === "degraded" ? "采集降级" : "采集离线";
+            document.getElementById("runtime-status").textContent = "开发模式 · " + status;
+            document.getElementById("runtime-status-dot").className = "status-dot " + (acquisition.status || "down");
+        }).catch(function () {
+            document.getElementById("runtime-status").textContent = "开发模式 · 状态不可用";
+        });
+    }
+
     document.querySelectorAll('[data-action="change-password"]').forEach(function (button) {
         button.addEventListener("click", openModal);
     });
@@ -179,4 +202,6 @@
     });
 
     loadSession();
+    loadRuntimeStatus();
+    window.setInterval(loadRuntimeStatus, 6000);
 }());

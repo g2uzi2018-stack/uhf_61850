@@ -1056,7 +1056,8 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
             return;
         }
         request_path = "/login.html";
-    } else if (request_path == "/index.html") {
+    } else if (request_path == "/index.html" || request_path == "/overview" ||
+               request_path == "/overview.html") {
         if (parsed.method != "GET") {
             send_method_not_allowed(client_fd, "GET");
             return;
@@ -1071,6 +1072,9 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
             return;
         }
         iterator->second.expires_at = now + kSessionLifetime;
+        if (request_path == "/overview") {
+            request_path = "/overview.html";
+        }
     }
 
     if (parsed.method != "GET") {

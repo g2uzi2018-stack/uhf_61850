@@ -14,7 +14,9 @@ def main() -> int:
         fail("expected the web asset directory")
 
     web_dir = Path(sys.argv[1])
-    required_files = ("index.html", "login.html", "styles.css", "app.js", "login.js")
+    required_files = (
+        "index.html", "overview.html", "login.html", "styles.css", "app.js", "overview.js", "login.js"
+    )
     for filename in required_files:
         if not (web_dir / filename).is_file():
             fail(f"missing {filename}")
@@ -22,6 +24,8 @@ def main() -> int:
     html = (web_dir / "index.html").read_text(encoding="utf-8")
     login_html = (web_dir / "login.html").read_text(encoding="utf-8")
     javascript = (web_dir / "app.js").read_text(encoding="utf-8")
+    overview_html = (web_dir / "overview.html").read_text(encoding="utf-8")
+    overview_javascript = (web_dir / "overview.js").read_text(encoding="utf-8")
     login_javascript = (web_dir / "login.js").read_text(encoding="utf-8")
     stylesheet = (web_dir / "styles.css").read_text(encoding="utf-8")
 
@@ -34,6 +38,12 @@ def main() -> int:
     for marker in ('data-action="change-password"', "showToast", "password-form"):
         if marker not in javascript:
             fail(f"app.js is missing {marker!r}")
+    for marker in ("实时总览", "prpd-canvas", "prps-canvas"):
+        if marker not in overview_html:
+            fail(f"overview.html is missing {marker!r}")
+    for marker in ("drawPrpd", "drawPrps", "3600", "api/v1/snapshot/latest", "api/v1/health"):
+        if marker not in overview_javascript:
+            fail(f"overview.js is missing {marker!r}")
     for marker in ("api/v1/session", "same-origin", "登录尝试过于频繁"):
         if marker not in login_javascript:
             fail(f"login.js is missing {marker!r}")
