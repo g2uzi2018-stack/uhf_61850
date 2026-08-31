@@ -5,6 +5,8 @@
 #include "config/config_store.hpp"
 #include "health/health.hpp"
 #include "logging/logger.hpp"
+#include "storage/event_store.hpp"
+#include "storage/frame_store.hpp"
 #include "web/auth_store.hpp"
 #include "web/tls_context.hpp"
 
@@ -35,7 +37,8 @@ public:
         config::ConfigStore* config_store = nullptr,
         bool tls_enabled = true,
         TlsFiles tls_files = {},
-        logging::Logger* logger = nullptr);
+        logging::Logger* logger = nullptr,
+        std::filesystem::path data_root = {});
 
     int run();
 
@@ -58,6 +61,10 @@ private:
     health::Report health_report(std::chrono::steady_clock::time_point now) const;
     std::optional<std::string> snapshot_json() const;
     std::string logs_json(std::size_t limit) const;
+    std::optional<std::string> frames_json() const;
+    std::optional<std::string> events_json() const;
+    std::optional<std::string> latest_frame_csv() const;
+    std::optional<std::string> latest_event_csv() const;
 
     std::filesystem::path document_root_;
     std::string bind_address_;
@@ -69,6 +76,7 @@ private:
     bool tls_enabled_{true};
     std::unique_ptr<TlsContext> tls_context_;
     logging::Logger* logger_{nullptr};
+    std::filesystem::path data_root_;
     health::Aggregator health_aggregator_;
     std::unordered_map<std::string, Session> sessions_;
     std::unordered_map<std::string, LoginFailures> login_failures_;

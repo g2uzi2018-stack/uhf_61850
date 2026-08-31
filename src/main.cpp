@@ -281,7 +281,8 @@ int main(int argc, char* argv[]) {
                 config_store.get(),
                 options.tls_enabled,
                 uhf::web::TlsFiles{options.tls_certificate, options.tls_private_key},
-                &logger);
+                &logger,
+                options.data_directory);
             const int result = server.run();
             if (runtime) {
                 runtime->stop();

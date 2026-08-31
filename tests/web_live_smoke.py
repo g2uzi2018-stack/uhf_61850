@@ -169,6 +169,25 @@ def main() -> int:
             else:
                 fail("simulator frame was not persisted")
 
+            frames_status, frames_body, _ = request(
+                port, "GET", "/api/v1/frames", headers={"Cookie": cookie}
+            )
+            if frames_status != 200:
+                fail(f"frame listing returned {frames_status}")
+            frame_entries = json.loads(frames_body).get("entries")
+            if not isinstance(frame_entries, list) or not frame_entries:
+                fail(f"frame listing is empty: {frames_body!r}")
+            export_status, export_body, export_headers = request(
+                port, "GET", "/api/v1/frames/export.csv", headers={"Cookie": cookie}
+            )
+            if export_status != 200 or b"register_address" not in export_body or b"13615" not in export_body:
+                fail(f"frame CSV export failed: {export_status}, {export_headers!r}")
+            events_status, events_body, _ = request(
+                port, "GET", "/api/v1/events", headers={"Cookie": cookie}
+            )
+            if events_status != 200 or not isinstance(json.loads(events_body).get("entries"), list):
+                fail(f"event listing failed: {events_status}")
+
             modbus_values: list[int] | None = None
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:

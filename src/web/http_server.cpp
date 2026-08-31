@@ -904,7 +904,8 @@ HttpServer::HttpServer(
     config::ConfigStore* config_store,
     bool tls_enabled,
     TlsFiles tls_files,
-    logging::Logger* logger)
+    logging::Logger* logger,
+    std::filesystem::path data_root)
     : document_root_(std::move(document_root)),
       bind_address_(std::move(bind_address)),
       port_(port),
@@ -913,7 +914,8 @@ HttpServer::HttpServer(
       health_input_provider_(std::move(health_input_provider)),
       config_store_(config_store),
       tls_enabled_(tls_enabled),
-      logger_(logger) {
+      logger_(logger),
+      data_root_(std::move(data_root)) {
     std::error_code error;
     document_root_ = std::filesystem::weakly_canonical(document_root_, error);
     if (error || !std::filesystem::is_directory(document_root_, error) || error) {
@@ -1037,12 +1039,118 @@ std::string HttpServer::logs_json(std::size_t limit) const {
         }
         body.append("}}");
     }
-    body.append("] ,\"suppressed_count\":");
+    body.append("],\"suppressed_count\":");
     body.append(std::to_string(logger_ == nullptr ? 0U : logger_->suppressed_count()));
     body.append(",\"evicted_count\":");
     body.append(std::to_string(logger_ == nullptr ? 0U : logger_->evicted_recent_count()));
     body.append("}\n");
     return body;
+}
+
+std::optional<std::string> HttpServer::frames_json() const {
+    try {
+        storage::FrameStore store(data_root_ / "frames");
+        const std::vector<std::filesystem::path> paths = store.list(100U);
+        std::string body = "{\"schema_version\":1,\"entries\":[";
+        bool first = true;
+        for (const std::filesystem::path& path : paths) {
+            const std::optional<storage::FrameRecord> record = store.read(path);
+            if (!record) {
+                continue;
+            }
+            if (!first) {
+                body.push_back(',');
+            }
+            first = false;
+            const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+                record->timestamp.time_since_epoch());
+            body.append("{\"name\":\"");
+            body.append(json_escape(path.filename().string()));
+            body.append("\",\"generation\":");
+            body.append(std::to_string(record->generation));
+            body.append(",\"timestamp_ms\":");
+            body.append(std::to_string(milliseconds.count()));
+            body.append(",\"payload_status\":\"");
+            body.append(payload_status_name(record->payload_status));
+            body.append("\"}");
+        }
+        body.append("]}\n");
+        return body;
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+std::optional<std::string> HttpServer::events_json() const {
+    try {
+        storage::EventBundleStore store(data_root_ / "events");
+        const std::vector<std::filesystem::path> paths = store.list(100U);
+        std::string body = "{\"schema_version\":1,\"entries\":[";
+        bool first = true;
+        for (const std::filesystem::path& path : paths) {
+            const std::optional<storage::EventBundle> bundle = store.read(path);
+            if (!bundle) {
+                continue;
+            }
+            if (!first) {
+                body.push_back(',');
+            }
+            first = false;
+            const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+                bundle->first_triggered_at_utc.time_since_epoch());
+            body.append("{\"name\":\"");
+            body.append(json_escape(path.filename().string()));
+            body.append("\",\"id\":");
+            body.append(std::to_string(bundle->id));
+            body.append(",\"timestamp_ms\":");
+            body.append(std::to_string(milliseconds.count()));
+            body.append(",\"reason_mask\":");
+            body.append(std::to_string(bundle->reason_mask));
+            body.append(",\"partial\":");
+            body.append(bundle->partial ? "true" : "false");
+            body.append(",\"frame_count\":");
+            body.append(std::to_string(bundle->frames.size()));
+            body.append(",\"strong_count\":");
+            body.append(std::to_string(bundle->strong.trigger_count));
+            body.append(",\"sudden_count\":");
+            body.append(std::to_string(bundle->sudden.trigger_count));
+            body.append("}");
+        }
+        body.append("]}\n");
+        return body;
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+std::optional<std::string> HttpServer::latest_frame_csv() const {
+    try {
+        storage::FrameStore store(data_root_ / "frames");
+        const std::vector<std::filesystem::path> paths = store.list(1U);
+        if (paths.empty()) {
+            return std::nullopt;
+        }
+        const std::optional<storage::FrameRecord> record = store.read(paths.front());
+        return record ? std::optional<std::string>{storage::FrameStore::to_csv(*record)} :
+                        std::nullopt;
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+std::optional<std::string> HttpServer::latest_event_csv() const {
+    try {
+        storage::EventBundleStore store(data_root_ / "events");
+        const std::vector<std::filesystem::path> paths = store.list(1U);
+        if (paths.empty()) {
+            return std::nullopt;
+        }
+        const std::optional<storage::EventBundle> bundle = store.read(paths.front());
+        return bundle ? std::optional<std::string>{storage::EventBundleStore::to_csv(*bundle)} :
+                        std::nullopt;
+    } catch (...) {
+        return std::nullopt;
+    }
 }
 
 int HttpServer::run() {
@@ -1460,6 +1568,61 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
         }
         iterator->second.expires_at = now + kSessionLifetime;
         send_json(client_fd, tls, 200, logs_json(100U), "Cache-Control: no-store\r\n");
+        return false;
+    }
+
+    if (request_path == "/api/v1/frames" || request_path == "/api/v1/events" ||
+        request_path == "/api/v1/frames/export.csv" ||
+        request_path == "/api/v1/events/export.csv") {
+        if (parsed.method != "GET") {
+            send_method_not_allowed(client_fd, tls, "GET");
+            return false;
+        }
+        const std::string token = session_cookie(parsed);
+        const auto iterator = sessions_.find(token);
+        if (token.empty() || iterator == sessions_.end() || iterator->second.expires_at <= now) {
+            if (iterator != sessions_.end()) {
+                sessions_.erase(iterator);
+            }
+            send_error(client_fd, tls, 401, "authentication required");
+            return false;
+        }
+        iterator->second.expires_at = now + kSessionLifetime;
+        if (request_path == "/api/v1/frames") {
+            const std::optional<std::string> body = frames_json();
+            if (!body) {
+                send_error(client_fd, tls, 503, "frame storage unavailable");
+                return false;
+            }
+            send_json(client_fd, tls, 200, *body, "Cache-Control: no-store\r\n");
+            return false;
+        }
+        if (request_path == "/api/v1/events") {
+            const std::optional<std::string> body = events_json();
+            if (!body) {
+                send_error(client_fd, tls, 503, "event storage unavailable");
+                return false;
+            }
+            send_json(client_fd, tls, 200, *body, "Cache-Control: no-store\r\n");
+            return false;
+        }
+        const bool event_export = request_path == "/api/v1/events/export.csv";
+        const std::optional<std::string> body = event_export
+            ? latest_event_csv()
+            : latest_frame_csv();
+        if (!body) {
+            send_error(client_fd, tls, 404, "no export available");
+            return false;
+        }
+        if (body->size() > kMaxResponseBytes) {
+            send_error(client_fd, tls, 500, "export response too large");
+            return false;
+        }
+        const std::string headers =
+            "Content-Disposition: attachment; filename=\"" +
+            std::string(event_export ? "latest-event.csv" : "latest-frame.csv") +
+            "\r\nCache-Control: no-store\r\n";
+        send_response(client_fd, tls, 200, "text/csv; charset=utf-8", *body, headers);
         return false;
     }
 
