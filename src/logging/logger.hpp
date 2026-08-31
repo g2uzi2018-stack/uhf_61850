@@ -96,6 +96,9 @@ public:
     std::size_t suppressed_count() const noexcept;
     std::size_t evicted_recent_count() const noexcept;
 
+    static std::string_view level_name(Level level) noexcept;
+    static std::string_view component_name(Component component) noexcept;
+
 private:
     struct ThrottleState {
         std::chrono::steady_clock::time_point last_emitted;
@@ -105,8 +108,6 @@ private:
 
     static int level_rank(Level level) noexcept;
     static int syslog_priority(Level level) noexcept;
-    static std::string_view level_name(Level level) noexcept;
-    static std::string_view component_name(Component component) noexcept;
     static bool is_throttled(Level level) noexcept;
     static bool sensitive_key(std::string_view key) noexcept;
     static std::string clean_text(std::string_view value, std::size_t limit);

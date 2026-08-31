@@ -280,7 +280,8 @@ int main(int argc, char* argv[]) {
                           [runtime_pointer] { return runtime_pointer->health_input(); }},
                 config_store.get(),
                 options.tls_enabled,
-                uhf::web::TlsFiles{options.tls_certificate, options.tls_private_key});
+                uhf::web::TlsFiles{options.tls_certificate, options.tls_private_key},
+                &logger);
             const int result = server.run();
             if (runtime) {
                 runtime->stop();

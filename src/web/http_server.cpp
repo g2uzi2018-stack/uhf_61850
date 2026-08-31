@@ -858,6 +858,38 @@ std::string_view payload_status_name(uhf::domain::PayloadStatus status) {
     return "degraded";
 }
 
+std::string json_escape(std::string_view value) {
+    std::string result;
+    result.reserve(value.size());
+    for (const char character : value) {
+        switch (character) {
+        case '"':
+            result.append("\\\"");
+            break;
+        case '\\':
+            result.append("\\\\");
+            break;
+        case '\n':
+            result.append("\\n");
+            break;
+        case '\r':
+            result.append("\\r");
+            break;
+        case '\t':
+            result.append("\\t");
+            break;
+        default:
+            if (static_cast<unsigned char>(character) < 0x20U) {
+                result.push_back('?');
+            } else {
+                result.push_back(character);
+            }
+            break;
+        }
+    }
+    return result;
+}
+
 }  // namespace
 
 namespace uhf::web {
@@ -871,7 +903,8 @@ HttpServer::HttpServer(
     HealthInputProvider health_input_provider,
     config::ConfigStore* config_store,
     bool tls_enabled,
-    TlsFiles tls_files)
+    TlsFiles tls_files,
+    logging::Logger* logger)
     : document_root_(std::move(document_root)),
       bind_address_(std::move(bind_address)),
       port_(port),
@@ -879,7 +912,8 @@ HttpServer::HttpServer(
       snapshot_store_(snapshot_store),
       health_input_provider_(std::move(health_input_provider)),
       config_store_(config_store),
-      tls_enabled_(tls_enabled) {
+      tls_enabled_(tls_enabled),
+      logger_(logger) {
     std::error_code error;
     document_root_ = std::filesystem::weakly_canonical(document_root_, error);
     if (error || !std::filesystem::is_directory(document_root_, error) || error) {
@@ -962,6 +996,52 @@ std::optional<std::string> HttpServer::snapshot_json() const {
         body.append(payload.spectrum_valid.test(index) ? "true" : "false");
     }
     body.append("]}\n");
+    return body;
+}
+
+std::string HttpServer::logs_json(std::size_t limit) const {
+    const std::size_t bounded_limit = std::min(limit, std::size_t{100U});
+    const std::vector<logging::Entry> entries = logger_ == nullptr
+        ? std::vector<logging::Entry>{}
+        : logger_->recent(bounded_limit);
+    std::string body = "{\"schema_version\":1,\"entries\":[";
+    for (std::size_t index = 0U; index < entries.size(); ++index) {
+        if (index > 0U) {
+            body.push_back(',');
+        }
+        const logging::Entry& entry = entries[index];
+        const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+            entry.timestamp_utc.time_since_epoch());
+        body.append("{\"sequence\":");
+        body.append(std::to_string(entry.sequence));
+        body.append(",\"timestamp_ms\":");
+        body.append(std::to_string(milliseconds.count()));
+        body.append(",\"level\":\"");
+        body.append(json_escape(logging::Logger::level_name(entry.level)));
+        body.append("\",\"component\":\"");
+        body.append(json_escape(logging::Logger::component_name(entry.component)));
+        body.append("\",\"event\":\"");
+        body.append(json_escape(entry.event_code));
+        body.append("\",\"message\":\"");
+        body.append(json_escape(entry.message));
+        body.append("\",\"fields\":{");
+        for (std::size_t field_index = 0U; field_index < entry.fields.size(); ++field_index) {
+            if (field_index > 0U) {
+                body.push_back(',');
+            }
+            body.push_back('"');
+            body.append(json_escape(entry.fields[field_index].key));
+            body.append("\":\"");
+            body.append(json_escape(entry.fields[field_index].value));
+            body.push_back('"');
+        }
+        body.append("}}");
+    }
+    body.append("] ,\"suppressed_count\":");
+    body.append(std::to_string(logger_ == nullptr ? 0U : logger_->suppressed_count()));
+    body.append(",\"evicted_count\":");
+    body.append(std::to_string(logger_ == nullptr ? 0U : logger_->evicted_recent_count()));
+    body.append("}\n");
     return body;
 }
 
@@ -1361,6 +1441,25 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             200,
             "{\"updated\":true,\"reauthenticate\":true}\n",
             expired_session_cookie_header(tls != nullptr) + "Cache-Control: no-store\r\n");
+        return false;
+    }
+
+    if (request_path == "/api/v1/logs") {
+        if (parsed.method != "GET") {
+            send_method_not_allowed(client_fd, tls, "GET");
+            return false;
+        }
+        const std::string token = session_cookie(parsed);
+        const auto iterator = sessions_.find(token);
+        if (token.empty() || iterator == sessions_.end() || iterator->second.expires_at <= now) {
+            if (iterator != sessions_.end()) {
+                sessions_.erase(iterator);
+            }
+            send_error(client_fd, tls, 401, "authentication required");
+            return false;
+        }
+        iterator->second.expires_at = now + kSessionLifetime;
+        send_json(client_fd, tls, 200, logs_json(100U), "Cache-Control: no-store\r\n");
         return false;
     }
 

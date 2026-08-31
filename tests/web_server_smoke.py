@@ -189,6 +189,13 @@ def main() -> int:
             )
             assert_status(config_status, 200, "config lookup")
             config_payload = json.loads(config_body)
+            logs_status, logs_body, _ = request(
+                port, "GET", "/api/v1/logs", headers={"Cookie": cookie}
+            )
+            assert_status(logs_status, 200, "logs lookup")
+            logs_payload = json.loads(logs_body)
+            if not isinstance(logs_payload.get("entries"), list):
+                fail("logs endpoint did not return an entry list")
             config_version = int(config_payload["version"])
             config_without_csrf_status, _, _ = request(
                 port,

@@ -4,6 +4,7 @@
 #include "acquisition/acquisition.hpp"
 #include "config/config_store.hpp"
 #include "health/health.hpp"
+#include "logging/logger.hpp"
 #include "web/auth_store.hpp"
 #include "web/tls_context.hpp"
 
@@ -33,7 +34,8 @@ public:
         HealthInputProvider health_input_provider = {},
         config::ConfigStore* config_store = nullptr,
         bool tls_enabled = true,
-        TlsFiles tls_files = {});
+        TlsFiles tls_files = {},
+        logging::Logger* logger = nullptr);
 
     int run();
 
@@ -55,6 +57,7 @@ private:
     void cleanup_sessions(std::chrono::steady_clock::time_point now);
     health::Report health_report(std::chrono::steady_clock::time_point now) const;
     std::optional<std::string> snapshot_json() const;
+    std::string logs_json(std::size_t limit) const;
 
     std::filesystem::path document_root_;
     std::string bind_address_;
@@ -65,6 +68,7 @@ private:
     config::ConfigStore* config_store_{nullptr};
     bool tls_enabled_{true};
     std::unique_ptr<TlsContext> tls_context_;
+    logging::Logger* logger_{nullptr};
     health::Aggregator health_aggregator_;
     std::unordered_map<std::string, Session> sessions_;
     std::unordered_map<std::string, LoginFailures> login_failures_;
