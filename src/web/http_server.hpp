@@ -2,6 +2,7 @@
 #pragma once
 
 #include "acquisition/acquisition.hpp"
+#include "config/config_store.hpp"
 #include "health/health.hpp"
 #include "web/auth_store.hpp"
 
@@ -27,7 +28,8 @@ public:
         std::uint16_t port,
         std::filesystem::path state_directory,
         const acquisition::SnapshotStore* snapshot_store = nullptr,
-        HealthInputProvider health_input_provider = {});
+        HealthInputProvider health_input_provider = {},
+        config::ConfigStore* config_store = nullptr);
 
     int run();
 
@@ -56,6 +58,7 @@ private:
     AuthStore auth_store_;
     const acquisition::SnapshotStore* snapshot_store_{nullptr};
     HealthInputProvider health_input_provider_;
+    config::ConfigStore* config_store_{nullptr};
     health::Aggregator health_aggregator_;
     std::unordered_map<std::string, Session> sessions_;
     std::unordered_map<std::string, LoginFailures> login_failures_;

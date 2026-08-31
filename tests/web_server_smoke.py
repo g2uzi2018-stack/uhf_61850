@@ -183,6 +183,48 @@ def main() -> int:
             if "实时总览".encode("utf-8") not in overview_body:
                 fail("authenticated overview page was not served")
 
+            config_status, config_body, _ = request(
+                port, "GET", "/api/v1/config", headers={"Cookie": cookie}
+            )
+            assert_status(config_status, 200, "config lookup")
+            config_payload = json.loads(config_body)
+            config_version = int(config_payload["version"])
+            config_without_csrf_status, _, _ = request(
+                port,
+                "PUT",
+                "/api/v1/config",
+                json_body(config_payload),
+                {"Content-Type": "application/json", "Cookie": cookie, "If-Match": f'"{config_version}"'},
+            )
+            assert_status(config_without_csrf_status, 403, "config CSRF guard")
+            stale_config_status, _, _ = request(
+                port,
+                "PUT",
+                "/api/v1/config",
+                json_body(config_payload),
+                {
+                    "Content-Type": "application/json",
+                    "Cookie": cookie,
+                    "X-CSRF-Token": csrf_token,
+                    "If-Match": f'"{config_version + 1}"',
+                },
+            )
+            assert_status(stale_config_status, 409, "stale config version")
+            changed_config_status, changed_config_body, _ = request(
+                port,
+                "PUT",
+                "/api/v1/config",
+                json_body(config_payload),
+                {
+                    "Content-Type": "application/json",
+                    "Cookie": cookie,
+                    "X-CSRF-Token": csrf_token,
+                    "If-Match": f'"{config_version}"',
+                },
+            )
+            assert_status(changed_config_status, 200, "config update")
+            assert_json(changed_config_body, "version", config_version + 1, "config update")
+
             password_payload = {
                 "current_password": initial_password,
                 "new_password": "Smoke-Password-2026!",

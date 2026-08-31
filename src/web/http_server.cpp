@@ -8,6 +8,7 @@
 #include <array>
 #include <arpa/inet.h>
 #include <cerrno>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -111,6 +112,19 @@ bool parse_decimal(std::string_view value, std::size_t& result) {
         result = result * 10U + digit;
     }
     return true;
+}
+
+bool parse_if_match(std::string_view value, std::uint64_t& version) {
+    if (value.size() < 3U || value.front() != '"' || value.back() != '"') {
+        return false;
+    }
+    const std::string_view number = value.substr(1U, value.size() - 2U);
+    if (number.empty()) {
+        return false;
+    }
+    const auto parsed = std::from_chars(
+        number.data(), number.data() + number.size(), version);
+    return parsed.ec == std::errc{} && parsed.ptr == number.data() + number.size() && version != 0U;
 }
 
 bool parse_header_block(
@@ -819,13 +833,15 @@ HttpServer::HttpServer(
     std::uint16_t port,
     std::filesystem::path state_directory,
     const acquisition::SnapshotStore* snapshot_store,
-    HealthInputProvider health_input_provider)
+    HealthInputProvider health_input_provider,
+    config::ConfigStore* config_store)
     : document_root_(std::move(document_root)),
       bind_address_(std::move(bind_address)),
       port_(port),
       auth_store_(std::move(state_directory)),
       snapshot_store_(snapshot_store),
-      health_input_provider_(std::move(health_input_provider)) {
+      health_input_provider_(std::move(health_input_provider)),
+      config_store_(config_store) {
     std::error_code error;
     document_root_ = std::filesystem::weakly_canonical(document_root_, error);
     if (error || !std::filesystem::is_directory(document_root_, error) || error) {
@@ -1215,6 +1231,60 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
             return;
         }
         send_json(client_fd, 200, *body);
+        return;
+    }
+
+    if (request_path == "/api/v1/config") {
+        if (parsed.method != "GET" && parsed.method != "PUT") {
+            send_method_not_allowed(client_fd, "GET, PUT");
+            return;
+        }
+        const std::string token = session_cookie(parsed);
+        const auto iterator = sessions_.find(token);
+        if (token.empty() || iterator == sessions_.end() || iterator->second.expires_at <= now) {
+            if (iterator != sessions_.end()) {
+                sessions_.erase(iterator);
+            }
+            send_error(client_fd, 401, "authentication required");
+            return;
+        }
+        iterator->second.expires_at = now + kSessionLifetime;
+        if (config_store_ == nullptr) {
+            send_error(client_fd, 404, "not found");
+            return;
+        }
+        if (parsed.method == "GET") {
+            send_json(client_fd, 200, config_store_->to_json());
+            return;
+        }
+        const std::string_view csrf = header_value(parsed, "x-csrf-token");
+        if (!constant_time_equal(csrf, iterator->second.csrf_token)) {
+            send_error(client_fd, 403, "CSRF token required");
+            return;
+        }
+        std::uint64_t expected_version = 0U;
+        if (!parse_if_match(header_value(parsed, "if-match"), expected_version)) {
+            send_error(client_fd, 409, "configuration version required");
+            return;
+        }
+        const config::UpdateResult result = config_store_->update(expected_version, parsed.body);
+        if (result == config::UpdateResult::conflict) {
+            send_error(client_fd, 409, "configuration version conflict");
+            return;
+        }
+        if (result == config::UpdateResult::invalid) {
+            send_error(client_fd, 400, "invalid configuration");
+            return;
+        }
+        if (result == config::UpdateResult::storage_error) {
+            send_error(client_fd, 500, "unable to save configuration");
+            return;
+        }
+        send_json(
+            client_fd,
+            200,
+            "{\"updated\":true,\"version\":" +
+                std::to_string(config_store_->snapshot().version) + "}\n");
         return;
     }
 

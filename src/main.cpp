@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "app/build_info.hpp"
 #include "app/gateway_runtime.hpp"
+#include "config/config_store.hpp"
 #include "logging/logger.hpp"
 #include "web/http_server.hpp"
 
@@ -36,6 +37,8 @@ struct WebOptions {
     std::string modbus_rtu_device{"/dev/ttyS4"};
     std::filesystem::path data_directory{"/var/lib/uhf-gateway/data"};
     bool data_directory_explicit{false};
+    std::filesystem::path config_file{"/var/lib/uhf-gateway/config.json"};
+    bool config_file_explicit{false};
 };
 
 bool parse_listen(std::string_view value, std::string& address, std::uint16_t& port) {
@@ -65,7 +68,7 @@ void print_usage() {
                  "[--web-root PATH] [--state-dir PATH] [--listen IPV4:PORT] "
                  "[--simulate|--no-acquisition] [--acquisition-device PATH] "
                  "[--modbus-tcp-listen IPV4:PORT] [--modbus-rtu-device PATH] "
-                 "[--no-modbus-rtu] [--data-dir PATH]]\n";
+                 "[--no-modbus-rtu] [--data-dir PATH] [--config PATH]]\n";
 }
 
 int run_self_test() {
@@ -126,6 +129,9 @@ int main(int argc, char* argv[]) {
             } else if (option == "--data-dir" && index + 1 < argc) {
                 options.data_directory = argv[++index];
                 options.data_directory_explicit = true;
+            } else if (option == "--config" && index + 1 < argc) {
+                options.config_file = argv[++index];
+                options.config_file_explicit = true;
             } else {
                 print_usage();
                 return 2;
@@ -141,6 +147,9 @@ int main(int argc, char* argv[]) {
         if (options.simulate && !options.data_directory_explicit) {
             options.data_directory = options.state_directory / "data";
         }
+        if (!options.config_file_explicit) {
+            options.config_file = options.state_directory / "config.json";
+        }
 
         try {
             uhf::logging::Logger logger;
@@ -151,6 +160,8 @@ int main(int argc, char* argv[]) {
                 "uhf-gatewayd web service starting",
                 {uhf::logging::Field{"listen", options.bind_address + ":" +
                         std::to_string(options.port)}});
+            std::unique_ptr<uhf::config::ConfigStore> config_store =
+                std::make_unique<uhf::config::ConfigStore>(options.config_file);
             std::unique_ptr<uhf::app::GatewayRuntime> runtime;
             if (options.start_acquisition) {
                 uhf::app::GatewayRuntimeOptions runtime_options;
@@ -177,7 +188,8 @@ int main(int argc, char* argv[]) {
                 runtime_pointer == nullptr
                     ? uhf::web::HealthInputProvider{}
                     : uhf::web::HealthInputProvider{
-                          [runtime_pointer] { return runtime_pointer->health_input(); }});
+                          [runtime_pointer] { return runtime_pointer->health_input(); }},
+                config_store.get());
             const int result = server.run();
             if (runtime) {
                 runtime->stop();
