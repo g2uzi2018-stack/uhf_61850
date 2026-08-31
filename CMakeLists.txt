@@ -19,6 +19,7 @@ configure_file(
 
 add_executable(uhf-gatewayd
     src/main.cpp
+    src/config/config_store.cpp
     src/app/gateway_runtime.cpp
     src/acquisition/acquisition.cpp
     src/acquisition/loopback_pd1000.cpp
@@ -333,6 +334,24 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+add_executable(uhf_config_store_smoke
+    tests/config_store_smoke.cpp
+    src/config/config_store.cpp
+)
+target_compile_features(uhf_config_store_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_config_store_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_config_store_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
 if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(uhf_modbus_rtu_smoke PRIVATE
         -Wall
@@ -451,6 +470,7 @@ if(BUILD_TESTING)
     add_test(NAME uhf_health_smoke COMMAND uhf_health_smoke)
     add_test(NAME uhf_storage_cleaner_smoke COMMAND uhf_storage_cleaner_smoke)
     add_test(NAME uhf_persistence_runtime_smoke COMMAND uhf_persistence_runtime_smoke)
+    add_test(NAME uhf_config_store_smoke COMMAND uhf_config_store_smoke)
 endif()
 
 if(UHF_BUILD_FORMAT_TARGET)
