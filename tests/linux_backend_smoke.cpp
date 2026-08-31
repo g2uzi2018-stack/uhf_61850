@@ -35,6 +35,32 @@ public:
         return true;
     }
 
+    bool start(
+        const uhf::network::InterfaceConfig& config,
+        const uhf::network::DhcpLease& lease) override {
+        static_cast<void>(config);
+        static_cast<void>(lease);
+        ++start_count;
+        return start_ok;
+    }
+
+    bool current_lease(
+        const uhf::network::InterfaceConfig& config,
+        uhf::network::DhcpLease& lease) const override {
+        static_cast<void>(config);
+        static_cast<void>(lease);
+        return false;
+    }
+
+    bool stop(
+        const uhf::network::InterfaceConfig& config,
+        const uhf::network::DhcpLease& lease) noexcept override {
+        static_cast<void>(config);
+        static_cast<void>(lease);
+        ++stop_count;
+        return stop_ok;
+    }
+
     bool release(const uhf::network::InterfaceConfig& config, const uhf::network::DhcpLease& lease) noexcept override {
         static_cast<void>(config);
         static_cast<void>(lease);
@@ -43,8 +69,12 @@ public:
     }
 
     bool acquire_ok{true};
+    bool start_ok{true};
+    bool stop_ok{true};
     bool release_ok{true};
     int acquire_count{0};
+    int start_count{0};
+    int stop_count{0};
     int release_count{0};
 };
 

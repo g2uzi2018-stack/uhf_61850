@@ -3,11 +3,13 @@
 
 #include <arpa/inet.h>
 #include <cerrno>
+#include <charconv>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <fcntl.h>
 #include <fstream>
+#include <limits>
 #include <csignal>
 #include <sstream>
 #include <string>
@@ -262,21 +264,28 @@ bool parse_prefix(std::string_view mask_text, std::uint8_t& prefix) noexcept {
     return true;
 }
 
-bool run_dhclient(
+std::vector<std::string> dhclient_arguments(
     const std::filesystem::path& executable,
     const std::filesystem::path& hook,
-    const std::filesystem::path& result,
     const std::filesystem::path& pid,
     const std::filesystem::path& lease,
-    const uhf::network::InterfaceConfig& config) noexcept {
+    const uhf::network::InterfaceConfig& config,
+    bool one_shot) {
     std::vector<std::string> arguments = {
-        executable.string(), "-1", "-sf", hook.string(), "-pf", pid.string(),
+        executable.string(), one_shot ? "-1" : "-nw", "-sf", hook.string(), "-pf", pid.string(),
         "-lf", lease.string()};
     if (!config.hostname.empty()) {
         arguments.emplace_back("-H");
         arguments.push_back(config.hostname);
     }
     arguments.push_back(config.name);
+    return arguments;
+}
+
+pid_t spawn_dhclient(
+    std::vector<std::string>& arguments,
+    const std::filesystem::path& result,
+    const uhf::network::InterfaceConfig& config) noexcept {
     std::vector<char*> argv;
     argv.reserve(arguments.size() + 1U);
     for (std::string& argument : arguments) {
@@ -286,7 +295,7 @@ bool run_dhclient(
 
     const pid_t child = ::fork();
     if (child < 0) {
-        return false;
+        return -1;
     }
     if (child == 0) {
         if (::setenv("UHF_DHCP_RESULT_FILE", result.c_str(), 1) != 0 ||
@@ -301,8 +310,24 @@ bool run_dhclient(
                 ::close(null_device);
             }
         }
-        ::execv(executable.c_str(), argv.data());
+        ::execv(arguments.front().c_str(), argv.data());
         _exit(127);
+    }
+    return child;
+}
+
+bool run_dhclient(
+    const std::filesystem::path& executable,
+    const std::filesystem::path& hook,
+    const std::filesystem::path& result,
+    const std::filesystem::path& pid,
+    const std::filesystem::path& lease,
+    const uhf::network::InterfaceConfig& config) noexcept {
+    std::vector<std::string> arguments = dhclient_arguments(
+        executable, hook, pid, lease, config, true);
+    const pid_t child = spawn_dhclient(arguments, result, config);
+    if (child < 0) {
+        return false;
     }
 
     int status = 0;
@@ -406,6 +431,16 @@ ExecDhcpClient::ExecDhcpClient(
       dhclient_path_(std::move(dhclient_path)),
       hook_path_(std::move(hook_path)) {}
 
+int ExecDhcpClient::interface_index(const InterfaceConfig& config) const noexcept {
+    if (config.name == "eth0") {
+        return 0;
+    }
+    if (config.name == "eth1") {
+        return 1;
+    }
+    return -1;
+}
+
 std::filesystem::path ExecDhcpClient::result_path(
     const InterfaceConfig& config) const {
     return state_directory_ / (config.name + ".result");
@@ -490,6 +525,125 @@ bool ExecDhcpClient::acquire(const InterfaceConfig& config, DhcpLease& lease) {
     (void)remove_file(result);
     (void)remove_file(pid);
     return true;
+}
+
+pid_t ExecDhcpClient::stored_pid(const InterfaceConfig& config) const noexcept {
+    const std::optional<std::string> contents = read_file(pid_path(config));
+    if (!contents || contents->empty()) {
+        return -1;
+    }
+    std::uint64_t value = 0U;
+    const auto result = std::from_chars(
+        contents->data(), contents->data() + contents->size(), value);
+    if (result.ec != std::errc{} || value == 0U ||
+        value > static_cast<std::uint64_t>(std::numeric_limits<pid_t>::max())) {
+        return -1;
+    }
+    return static_cast<pid_t>(value);
+}
+
+bool ExecDhcpClient::terminate_pid(pid_t pid) const noexcept {
+    if (pid <= 0) {
+        return true;
+    }
+    if (::kill(pid, SIGTERM) < 0 && errno != ESRCH) {
+        return false;
+    }
+    const auto deadline = std::chrono::steady_clock::now() +
+        std::chrono::milliseconds(250);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (::kill(pid, 0) < 0 && errno == ESRCH) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    if (::kill(pid, SIGKILL) < 0 && errno != ESRCH) {
+        return false;
+    }
+    const auto kill_deadline = std::chrono::steady_clock::now() +
+        std::chrono::milliseconds(250);
+    while (std::chrono::steady_clock::now() < kill_deadline) {
+        if (::kill(pid, 0) < 0 && errno == ESRCH) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return ::kill(pid, 0) < 0 && errno == ESRCH;
+}
+
+bool ExecDhcpClient::start(
+    const InterfaceConfig& config, const DhcpLease& lease) {
+    const int index = interface_index(config);
+    if (config.mode != Mode::dhcp || index < 0 || !validate_lease(lease) ||
+        state_directory_.empty() || dhclient_path_.empty() || hook_path_.empty()) {
+        return false;
+    }
+    std::error_code error;
+    std::filesystem::create_directories(state_directory_, error);
+    if (error || !std::filesystem::is_directory(state_directory_, error) || error ||
+        ::chmod(state_directory_.c_str(), kDirectoryMode) < 0) {
+        return false;
+    }
+
+    if (running_pids_[static_cast<std::size_t>(index)] > 0 &&
+        ::kill(running_pids_[static_cast<std::size_t>(index)], 0) == 0) {
+        return true;
+    }
+    running_pids_[static_cast<std::size_t>(index)] = -1;
+    const pid_t existing = stored_pid(config);
+    if (existing > 0 && ::kill(existing, 0) == 0) {
+        running_pids_[static_cast<std::size_t>(index)] = existing;
+        return true;
+    }
+    (void)remove_file(pid_path(config));
+    if (!remove_file(result_path(config))) {
+        return false;
+    }
+    std::vector<std::string> arguments = dhclient_arguments(
+        dhclient_path_, hook_path_, pid_path(config),
+        lease_path(config), config, false);
+    const pid_t child = spawn_dhclient(arguments, result_path(config), config);
+    if (child < 0) {
+        return false;
+    }
+    running_pids_[static_cast<std::size_t>(index)] = child;
+    int status = 0;
+    const auto deadline = std::chrono::steady_clock::now() +
+        std::chrono::milliseconds(250);
+    while (std::chrono::steady_clock::now() < deadline) {
+        const pid_t result_pid = ::waitpid(child, &status, WNOHANG);
+        if (result_pid == child) {
+            running_pids_[static_cast<std::size_t>(index)] = -1;
+            return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+        }
+        if (result_pid < 0 && errno != EINTR) {
+            running_pids_[static_cast<std::size_t>(index)] = -1;
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return true;
+}
+
+bool ExecDhcpClient::current_lease(
+    const InterfaceConfig& config, DhcpLease& lease) const {
+    return interface_index(config) >= 0 && read_result(config, lease);
+}
+
+bool ExecDhcpClient::stop(
+    const InterfaceConfig& config, const DhcpLease& lease) noexcept {
+    static_cast<void>(lease);
+    const int index = interface_index(config);
+    if (index < 0) {
+        return false;
+    }
+    pid_t pid = running_pids_[static_cast<std::size_t>(index)];
+    if (pid <= 0) {
+        pid = stored_pid(config);
+    }
+    const bool stopped = terminate_pid(pid);
+    running_pids_[static_cast<std::size_t>(index)] = -1;
+    return stopped && remove_file(result_path(config)) && remove_file(pid_path(config));
 }
 
 bool ExecDhcpClient::release(

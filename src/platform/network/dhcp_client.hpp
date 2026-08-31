@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <sys/types.h>
 
 namespace uhf::network {
 
@@ -27,6 +28,9 @@ public:
     virtual ~DhcpClient() = default;
 
     virtual bool acquire(const InterfaceConfig& config, DhcpLease& lease) = 0;
+    virtual bool start(const InterfaceConfig& config, const DhcpLease& lease) = 0;
+    virtual bool current_lease(const InterfaceConfig& config, DhcpLease& lease) const = 0;
+    virtual bool stop(const InterfaceConfig& config, const DhcpLease& lease) noexcept = 0;
     virtual bool release(const InterfaceConfig& config, const DhcpLease& lease) noexcept = 0;
 };
 
@@ -38,6 +42,9 @@ public:
         std::filesystem::path hook_path = "/usr/lib/uhf-gateway/dhclient-hook");
 
     bool acquire(const InterfaceConfig& config, DhcpLease& lease) override;
+    bool start(const InterfaceConfig& config, const DhcpLease& lease) override;
+    bool current_lease(const InterfaceConfig& config, DhcpLease& lease) const override;
+    bool stop(const InterfaceConfig& config, const DhcpLease& lease) noexcept override;
     bool release(const InterfaceConfig& config, const DhcpLease& lease) noexcept override;
 
 private:
@@ -45,10 +52,14 @@ private:
     std::filesystem::path result_path(const InterfaceConfig& config) const;
     std::filesystem::path pid_path(const InterfaceConfig& config) const;
     std::filesystem::path lease_path(const InterfaceConfig& config) const;
+    int interface_index(const InterfaceConfig& config) const noexcept;
+    pid_t stored_pid(const InterfaceConfig& config) const noexcept;
+    bool terminate_pid(pid_t pid) const noexcept;
 
     std::filesystem::path state_directory_;
     std::filesystem::path dhclient_path_;
     std::filesystem::path hook_path_;
+    std::array<pid_t, 2U> running_pids_{{-1, -1}};
 };
 
 enum class LeaseLoadStatus {

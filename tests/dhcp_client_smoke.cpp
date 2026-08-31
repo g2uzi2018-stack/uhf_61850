@@ -58,6 +58,11 @@ int main() {
     assert(lease.prefix == 24U);
     assert(lease.gateway == "192.168.3.1");
     assert(lease.dns_count == 1U && lease.dns[0U] == "192.168.3.1");
+    assert(client.start(dhcp_config(), lease));
+    uhf::network::DhcpLease renewed;
+    assert(client.current_lease(dhcp_config(), renewed));
+    assert(renewed.address == lease.address && renewed.prefix == lease.prefix);
+    assert(client.stop(dhcp_config(), lease));
     assert(client.release(dhcp_config(), lease));
 
     write_executable(
