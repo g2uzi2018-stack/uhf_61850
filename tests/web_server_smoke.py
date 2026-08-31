@@ -110,6 +110,20 @@ def main() -> int:
             finally:
                 slow.close()
 
+            slow_drip = socket.create_connection(("127.0.0.1", port), timeout=2)
+            try:
+                slow_drip.sendall(b"G")
+                time.sleep(4.0)
+                slow_drip.sendall(b"E")
+                time.sleep(1.5)
+                slow_drip.settimeout(1)
+                try:
+                    slow_drip.recv(128)
+                except socket.timeout:
+                    fail("slow drip request exceeded the absolute client deadline")
+            finally:
+                slow_drip.close()
+
             if stat.S_IMODE(state_directory.stat().st_mode) != 0o700:
                 fail("authentication state directory is not mode 0700")
             bootstrap_path = state_directory / "initial-password"

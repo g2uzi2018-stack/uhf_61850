@@ -201,6 +201,42 @@ ssize_t receive_bytes(int client_fd, SSL* tls, void* buffer, std::size_t size) {
     return -1;
 }
 
+bool set_receive_deadline(
+    int client_fd, std::chrono::steady_clock::time_point deadline) noexcept {
+    const auto remaining = deadline - std::chrono::steady_clock::now();
+    if (remaining <= std::chrono::steady_clock::duration::zero()) {
+        errno = ETIMEDOUT;
+        return false;
+    }
+    auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(remaining);
+    if (microseconds < remaining) {
+        ++microseconds;
+    }
+    const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(microseconds);
+    const auto remainder =
+        std::chrono::duration_cast<std::chrono::microseconds>(microseconds - seconds);
+    const timeval timeout{
+        static_cast<time_t>(seconds.count()),
+        static_cast<suseconds_t>(remainder.count())};
+    if (::setsockopt(
+            client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        return false;
+    }
+    return true;
+}
+
+ssize_t receive_bytes_until(
+    int client_fd,
+    SSL* tls,
+    void* buffer,
+    std::size_t size,
+    std::chrono::steady_clock::time_point deadline) {
+    if (!set_receive_deadline(client_fd, deadline)) {
+        return -1;
+    }
+    return receive_bytes(client_fd, tls, buffer, size);
+}
+
 ssize_t send_bytes(int client_fd, SSL* tls, const void* buffer, std::size_t size) {
     if (tls == nullptr) {
         return ::send(client_fd, buffer, size, MSG_NOSIGNAL);
@@ -429,11 +465,16 @@ bool consume_websocket_input(
     return true;
 }
 
-bool read_request(int client_fd, SSL* tls, std::string& request) {
+bool read_request(
+    int client_fd,
+    SSL* tls,
+    std::string& request,
+    std::chrono::steady_clock::time_point deadline) {
     char buffer[1024];
     std::size_t header_end = std::string::npos;
     while ((header_end = request.find("\r\n\r\n")) == std::string::npos) {
-        const ssize_t received = receive_bytes(client_fd, tls, buffer, sizeof(buffer));
+        const ssize_t received = receive_bytes_until(
+            client_fd, tls, buffer, sizeof(buffer), deadline);
         if (received <= 0) {
             return false;
         }
@@ -460,7 +501,8 @@ bool read_request(int client_fd, SSL* tls, std::string& request) {
     }
     const std::size_t required_size = body_start + content_length;
     while (request.size() < required_size) {
-        const ssize_t received = receive_bytes(client_fd, tls, buffer, sizeof(buffer));
+        const ssize_t received = receive_bytes_until(
+            client_fd, tls, buffer, sizeof(buffer), deadline);
         if (received <= 0) {
             return false;
         }
@@ -1557,7 +1599,11 @@ void HttpServer::run_websocket(int client_fd, SSL* tls) {
 
 bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_address) {
     std::string request;
-    if (!read_request(client_fd, tls, request)) {
+    if (!read_request(
+            client_fd,
+            tls,
+            request,
+            std::chrono::steady_clock::now() + std::chrono::seconds(kClientTimeoutSeconds))) {
         send_error(client_fd, tls, 400, "bad request");
         return false;
     }
