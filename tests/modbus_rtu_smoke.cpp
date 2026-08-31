@@ -109,6 +109,17 @@ int main() {
         return 1;
     }
 
+    store.record_failure(std::chrono::steady_clock::now(), "serial timeout");
+    const std::vector<std::uint8_t> stale_response = server.handle_request(valid);
+    if (!expect(stale_response.size() == 15U, "stale response size") ||
+        !expect(stale_response[3] == 0xFFU && stale_response[4] == 0xCEU,
+            "stale last-good register mirror")) {
+        server.stop();
+        server_thread.join();
+        ::close(master_fd);
+        return 1;
+    }
+
     const std::vector<std::uint8_t> invalid_address = request(9U, 0x04U, 10000U, 1U);
     if (!expect(write_frame(master_fd, invalid_address), "address request write")) {
         server.stop();

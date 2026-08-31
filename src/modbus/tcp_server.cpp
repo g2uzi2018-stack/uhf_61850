@@ -112,8 +112,8 @@ std::vector<std::uint8_t> ModbusTcpServer::handle_request(
         return exception_response(request, function, kIllegalDataAddress);
     }
 
-    const std::optional<acquisition::PublishedSnapshot> latest = snapshot_store_.latest();
-    if (!latest) {
+    const acquisition::ServingView serving_view = snapshot_store_.serving_view();
+    if (!serving_view.snapshot) {
         return exception_response(request, function, kServerDeviceFailure);
     }
 
@@ -131,7 +131,7 @@ std::vector<std::uint8_t> ModbusTcpServer::handle_request(
     response.push_back(function);
     response.push_back(static_cast<std::uint8_t>(count * 2U));
     for (std::size_t index = 0; index < count; ++index) {
-        append_u16(response, latest->payload.raw_registers[offset + index]);
+        append_u16(response, serving_view.snapshot->payload.raw_registers[offset + index]);
     }
     return response;
 }
