@@ -37,6 +37,10 @@ struct WebOptions {
     bool modbus_rtu_explicit{false};
     bool start_modbus_rtu{true};
     std::string modbus_rtu_device{"/dev/ttyS4"};
+    bool iec61850_explicit{false};
+    bool start_iec61850{true};
+    std::string iec61850_bind{"127.0.0.1"};
+    std::uint16_t iec61850_port{102U};
     std::filesystem::path data_directory{"/var/lib/uhf-gateway/data"};
     bool data_directory_explicit{false};
     std::filesystem::path config_file{"/var/lib/uhf-gateway/config.json"};
@@ -70,7 +74,8 @@ void print_usage() {
                  "[--web-root PATH] [--state-dir PATH] [--listen IPV4:PORT] "
                  "[--simulate|--no-acquisition] [--acquisition-device PATH] "
                  "[--modbus-tcp-listen IPV4:PORT] [--modbus-rtu-device PATH] "
-                 "[--no-modbus-rtu] [--data-dir PATH] [--config PATH]]\n";
+                 "[--no-modbus-rtu] [--iec61850-listen IPV4:PORT] [--no-iec61850] "
+                 "[--data-dir PATH] [--config PATH]]\n";
 }
 
 int run_self_test() {
@@ -130,6 +135,16 @@ int main(int argc, char* argv[]) {
                 options.start_modbus_rtu = true;
             } else if (option == "--no-modbus-rtu") {
                 options.start_modbus_rtu = false;
+            } else if (option == "--iec61850-listen" && index + 1 < argc) {
+                if (!parse_listen(argv[++index], options.iec61850_bind, options.iec61850_port)) {
+                    std::cerr << "invalid --iec61850-listen value\n";
+                    return 2;
+                }
+                options.iec61850_explicit = true;
+                options.start_iec61850 = true;
+            } else if (option == "--no-iec61850") {
+                options.iec61850_explicit = true;
+                options.start_iec61850 = false;
             } else if (option == "--data-dir" && index + 1 < argc) {
                 options.data_directory = argv[++index];
                 options.data_directory_explicit = true;
@@ -182,6 +197,14 @@ int main(int argc, char* argv[]) {
             if (!options.modbus_rtu_explicit) {
                 options.modbus_rtu_device = configured.values.rtu_device;
             }
+            if (!options.iec61850_explicit) {
+                options.iec61850_bind = configured.values.modbus_tcp_bind;
+                options.start_iec61850 = configured.values.iec_enabled;
+                options.iec61850_port = configured.values.iec_port;
+                if (options.simulate) {
+                    options.iec61850_port = 15102U;
+                }
+            }
             std::unique_ptr<uhf::app::GatewayRuntime> runtime;
             if (options.start_acquisition) {
                 uhf::app::GatewayRuntimeOptions runtime_options;
@@ -200,9 +223,9 @@ int main(int argc, char* argv[]) {
                 runtime_options.start_modbus_rtu = options.start_modbus_rtu;
                 runtime_options.modbus_rtu_device = options.modbus_rtu_device;
                 runtime_options.modbus_rtu_options.unit_id = configured.values.rtu_unit_id;
-                runtime_options.start_iec61850 = true;
-                runtime_options.iec61850_bind = configured.values.modbus_tcp_bind;
-                runtime_options.iec61850_port = options.simulate ? 15102U : 102U;
+                runtime_options.start_iec61850 = options.start_iec61850;
+                runtime_options.iec61850_bind = options.iec61850_bind;
+                runtime_options.iec61850_port = options.iec61850_port;
                 runtime_options.iec61850_ied_name = configured.values.iec_ied_name;
                 runtime_options.persistence_options.data_root = options.data_directory;
                 runtime_options.persistence_options.periodic_period = std::chrono::seconds(

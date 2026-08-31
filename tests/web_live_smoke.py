@@ -72,6 +72,7 @@ def main() -> int:
     binary = Path(sys.argv[1])
     web_dir = Path(sys.argv[2])
     port = free_port()
+    iec_port = free_port()
     with tempfile.TemporaryDirectory(prefix="uhf-web-live-") as state_text:
         state_dir = Path(state_text)
         process = subprocess.Popen(
@@ -85,6 +86,8 @@ def main() -> int:
                 "--simulate",
                 "--listen",
                 f"127.0.0.1:{port}",
+                "--iec61850-listen",
+                f"127.0.0.1:{iec_port}",
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -190,7 +193,7 @@ def main() -> int:
                 fail(f"storage health is not up: {health_payload!r}")
             if health_payload.get("iec61850", {}).get("status") != "up":
                 fail(f"IEC 61850 health is not up: {health_payload!r}")
-            with socket.create_connection(("127.0.0.1", 15102), timeout=2):
+            with socket.create_connection(("127.0.0.1", iec_port), timeout=2):
                 pass
             overview_status, overview_body, _ = request(
                 port, "GET", "/overview.html", headers={"Cookie": cookie}

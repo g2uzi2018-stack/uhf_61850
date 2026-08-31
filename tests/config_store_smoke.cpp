@@ -32,6 +32,8 @@ const char* valid_object() {
         "modbus_tcp_port":15021,
         "web_port":8081,
         "tls_enabled":false,
+        "iec_enabled":false,
+        "iec_port":15102,
         "iec_ied_name":"UHFPD2",
         "storage_period_seconds":600,
         "storage_retention_days":2,
@@ -71,6 +73,8 @@ int main() {
             !expect(changed.values.rtu_unit_id == 3U, "updated RTU unit") ||
             !expect(changed.values.modbus_tcp_unit_id == 4U, "updated TCP unit") ||
             !expect(changed.values.tls_enabled == false, "updated TLS flag") ||
+            !expect(changed.values.iec_enabled == false, "updated IEC flag") ||
+            !expect(changed.values.iec_port == 15102U, "updated IEC port") ||
             !expect(std::filesystem::file_size(path) < 16U * 1024U, "updated file bound")) {
             return 1;
         }
@@ -78,6 +82,7 @@ int main() {
         const std::string saved{
             std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
         if (!expect(saved.find("\"version\": 2") != std::string::npos, "saved version") ||
+            !expect(saved.find("\"iec_port\": 15102") != std::string::npos, "saved IEC port") ||
             !expect(saved.find("Smoke") == std::string::npos, "no test secret")) {
             return 1;
         }
@@ -85,7 +90,8 @@ int main() {
         const uhf::config::Snapshot reopened_snapshot = reopened.snapshot();
         if (!expect(reopened_snapshot.version == 2U, "version survives restart") ||
             !expect(reopened_snapshot.values.rtu_unit_id == 3U, "values survive restart") ||
-            !expect(reopened_snapshot.values.modbus_tcp_unit_id == 4U, "TCP unit survives restart")) {
+            !expect(reopened_snapshot.values.modbus_tcp_unit_id == 4U, "TCP unit survives restart") ||
+            !expect(reopened_snapshot.values.iec_port == 15102U, "IEC port survives restart")) {
             return 1;
         }
 

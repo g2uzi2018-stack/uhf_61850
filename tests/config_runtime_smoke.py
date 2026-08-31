@@ -58,6 +58,8 @@ def main() -> int:
         "modbus_tcp_port": configured_tcp_port,
         "web_port": configured_web_port,
         "tls_enabled": False,
+        "iec_enabled": False,
+        "iec_port": free_port(),
         "iec_ied_name": "UHFPD2",
         "storage_period_seconds": 600,
         "storage_retention_days": 2,
@@ -119,7 +121,7 @@ def main() -> int:
             if config_status != 200:
                 fail(f"config lookup returned {config_status}")
             loaded = json.loads(config_body)
-            if loaded.get("version") != 7 or loaded.get("rtu_unit_id") != 3 or loaded.get("modbus_tcp_unit_id") != 4:
+            if loaded.get("version") != 7 or loaded.get("rtu_unit_id") != 3 or loaded.get("modbus_tcp_unit_id") != 4 or loaded.get("iec_enabled") is not False:
                 fail(f"persisted configuration was not loaded: {loaded!r}")
             print("config runtime smoke: OK")
             return 0

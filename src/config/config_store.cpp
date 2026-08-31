@@ -53,7 +53,9 @@ public:
             skip_space();
             if (consume('}')) {
                 skip_space();
-                return position_ == input_.size() && (keys_.size() == 16U || keys_.size() == 17U);
+                return position_ == input_.size() &&
+                    (keys_.size() == 16U || keys_.size() == 17U ||
+                     keys_.size() == 18U || keys_.size() == 19U);
             }
             if (!consume(',')) {
                 return false;
@@ -169,6 +171,9 @@ private:
         if (key == "tls_enabled") {
             return parse_boolean(values.tls_enabled);
         }
+        if (key == "iec_enabled") {
+            return parse_boolean(values.iec_enabled);
+        }
         if (!parse_unsigned(value)) {
             return false;
         }
@@ -196,6 +201,9 @@ private:
         }
         if (key == "web_port") {
             return assign_unsigned(value, std::uint16_t{1024U}, std::uint16_t{65535U}, values.web_port);
+        }
+        if (key == "iec_port") {
+            return assign_unsigned(value, std::uint16_t{1U}, std::uint16_t{65535U}, values.iec_port);
         }
         if (key == "storage_period_seconds") {
             return assign_unsigned(value, std::uint32_t{60U}, std::uint32_t{86400U}, values.storage_period_seconds);
@@ -349,7 +357,8 @@ bool ConfigStore::validate(const Values& values) noexcept {
         values.acquisition_slave_id <= 247U && values.rtu_unit_id >= 1U &&
         values.rtu_unit_id <= 247U && values.modbus_tcp_unit_id >= 1U &&
         values.modbus_tcp_unit_id <= 247U && values.modbus_tcp_port != 0U &&
-        values.web_port >= 1024U && values.storage_period_seconds >= 60U &&
+        values.web_port >= 1024U && values.iec_port != 0U &&
+        values.storage_period_seconds >= 60U &&
         values.storage_retention_days >= 1U && values.storage_retention_days <= 30U &&
         values.storage_min_free_bytes >= 268435456U;
 }
@@ -370,6 +379,8 @@ std::string ConfigStore::serialize(const Snapshot& snapshot) {
         "  \"modbus_tcp_port\": " + std::to_string(values.modbus_tcp_port) + ",\n"
         "  \"web_port\": " + std::to_string(values.web_port) + ",\n"
         "  \"tls_enabled\": " + std::string(values.tls_enabled ? "true" : "false") + ",\n"
+        "  \"iec_enabled\": " + std::string(values.iec_enabled ? "true" : "false") + ",\n"
+        "  \"iec_port\": " + std::to_string(values.iec_port) + ",\n"
         "  \"iec_ied_name\": \"" + json_escape(values.iec_ied_name) + "\",\n"
         "  \"storage_period_seconds\": " + std::to_string(values.storage_period_seconds) + ",\n"
         "  \"storage_retention_days\": " + std::to_string(values.storage_retention_days) + ",\n"

@@ -23,6 +23,8 @@ struct Values {
     std::uint16_t modbus_tcp_port{502U};
     std::uint16_t web_port{8080U};
     bool tls_enabled{true};
+    bool iec_enabled{true};
+    std::uint16_t iec_port{102U};
     std::string iec_ied_name{"UHFPD1"};
     std::uint32_t storage_period_seconds{300U};
     std::uint32_t storage_retention_days{1U};
