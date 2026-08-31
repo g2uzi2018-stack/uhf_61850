@@ -874,6 +874,12 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}/tests/preflight_smoke.py"
                 "${PROJECT_SOURCE_DIR}"
         )
+        add_test(
+            NAME uhf_installer_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/installer_smoke.py"
+                "${PROJECT_SOURCE_DIR}"
+        )
     endif()
     add_test(NAME uhf_acquisition_fault_smoke COMMAND uhf_acquisition_fault_smoke)
     add_test(NAME uhf_loopback_acquisition_smoke COMMAND uhf_loopback_acquisition_smoke)
