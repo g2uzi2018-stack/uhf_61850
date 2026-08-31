@@ -140,6 +140,10 @@ install -m 0755 "$release_dir/libexec/uhf-gateway/uhf-gateway-hook" \
     "${root_prefix}/usr/lib/uhf-gateway/dhclient-hook"
 install -m 0755 "$release_dir/libexec/uhf-gateway/release-guard.sh" \
     "${root_prefix}/usr/lib/uhf-gateway/release-guard.sh"
+install -m 0755 "$release_dir/libexec/uhf-gateway/legacy-cutover.sh" \
+    "${root_prefix}/usr/lib/uhf-gateway/legacy-cutover.sh"
+install -m 0755 "$release_dir/libexec/uhf-gateway/legacy-recovery.sh" \
+    "${root_prefix}/usr/lib/uhf-gateway/legacy-recovery.sh"
 for unit in "$release_dir"/share/uhf-gateway/systemd/*; do
     install -m 0644 "$unit" "${root_prefix}/etc/systemd/system/$(basename "$unit")"
 done

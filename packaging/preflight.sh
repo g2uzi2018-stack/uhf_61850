@@ -58,6 +58,9 @@ required_files=(
     "share/uhf-gateway/systemd/uhf-release-guard.service"
     "share/uhf-gateway/systemd/uhf-release-guard.timer"
     "libexec/uhf-gateway/release-guard.sh"
+    "share/uhf-gateway/systemd/uhf-legacy-recovery.service"
+    "libexec/uhf-gateway/legacy-cutover.sh"
+    "libexec/uhf-gateway/legacy-recovery.sh"
 )
 for relative in "${required_files[@]}"; do
     if [[ ! -f "${release_dir}/${relative}" ]]; then
@@ -82,6 +85,14 @@ if ! sh -n "${release_dir}/libexec/uhf-gateway/uhf-gateway-hook"; then
 fi
 if ! sh -n "${release_dir}/libexec/uhf-gateway/release-guard.sh"; then
     printf 'preflight: release guard syntax check failed\n' >&2
+    exit 1
+fi
+if ! bash -n "${release_dir}/libexec/uhf-gateway/legacy-cutover.sh"; then
+    printf 'preflight: legacy cutover syntax check failed\n' >&2
+    exit 1
+fi
+if ! bash -n "${release_dir}/libexec/uhf-gateway/legacy-recovery.sh"; then
+    printf 'preflight: legacy recovery syntax check failed\n' >&2
     exit 1
 fi
 

@@ -26,6 +26,7 @@ def main() -> int:
         "uhf-network-recovery.service",
         "uhf-release-guard.service",
         "uhf-release-guard.timer",
+        "uhf-legacy-recovery.service",
     )
     units = {}
     for name in names:
@@ -75,6 +76,11 @@ def main() -> int:
     require(guard, "ExecStart=/usr/lib/uhf-gateway/release-guard.sh", "uhf-release-guard.service")
     require(guard, "ReadWritePaths=/opt/uhf-gateway /var/lib/uhf-gateway", "uhf-release-guard.service")
     require(units["uhf-release-guard.timer"], "OnUnitActiveSec=5s", "uhf-release-guard.timer")
+    require(units["uhf-gateway.service"], "OnFailure=uhf-legacy-recovery.service", "uhf-gateway.service")
+    legacy = units["uhf-legacy-recovery.service"]
+    require(legacy, "ExecStart=/usr/lib/uhf-gateway/legacy-recovery.sh", "uhf-legacy-recovery.service")
+    require(legacy, "ConditionPathExists=/var/lib/uhf-gateway/legacy/recovery-enabled", "uhf-legacy-recovery.service")
+    require(legacy, "ReadWritePaths=/var/lib/uhf-gateway /var/spool/cron", "uhf-legacy-recovery.service")
     print("systemd policy smoke: OK")
     return 0
 

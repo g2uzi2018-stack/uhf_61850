@@ -1,0 +1,17 @@
+[Unit]
+Description=Recover legacy UHF gateway after first-release startup failure
+After=local-fs.target
+ConditionPathExists=/var/lib/uhf-gateway/legacy/recovery-enabled
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+User=root
+Group=root
+ExecStart=/usr/lib/uhf-gateway/legacy-recovery.sh
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/uhf-gateway /var/spool/cron
+CapabilityBoundingSet=
+
