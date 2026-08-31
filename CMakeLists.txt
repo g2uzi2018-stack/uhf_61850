@@ -306,9 +306,35 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+add_executable(uhf_network_service_smoke
+    tests/network_service_smoke.cpp
+    src/platform/privileged/network_service.cpp
+    src/platform/privileged/maintenance.cpp
+    src/platform/privileged/unix_socket.cpp
+    src/platform/network/linux_backend.cpp
+    src/platform/network/network_transaction.cpp
+    src/platform/network/network_config.cpp
+    src/platform/network/linux_status.cpp
+)
+target_compile_features(uhf_network_service_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_network_service_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+target_link_libraries(uhf_network_service_smoke PRIVATE Threads::Threads)
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_network_service_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
 add_executable(uhf-privilegedd
     src/privileged_main.cpp
     src/platform/privileged/network_service.cpp
+    src/platform/privileged/maintenance.cpp
     src/platform/privileged/unix_socket.cpp
     src/platform/network/linux_backend.cpp
     src/platform/network/network_transaction.cpp
@@ -754,6 +780,7 @@ if(BUILD_TESTING)
     add_test(NAME uhf_linux_backend_smoke COMMAND uhf_linux_backend_smoke)
     add_test(NAME uhf_linux_status_smoke COMMAND uhf_linux_status_smoke)
     add_test(NAME uhf_unix_socket_smoke COMMAND uhf_unix_socket_smoke)
+    add_test(NAME uhf_network_service_smoke COMMAND uhf_network_service_smoke)
     add_test(NAME uhf_modbus_tcp_smoke COMMAND uhf_modbus_tcp_smoke)
     add_test(NAME uhf_modbus_rtu_smoke COMMAND uhf_modbus_rtu_smoke)
     add_test(NAME uhf_frame_store_smoke COMMAND uhf_frame_store_smoke)
