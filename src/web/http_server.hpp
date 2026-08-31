@@ -5,6 +5,7 @@
 #include "health/health.hpp"
 #include "web/auth_store.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -44,6 +45,7 @@ private:
     };
 
     void handle_client(int client_fd, std::string remote_address);
+    void run_websocket(int client_fd);
     void cleanup_sessions(std::chrono::steady_clock::time_point now);
     health::Report health_report(std::chrono::steady_clock::time_point now) const;
     std::optional<std::string> snapshot_json() const;
@@ -57,6 +59,7 @@ private:
     health::Aggregator health_aggregator_;
     std::unordered_map<std::string, Session> sessions_;
     std::unordered_map<std::string, LoginFailures> login_failures_;
+    std::atomic<std::size_t> active_websocket_count_{0U};
 };
 
 }  // namespace uhf::web

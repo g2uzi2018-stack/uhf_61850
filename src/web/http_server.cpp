@@ -12,20 +12,25 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <fcntl.h>
 #include <fstream>
 #include <iostream>
 #include <limits>
 #include <netinet/in.h>
 #include <optional>
+#include <openssl/evp.h>
+#include <poll.h>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <thread>
 #include <unistd.h>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -37,6 +42,9 @@ constexpr std::uintmax_t kMaxResponseBytes = 512U * 1024U;
 constexpr std::size_t kMaxSessions = 64;
 constexpr std::size_t kMaxLoginFailureRecords = 64;
 constexpr std::size_t kMaxPasswordJsonBytes = 256;
+constexpr std::size_t kMaxWebSocketConnections = 4;
+constexpr std::size_t kMaxWebSocketPayloadBytes = 128U * 1024U;
+constexpr std::size_t kMaxWebSocketInputBytes = 8U * 1024U;
 constexpr auto kSessionLifetime = std::chrono::minutes(30);
 constexpr auto kLoginFailureWindow = std::chrono::seconds(60);
 constexpr auto kLoginBlockTime = std::chrono::seconds(30);
@@ -168,6 +176,207 @@ bool send_all(int client_fd, std::string_view data) {
             return false;
         }
         sent += static_cast<std::size_t>(result);
+    }
+    return true;
+}
+
+bool set_nonblocking(int file_descriptor) {
+    const int flags = ::fcntl(file_descriptor, F_GETFL, 0);
+    return flags >= 0 && ::fcntl(file_descriptor, F_SETFL, flags | O_NONBLOCK) == 0;
+}
+
+bool header_has_token(std::string_view value, std::string_view token) {
+    const std::string expected = lower_ascii(token);
+    std::size_t begin = 0U;
+    while (begin <= value.size()) {
+        const std::size_t end = value.find(',', begin);
+        if (lower_ascii(trim_ows(value.substr(
+                begin, end == std::string_view::npos ? value.size() - begin : end - begin))) ==
+            expected) {
+            return true;
+        }
+        if (end == std::string_view::npos) {
+            break;
+        }
+        begin = end + 1U;
+    }
+    return false;
+}
+
+int base64_value(char value) {
+    if (value >= 'A' && value <= 'Z') {
+        return value - 'A';
+    }
+    if (value >= 'a' && value <= 'z') {
+        return value - 'a' + 26;
+    }
+    if (value >= '0' && value <= '9') {
+        return value - '0' + 52;
+    }
+    if (value == '+') {
+        return 62;
+    }
+    if (value == '/') {
+        return 63;
+    }
+    return -1;
+}
+
+bool valid_websocket_key(std::string_view value) {
+    if (value.size() != 24U || value[22U] != '=' || value[23U] != '=') {
+        return false;
+    }
+    std::array<std::uint8_t, 16U> decoded{};
+    std::size_t decoded_size = 0U;
+    for (std::size_t index = 0; index < 20U; index += 4U) {
+        const int first = base64_value(value[index]);
+        const int second = base64_value(value[index + 1U]);
+        const int third = base64_value(value[index + 2U]);
+        const int fourth = base64_value(value[index + 3U]);
+        if (first < 0 || second < 0 || third < 0 || fourth < 0) {
+            return false;
+        }
+        const std::uint32_t combined = static_cast<std::uint32_t>(first) << 18U |
+            static_cast<std::uint32_t>(second) << 12U |
+            static_cast<std::uint32_t>(third) << 6U |
+            static_cast<std::uint32_t>(fourth);
+        if (decoded_size + 3U > decoded.size()) {
+            return false;
+        }
+        decoded[decoded_size++] = static_cast<std::uint8_t>(combined >> 16U);
+        decoded[decoded_size++] = static_cast<std::uint8_t>(combined >> 8U);
+        decoded[decoded_size++] = static_cast<std::uint8_t>(combined);
+    }
+    const int final_first = base64_value(value[20U]);
+    const int final_second = base64_value(value[21U]);
+    if (final_first < 0 || final_second < 0 || final_second % 16 != 0) {
+        return false;
+    }
+    decoded[decoded_size++] = static_cast<std::uint8_t>(
+        (static_cast<std::uint32_t>(final_first) << 2U) |
+        static_cast<std::uint32_t>(final_second >> 4));
+    return decoded_size == decoded.size();
+}
+
+std::string base64_encode(const unsigned char* bytes, std::size_t size) {
+    constexpr char alphabet[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string result;
+    result.reserve((size + 2U) / 3U * 4U);
+    for (std::size_t index = 0; index < size; index += 3U) {
+        const std::size_t remaining = size - index;
+        const std::uint32_t first = bytes[index];
+        const std::uint32_t second = remaining > 1U ? bytes[index + 1U] : 0U;
+        const std::uint32_t third = remaining > 2U ? bytes[index + 2U] : 0U;
+        const std::uint32_t combined = first << 16U | second << 8U | third;
+        result.push_back(alphabet[(combined >> 18U) & 0x3FU]);
+        result.push_back(alphabet[(combined >> 12U) & 0x3FU]);
+        result.push_back(remaining > 1U ? alphabet[(combined >> 6U) & 0x3FU] : '=');
+        result.push_back(remaining > 2U ? alphabet[combined & 0x3FU] : '=');
+    }
+    return result;
+}
+
+std::string websocket_accept(std::string_view key) {
+    constexpr std::string_view magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+    const std::string input = std::string(key) + std::string(magic);
+    std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
+    unsigned int digest_size = 0U;
+    if (EVP_Digest(
+            input.data(), input.size(), digest.data(), &digest_size, EVP_sha1(), nullptr) != 1) {
+        return {};
+    }
+    return base64_encode(digest.data(), digest_size);
+}
+
+std::vector<std::uint8_t> websocket_frame(
+    std::uint8_t opcode, const std::vector<std::uint8_t>& payload) {
+    if (payload.size() > kMaxWebSocketPayloadBytes) {
+        return {};
+    }
+    std::vector<std::uint8_t> frame;
+    frame.reserve(payload.size() + 10U);
+    frame.push_back(static_cast<std::uint8_t>(0x80U | (opcode & 0x0FU)));
+    if (payload.size() <= 125U) {
+        frame.push_back(static_cast<std::uint8_t>(payload.size()));
+    } else if (payload.size() <= 0xFFFFU) {
+        frame.push_back(126U);
+        frame.push_back(static_cast<std::uint8_t>(payload.size() >> 8U));
+        frame.push_back(static_cast<std::uint8_t>(payload.size() & 0xFFU));
+    } else {
+        frame.push_back(127U);
+        const std::uint64_t size = static_cast<std::uint64_t>(payload.size());
+        for (int shift = 56; shift >= 0; shift -= 8) {
+            frame.push_back(static_cast<std::uint8_t>(size >> shift));
+        }
+    }
+    frame.insert(frame.end(), payload.begin(), payload.end());
+    return frame;
+}
+
+std::vector<std::uint8_t> websocket_text(std::string_view text) {
+    return websocket_frame(
+        0x1U,
+        std::vector<std::uint8_t>(
+            reinterpret_cast<const std::uint8_t*>(text.data()),
+            reinterpret_cast<const std::uint8_t*>(text.data()) + text.size()));
+}
+
+bool consume_websocket_input(
+    std::vector<std::uint8_t>& input,
+    std::vector<std::uint8_t>& output,
+    bool& close_requested) {
+    while (input.size() >= 2U) {
+        const std::uint8_t first = input[0];
+        const std::uint8_t second = input[1];
+        const bool final_frame = (first & 0x80U) != 0U;
+        const std::uint8_t opcode = static_cast<std::uint8_t>(first & 0x0FU);
+        const bool masked = (second & 0x80U) != 0U;
+        std::uint64_t payload_size = second & 0x7FU;
+        std::size_t header_size = 2U;
+        if (!final_frame || (first & 0x70U) != 0U || !masked) {
+            return false;
+        }
+        if (payload_size == 126U) {
+            if (input.size() < 4U) {
+                return true;
+            }
+            payload_size = static_cast<std::uint64_t>(input[2]) << 8U | input[3];
+            header_size = 4U;
+        } else if (payload_size == 127U) {
+            return false;
+        }
+        if ((opcode & 0x08U) != 0U && payload_size > 125U) {
+            return false;
+        }
+        if (payload_size > kMaxWebSocketPayloadBytes ||
+            payload_size > std::numeric_limits<std::size_t>::max() - header_size - 6U) {
+            return false;
+        }
+        const std::size_t frame_size = header_size + 4U + static_cast<std::size_t>(payload_size);
+        if (input.size() < frame_size) {
+            return true;
+        }
+        const std::size_t mask_offset = header_size;
+        const std::size_t payload_offset = header_size + 4U;
+        std::vector<std::uint8_t> payload(
+            input.begin() + static_cast<std::ptrdiff_t>(payload_offset),
+            input.begin() + static_cast<std::ptrdiff_t>(frame_size));
+        for (std::size_t index = 0; index < payload.size(); ++index) {
+            payload[index] = static_cast<std::uint8_t>(
+                payload[index] ^ input[mask_offset + index % 4U]);
+        }
+        input.erase(input.begin(), input.begin() + static_cast<std::ptrdiff_t>(frame_size));
+        if (opcode == 0x8U) {
+            close_requested = true;
+            output = websocket_frame(0x8U, payload);
+            return true;
+        }
+        if (opcode == 0x9U) {
+            output = websocket_frame(0xAU, payload);
+        } else if (opcode != 0xAU && opcode != 0x1U) {
+            return false;
+        }
     }
     return true;
 }
@@ -781,6 +990,99 @@ void HttpServer::cleanup_sessions(std::chrono::steady_clock::time_point now) {
     }
 }
 
+void HttpServer::run_websocket(int client_fd) {
+    if (!set_nonblocking(client_fd)) {
+        ::close(client_fd);
+        active_websocket_count_.fetch_sub(1U);
+        return;
+    }
+
+    std::vector<std::uint8_t> input;
+    std::vector<std::uint8_t> output;
+    input.reserve(kMaxWebSocketInputBytes);
+    std::uint64_t last_generation = 0U;
+    bool sent_health = false;
+    bool close_requested = false;
+    while (true) {
+        pollfd descriptor{client_fd, POLLIN, 0};
+        if (!output.empty()) {
+            descriptor.events = static_cast<short>(descriptor.events | POLLOUT);
+        }
+        const int poll_result = ::poll(&descriptor, 1, 100);
+        if (poll_result < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            break;
+        }
+        if ((descriptor.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+            break;
+        }
+        if ((descriptor.revents & POLLIN) != 0) {
+            std::uint8_t buffer[2048];
+            const ssize_t received = ::recv(client_fd, buffer, sizeof(buffer), 0);
+            if (received <= 0) {
+                break;
+            }
+            const std::size_t count = static_cast<std::size_t>(received);
+            if (count > kMaxWebSocketInputBytes - input.size()) {
+                break;
+            }
+            input.insert(input.end(), buffer, buffer + count);
+            if (!consume_websocket_input(input, output, close_requested)) {
+                break;
+            }
+        }
+
+        if (!close_requested) {
+            const auto now = std::chrono::steady_clock::now();
+            const std::optional<acquisition::PublishedSnapshot> latest =
+                snapshot_store_ == nullptr ? std::nullopt : snapshot_store_->latest();
+            if (latest && latest->generation != 0U && latest->generation != last_generation) {
+                const std::optional<std::string> snapshot = snapshot_json();
+                if (snapshot) {
+                    std::string message = "{\"type\":\"telemetry\",\"health\":";
+                    message.append(health_report(now).to_json());
+                    message.append(",\"snapshot\":");
+                    message.append(*snapshot);
+                    message.append("}\n");
+                    const std::vector<std::uint8_t> frame = websocket_text(message);
+                    if (frame.empty()) {
+                        break;
+                    }
+                    output = frame;
+                    last_generation = latest->generation;
+                    sent_health = true;
+                }
+            } else if (!sent_health) {
+                std::string message = "{\"type\":\"health\",\"data\":";
+                message.append(health_report(now).to_json());
+                message.append("}\n");
+                output = websocket_text(message);
+                if (output.empty()) {
+                    break;
+                }
+                sent_health = true;
+            }
+        }
+
+        if (!output.empty()) {
+            const ssize_t sent = ::send(
+                client_fd, output.data(), output.size(), MSG_NOSIGNAL);
+            if (sent > 0) {
+                output.erase(output.begin(), output.begin() + static_cast<std::ptrdiff_t>(sent));
+            } else if (sent < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+                break;
+            }
+        }
+        if (close_requested && output.empty()) {
+            break;
+        }
+    }
+    ::close(client_fd);
+    active_websocket_count_.fetch_sub(1U);
+}
+
 void HttpServer::handle_client(int client_fd, std::string remote_address) {
     std::string request;
     if (!read_request(client_fd, request)) {
@@ -803,6 +1105,71 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
 
     const auto now = std::chrono::steady_clock::now();
     cleanup_sessions(now);
+
+    if (request_path == "/ws/v1/telemetry") {
+        if (parsed.method != "GET" ||
+            !header_has_token(header_value(parsed, "connection"), "upgrade") ||
+            lower_ascii(header_value(parsed, "upgrade")) != "websocket") {
+            send_error(client_fd, 400, "websocket upgrade required");
+            return;
+        }
+        const std::string token = session_cookie(parsed);
+        const auto iterator = sessions_.find(token);
+        if (token.empty() || iterator == sessions_.end() || iterator->second.expires_at <= now) {
+            if (iterator != sessions_.end()) {
+                sessions_.erase(iterator);
+            }
+            send_error(client_fd, 401, "authentication required");
+            return;
+        }
+        const std::string_view origin = header_value(parsed, "origin");
+        const std::string_view host = header_value(parsed, "host");
+        if (origin.empty() || host.empty() || origin != "http://" + std::string(host)) {
+            send_error(client_fd, 403, "same-origin request required");
+            return;
+        }
+        if (header_value(parsed, "sec-websocket-version") != "13") {
+            send_error(client_fd, 400, "unsupported websocket version");
+            return;
+        }
+        const std::string_view key = header_value(parsed, "sec-websocket-key");
+        if (!valid_websocket_key(key)) {
+            send_error(client_fd, 400, "invalid websocket key");
+            return;
+        }
+        std::size_t active = active_websocket_count_.load();
+        while (active < kMaxWebSocketConnections &&
+               !active_websocket_count_.compare_exchange_weak(active, active + 1U)) {
+        }
+        if (active >= kMaxWebSocketConnections) {
+            send_error(client_fd, 503, "websocket connection limit reached", "Retry-After: 1\r\n");
+            return;
+        }
+        const int websocket_fd = ::dup(client_fd);
+        if (websocket_fd < 0) {
+            active_websocket_count_.fetch_sub(1U);
+            send_error(client_fd, 503, "unable to open websocket");
+            return;
+        }
+        const std::string handshake =
+            "HTTP/1.1 101 Switching Protocols\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Accept: " + websocket_accept(key) + "\r\n"
+            "X-Content-Type-Options: nosniff\r\n\r\n";
+        if (!send_all(client_fd, handshake)) {
+            ::close(websocket_fd);
+            active_websocket_count_.fetch_sub(1U);
+            return;
+        }
+        try {
+            std::thread(&HttpServer::run_websocket, this, websocket_fd).detach();
+        } catch (...) {
+            ::close(websocket_fd);
+            active_websocket_count_.fetch_sub(1U);
+        }
+        return;
+    }
 
     if (request_path == "/healthz") {
         if (parsed.method != "GET") {
