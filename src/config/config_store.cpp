@@ -253,11 +253,35 @@ std::string json_escape(std::string_view value) {
     return result;
 }
 
+bool parse_version(std::string_view contents, std::uint64_t& version) {
+    std::size_t position = contents.find("\"version\"");
+    if (position == std::string_view::npos) {
+        return false;
+    }
+    position = contents.find(':', position);
+    if (position == std::string_view::npos) {
+        return false;
+    }
+    ++position;
+    while (position < contents.size() &&
+           std::isspace(static_cast<unsigned char>(contents[position])) != 0) {
+        ++position;
+    }
+    if (position >= contents.size()) {
+        return false;
+    }
+    const char* begin = contents.data() + position;
+    const auto parsed = std::from_chars(begin, contents.data() + contents.size(), version);
+    return parsed.ec == std::errc{} && version != 0U;
+}
+
 }  // namespace
 
 namespace uhf::config {
 
-ConfigStore::ConfigStore(std::filesystem::path file) : file_(std::move(file)) {
+ConfigStore::ConfigStore(
+    std::filesystem::path file, std::filesystem::path defaults_file)
+    : file_(std::move(file)) {
     const std::filesystem::path directory = file_.parent_path().empty() ? "." : file_.parent_path();
     std::error_code error;
     std::filesystem::create_directories(directory, error);
@@ -281,28 +305,35 @@ ConfigStore::ConfigStore(std::filesystem::path file) : file_(std::move(file)) {
             throw std::runtime_error("configuration file is invalid");
         }
         snapshot_.values = std::move(loaded);
-        std::size_t version_position = contents->find("\"version\"");
-        if (version_position == std::string::npos) {
-            throw std::runtime_error("configuration version is missing");
-        }
-        version_position = contents->find(':', version_position);
-        if (version_position == std::string::npos) {
+        if (!parse_version(*contents, snapshot_.version)) {
             throw std::runtime_error("configuration version is invalid");
         }
-        ++version_position;
-        while (version_position < contents->size() &&
-               std::isspace(static_cast<unsigned char>((*contents)[version_position])) != 0) {
-            ++version_position;
+    } else {
+        std::optional<std::string> defaults;
+        if (!defaults_file.empty()) {
+            std::error_code defaults_error;
+            const bool defaults_exists = std::filesystem::exists(defaults_file, defaults_error);
+            if (defaults_error) {
+                throw std::runtime_error("unable to inspect default configuration");
+            }
+            if (defaults_exists) {
+                defaults = read_file(defaults_file);
+                if (!defaults) {
+                    throw std::runtime_error("unable to read default configuration");
+                }
+            }
         }
-        std::uint64_t version = 0U;
-        const char* begin = contents->data() + version_position;
-        const auto parsed = std::from_chars(begin, contents->data() + contents->size(), version);
-        if (parsed.ec != std::errc{} || version == 0U) {
-            throw std::runtime_error("configuration version is invalid");
+        if (defaults && !defaults->empty()) {
+            Values loaded;
+            if (!parse_values(*defaults, loaded) || !validate(loaded) ||
+                !parse_version(*defaults, snapshot_.version)) {
+                throw std::runtime_error("default configuration is invalid");
+            }
+            snapshot_.values = std::move(loaded);
         }
-        snapshot_.version = version;
-    } else if (!write_atomic(file_, serialize(snapshot_))) {
-        throw std::runtime_error("unable to initialize configuration file");
+        if (!write_atomic(file_, serialize(snapshot_))) {
+            throw std::runtime_error("unable to initialize configuration file");
+        }
     }
 }
 

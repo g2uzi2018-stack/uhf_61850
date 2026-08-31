@@ -53,6 +53,7 @@ struct WebOptions {
     bool data_directory_explicit{false};
     std::filesystem::path config_file{"/var/lib/uhf-gateway/config.json"};
     bool config_file_explicit{false};
+    std::filesystem::path defaults_file{"/etc/uhf-gateway/defaults.json"};
     std::filesystem::path privileged_socket{"/run/uhf-gateway/privileged.sock"};
     bool privileged_socket_explicit{false};
 };
@@ -205,7 +206,7 @@ int main(int argc, char* argv[]) {
                 {uhf::logging::Field{"listen", options.bind_address + ":" +
                         std::to_string(options.port)}});
             std::unique_ptr<uhf::config::ConfigStore> config_store =
-                std::make_unique<uhf::config::ConfigStore>(options.config_file);
+                std::make_unique<uhf::config::ConfigStore>(options.config_file, options.defaults_file);
             const uhf::config::Snapshot configured = config_store->snapshot();
             if (!options.listen_explicit) {
                 options.port = configured.values.web_port;

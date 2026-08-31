@@ -50,10 +50,17 @@ int main() {
     std::filesystem::remove_all(root, cleanup_error);
     try {
         const std::filesystem::path path = root / "config.json";
-        uhf::config::ConfigStore store(path);
+        const std::filesystem::path defaults_path = root / "defaults.json";
+        std::filesystem::create_directories(root);
+        std::string defaults = valid_object();
+        defaults.replace(defaults.find('{'), 1U, "{\"version\":1,");
+        std::ofstream defaults_output(defaults_path);
+        defaults_output << defaults;
+        defaults_output.close();
+        uhf::config::ConfigStore store(path, defaults_path);
         const uhf::config::Snapshot initial = store.snapshot();
         if (!expect(initial.version == 1U, "initial version") ||
-            !expect(initial.values.acquisition_slave_id == 1U, "default slave ID") ||
+            !expect(initial.values.acquisition_slave_id == 2U, "file default slave ID") ||
             !expect(std::filesystem::is_regular_file(path), "initial file") ||
             !expect(std::filesystem::file_size(path) < 16U * 1024U, "bounded file")) {
             return 1;
@@ -131,6 +138,19 @@ int main() {
             rejected = true;
         }
         if (!expect(rejected, "corrupt config rejected at startup")) {
+            return 1;
+        }
+        const std::filesystem::path bad_defaults_path = root / "bad-defaults.json";
+        std::ofstream bad_defaults(bad_defaults_path);
+        bad_defaults << "{\"web_port\":80}";
+        bad_defaults.close();
+        bool bad_defaults_rejected = false;
+        try {
+            uhf::config::ConfigStore invalid_defaults(root / "fresh.json", bad_defaults_path);
+        } catch (const std::exception&) {
+            bad_defaults_rejected = true;
+        }
+        if (!expect(bad_defaults_rejected, "invalid defaults rejected at startup")) {
             return 1;
         }
         std::filesystem::remove_all(root, cleanup_error);

@@ -45,7 +45,8 @@ enum class UpdateResult {
 
 class ConfigStore {
 public:
-    explicit ConfigStore(std::filesystem::path file);
+    explicit ConfigStore(
+        std::filesystem::path file, std::filesystem::path defaults_file = {});
 
     ConfigStore(const ConfigStore&) = delete;
     ConfigStore& operator=(const ConfigStore&) = delete;
