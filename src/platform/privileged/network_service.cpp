@@ -109,10 +109,23 @@ Reply NetworkService::handle(std::string_view request, uid_t uid, gid_t gid) {
     }
     if (request == "network.confirm") {
         const network::TransactionResult result = transaction_manager_.confirm();
+        if ((result == network::TransactionResult::ok ||
+             result == network::TransactionResult::expired ||
+             result == network::TransactionResult::boot_changed) &&
+            !backend_.start_runtime()) {
+            return result_reply(
+                network::TransactionResult::backend_error,
+                "network confirmed but DHCP runtime could not start");
+        }
         return result_reply(result, transaction_manager_.last_error());
     }
     if (request == "network.rollback") {
         const network::TransactionResult result = transaction_manager_.rollback_now();
+        if (result == network::TransactionResult::ok && !backend_.start_runtime()) {
+            return result_reply(
+                network::TransactionResult::backend_error,
+                "network rolled back but DHCP runtime could not start");
+        }
         return result_reply(result, transaction_manager_.last_error());
     }
     if (request == "maintenance.restart-service") {
@@ -130,7 +143,19 @@ Reply NetworkService::handle(std::string_view request, uid_t uid, gid_t gid) {
 
 network::TransactionResult NetworkService::recover_pending() {
     std::lock_guard<std::mutex> lock(mutex_);
-    return transaction_manager_.rollback_if_needed();
+    const network::TransactionResult result = transaction_manager_.rollback_if_needed();
+    if (result == network::TransactionResult::not_due) {
+        return result;
+    }
+    if (result == network::TransactionResult::no_transaction ||
+        result == network::TransactionResult::ok ||
+        result == network::TransactionResult::expired ||
+        result == network::TransactionResult::boot_changed) {
+        if (!backend_.start_runtime()) {
+            return network::TransactionResult::backend_error;
+        }
+    }
+    return result;
 }
 
 void NetworkService::start_rollback_monitor() {
@@ -152,7 +177,15 @@ void NetworkService::rollback_loop() {
     while (!stop_requested_.load()) {
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            (void)transaction_manager_.rollback_if_needed();
+            const network::TransactionResult result = transaction_manager_.rollback_if_needed();
+            if (result != network::TransactionResult::not_due &&
+                (result == network::TransactionResult::no_transaction ||
+                 result == network::TransactionResult::ok ||
+                 result == network::TransactionResult::expired ||
+                 result == network::TransactionResult::boot_changed)) {
+                (void)backend_.start_runtime();
+                (void)backend_.refresh_runtime();
+            }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
     }

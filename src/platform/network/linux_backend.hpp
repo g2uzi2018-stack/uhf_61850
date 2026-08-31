@@ -37,6 +37,9 @@ public:
     bool confirm(const NetworkConfig& previous, const NetworkConfig& candidate) override;
     bool rollback(const NetworkConfig& previous, const NetworkConfig& candidate) override;
 
+    bool start_runtime();
+    bool refresh_runtime();
+
 private:
     bool load(NetworkConfig& config) const;
     bool save(const NetworkConfig& config) const noexcept;

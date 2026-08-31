@@ -48,8 +48,11 @@ public:
         const uhf::network::InterfaceConfig& config,
         uhf::network::DhcpLease& lease) const override {
         static_cast<void>(config);
-        static_cast<void>(lease);
-        return false;
+        if (!current_lease_ok) {
+            return false;
+        }
+        lease = current_lease_value;
+        return true;
     }
 
     bool stop(
@@ -72,6 +75,9 @@ public:
     bool start_ok{true};
     bool stop_ok{true};
     bool release_ok{true};
+    bool current_lease_ok{false};
+    uhf::network::DhcpLease current_lease_value{
+        "192.168.3.241", 24U, "192.168.3.3", {"192.168.3.1", ""}, 1U};
     int acquire_count{0};
     int start_count{0};
     int stop_count{0};
@@ -149,6 +155,27 @@ int main() {
     uhf::network::NetworkConfig dhcp_loaded;
     assert(dhcp_backend.read_current(dhcp_loaded));
     assert(dhcp_loaded.eth0.mode == uhf::network::Mode::dhcp);
+    assert(dhcp_backend.start_runtime());
+    assert(dhcp.start_count == 1);
+    runner.commands.clear();
+    dhcp.current_lease_ok = true;
+    assert(dhcp_backend.refresh_runtime());
+    assert(runner.commands.size() == 4U);
+    assert(runner.commands[0U][1U] == "address");
+    assert(runner.commands[0U][2U] == "add");
+    assert(runner.commands[0U][3U] == "192.168.3.241/24");
+    assert(runner.commands[1U][1U] == "route");
+    assert(runner.commands[1U][2U] == "add");
+    assert(runner.commands[2U][1U] == "route");
+    assert(runner.commands[2U][2U] == "del");
+    assert(runner.commands[3U][1U] == "address");
+    assert(runner.commands[3U][2U] == "del");
+    const std::size_t after_refresh = runner.commands.size();
+    assert(dhcp_backend.refresh_runtime());
+    assert(runner.commands.size() == after_refresh);
+    dhcp.current_lease_ok = false;
+    assert(dhcp_backend.refresh_runtime());
+    assert(runner.commands.size() == after_refresh);
 
     uhf::network::NetworkConfig static_candidate = dhcp_loaded;
     static_candidate.eth0.mode = uhf::network::Mode::static_address;

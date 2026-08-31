@@ -310,6 +310,87 @@ bool LinuxNetworkBackend::rollback(
     return true;
 }
 
+bool LinuxNetworkBackend::start_runtime() {
+    NetworkConfig current;
+    if (!read_current(current)) {
+        return false;
+    }
+    std::array<std::optional<DhcpLease>, 2U> leases;
+    if (!load_leases(lease_store_, leases)) {
+        return false;
+    }
+    for (std::size_t index = 0U; index < leases.size(); ++index) {
+        const InterfaceConfig& config = index == 0U ? current.eth0 : current.eth1;
+        if (config.mode != Mode::dhcp) {
+            continue;
+        }
+        if (dhcp_client_ == nullptr || !leases[index] ||
+            !validate_lease(*leases[index]) || !dhcp_client_->start(config, *leases[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool LinuxNetworkBackend::refresh_runtime() {
+    NetworkConfig current;
+    if (!read_current(current)) {
+        return false;
+    }
+    std::array<std::optional<DhcpLease>, 2U> previous_leases;
+    if (!load_leases(lease_store_, previous_leases)) {
+        return false;
+    }
+
+    std::array<std::optional<DhcpLease>, 2U> refreshed_leases = previous_leases;
+    bool changed = false;
+    for (std::size_t index = 0U; index < refreshed_leases.size(); ++index) {
+        const InterfaceConfig& config = index == 0U ? current.eth0 : current.eth1;
+        if (config.mode != Mode::dhcp) {
+            continue;
+        }
+        if (dhcp_client_ == nullptr || !previous_leases[index]) {
+            return false;
+        }
+        DhcpLease lease;
+        if (!dhcp_client_->current_lease(config, lease)) {
+            continue;
+        }
+        if (!validate_lease(lease)) {
+            return false;
+        }
+        if (!refreshed_leases[index] ||
+            refreshed_leases[index]->address != lease.address ||
+            refreshed_leases[index]->prefix != lease.prefix ||
+            refreshed_leases[index]->gateway != lease.gateway ||
+            refreshed_leases[index]->dns_count != lease.dns_count ||
+            refreshed_leases[index]->dns != lease.dns) {
+            refreshed_leases[index] = std::move(lease);
+            changed = true;
+        }
+    }
+    if (!changed) {
+        return true;
+    }
+
+    if (!apply_address_additions(
+            current, current, previous_leases, refreshed_leases)) {
+        return false;
+    }
+    if (!remove_previous_state(
+            current, current, previous_leases, refreshed_leases)) {
+        (void)remove_candidate_state(current, current, previous_leases, refreshed_leases);
+        (void)restore_previous_state(current, current, previous_leases, refreshed_leases);
+        return false;
+    }
+    if (!lease_store_.save(refreshed_leases)) {
+        (void)remove_candidate_state(current, current, previous_leases, refreshed_leases);
+        (void)restore_previous_state(current, current, previous_leases, refreshed_leases);
+        return false;
+    }
+    return true;
+}
+
 bool LinuxNetworkBackend::load(NetworkConfig& config) const {
     const std::optional<std::string> contents = read_file(persistent_file_);
     if (!contents) {
