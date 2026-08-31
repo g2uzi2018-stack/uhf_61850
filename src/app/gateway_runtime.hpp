@@ -12,8 +12,6 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
-#include <mutex>
-#include <optional>
 #include <string>
 #include <thread>
 
@@ -70,9 +68,6 @@ private:
     std::thread worker_;
     std::thread modbus_tcp_worker_;
     std::thread modbus_rtu_worker_;
-    mutable std::mutex status_mutex_;
-    bool last_cycle_ok_{false};
-    std::optional<std::chrono::steady_clock::time_point> last_success_;
 };
 
 }  // namespace uhf::app

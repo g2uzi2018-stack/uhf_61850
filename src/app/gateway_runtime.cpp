@@ -124,11 +124,12 @@ acquisition::SnapshotStore& GatewayRuntime::snapshot_store() noexcept {
 
 health::Input GatewayRuntime::health_input() const {
     health::Input input;
-    {
-        std::lock_guard<std::mutex> lock(status_mutex_);
-        input.last_acquisition_success = last_success_;
-        input.acquisition_last_cycle_ok = last_cycle_ok_;
+    const acquisition::ServingView serving_view = snapshot_store_.serving_view();
+    if (serving_view.snapshot) {
+        input.last_acquisition_success = serving_view.snapshot->completed_at;
     }
+    input.acquisition_last_cycle_ok =
+        serving_view.status.availability == acquisition::Availability::fresh;
     input.storage_writable = true;
     input.modbus_tcp_listening =
         modbus_tcp_server_ != nullptr && modbus_tcp_server_->bound_port() != 0U;
@@ -148,14 +149,6 @@ void GatewayRuntime::run() {
     std::chrono::steady_clock::time_point next_poll = std::chrono::steady_clock::now();
     while (!stop_requested_.load()) {
         const bool success = acquisition_engine_->poll_once();
-        const auto completed_at = std::chrono::steady_clock::now();
-        {
-            std::lock_guard<std::mutex> lock(status_mutex_);
-            last_cycle_ok_ = success;
-            if (success) {
-                last_success_ = completed_at;
-            }
-        }
         if (success) {
             if (previous_cycle_failed) {
                 logger_.recovered(
