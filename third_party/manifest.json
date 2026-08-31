@@ -1,5 +1,20 @@
 {
     "schema_version": 1,
     "project_license": "GPL-3.0-only",
-    "dependencies": []
+    "dependencies": [
+        {
+            "name": "libIEC61850",
+            "version": "1.6.2",
+            "tag": "v1.6.2",
+            "commit": "f0f797bf955da763353f7081c892a1ff6b55e5a1",
+            "source_archive": "https://github.com/mz-automation/libiec61850/archive/refs/tags/v1.6.2.tar.gz",
+            "source_sha256": "5718e0455de004da5fe63f33553bfdd06173258ad12e0ab1106bbc75df31776c",
+            "license": "GPL-3.0-only",
+            "build_limits": {
+                "CONFIG_MMS_MAXIMUM_PDU_SIZE": 16384,
+                "CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS": 4,
+                "CONFIG_MMS_MAX_NUMBER_OF_DATA_SET_MEMBERS": 16
+            }
+        }
+    ]
 }

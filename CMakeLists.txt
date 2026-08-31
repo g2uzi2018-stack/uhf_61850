@@ -9,6 +9,26 @@ option(UHF_ENABLE_WARNINGS "Enable strict compiler warnings" ON)
 option(UHF_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(UHF_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
 option(UHF_BUILD_FORMAT_TARGET "Provide the format-check target" ON)
+option(UHF_ENABLE_IEC61850 "Build the bundled libIEC61850 protocol stack" ON)
+
+if(UHF_ENABLE_IEC61850)
+    # Keep the target protocol stack self-contained and bounded.  The upstream
+    # project exposes these as cache options, so set them before entering its
+    # subdirectory and make accidental host-wide defaults impossible.
+    set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(BUILD_PYTHON_BINDINGS OFF CACHE BOOL "" FORCE)
+    set(CONFIG_MMS_MAXIMUM_PDU_SIZE 16384 CACHE STRING "" FORCE)
+    set(CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS 4 CACHE STRING "" FORCE)
+    set(CONFIG_MMS_SINGLE_THREADED ON CACHE BOOL "" FORCE)
+    set(CONFIG_MMS_MAX_NUMBER_OF_DATA_SET_MEMBERS 16 CACHE STRING "" FORCE)
+    set(CONFIG_IEC61850_L2_GOOSE OFF CACHE BOOL "" FORCE)
+    set(CONFIG_IEC61850_L2_SMV OFF CACHE BOOL "" FORCE)
+    set(CONFIG_IEC61850_R_GOOSE OFF CACHE BOOL "" FORCE)
+    set(CONFIG_IEC61850_R_SMV OFF CACHE BOOL "" FORCE)
+    set(CONFIG_IEC61850_SNTP_CLIENT OFF CACHE BOOL "" FORCE)
+    add_subdirectory(third_party/libiec61850 EXCLUDE_FROM_ALL)
+endif()
 
 set(UHF_GENERATED_INCLUDE_DIR "${PROJECT_BINARY_DIR}/generated")
 configure_file(
@@ -42,6 +62,20 @@ add_executable(uhf-gatewayd
 find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto)
 find_package(Threads REQUIRED)
 target_link_libraries(uhf-gatewayd PRIVATE OpenSSL::Crypto Threads::Threads)
+
+if(UHF_ENABLE_IEC61850)
+    target_link_libraries(uhf-gatewayd PRIVATE iec61850)
+    target_include_directories(uhf-gatewayd PRIVATE
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/hal/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/common/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/iec61850/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/iec61850/inc_private"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/inc_private"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/iso_mms/asn1c"
+        "${PROJECT_BINARY_DIR}/third_party/libiec61850/config"
+    )
+endif()
 
 target_compile_features(uhf-gatewayd PRIVATE cxx_std_17)
 target_include_directories(uhf-gatewayd PRIVATE
