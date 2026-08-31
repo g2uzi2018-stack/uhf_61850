@@ -63,6 +63,7 @@ int EventDetector::create_bundle(
     std::uint8_t reason_mask,
     const acquisition::PublishedSnapshot& snapshot,
     std::chrono::steady_clock::time_point observed_at,
+    std::chrono::system_clock::time_point observed_at_utc,
     std::int32_t peak_dbm,
     std::int32_t delta_db) {
     std::size_t slot = active_.size();
@@ -79,6 +80,7 @@ int EventDetector::create_bundle(
     ActiveBundle active;
     active.bundle.id = next_bundle_id_++;
     active.bundle.first_triggered_at = observed_at;
+    active.bundle.first_triggered_at_utc = observed_at_utc;
     active.bundle.reason_mask = reason_mask;
     active.bundle.frames.reserve(kHistoryFrameCount + 1U + kPostFrameCount);
     for (const acquisition::PublishedSnapshot& frame : history_) {
@@ -158,6 +160,14 @@ void EventDetector::observe(
     const acquisition::PublishedSnapshot& snapshot,
     std::chrono::steady_clock::time_point observed_at,
     bool fresh) {
+    observe(snapshot, observed_at, fresh, std::chrono::system_clock::now());
+}
+
+void EventDetector::observe(
+    const acquisition::PublishedSnapshot& snapshot,
+    std::chrono::steady_clock::time_point observed_at,
+    bool fresh,
+    std::chrono::system_clock::time_point observed_at_utc) {
     expire(observed_at);
     if (snapshot.generation == 0U ||
         (last_generation_ && snapshot.generation <= *last_generation_)) {
@@ -209,7 +219,8 @@ void EventDetector::observe(
             attach_reason(*active_[static_cast<std::size_t>(sudden_slot)],
                 EventType::strong_discharge, peak_dbm, 0);
         } else {
-            create_bundle(trigger_mask, snapshot, observed_at, peak_dbm, delta_db);
+            create_bundle(
+                trigger_mask, snapshot, observed_at, observed_at_utc, peak_dbm, delta_db);
         }
     } else if ((trigger_mask & kStrongReason) != 0U) {
         const int slot = find_active(EventType::strong_discharge);
@@ -217,7 +228,7 @@ void EventDetector::observe(
             attach_reason(*active_[static_cast<std::size_t>(slot)],
                 EventType::strong_discharge, peak_dbm, 0);
         } else {
-            create_bundle(kStrongReason, snapshot, observed_at, peak_dbm, 0);
+            create_bundle(kStrongReason, snapshot, observed_at, observed_at_utc, peak_dbm, 0);
         }
     } else if ((trigger_mask & kSuddenReason) != 0U) {
         const int slot = find_active(EventType::sudden_change);
@@ -225,7 +236,7 @@ void EventDetector::observe(
             attach_reason(*active_[static_cast<std::size_t>(slot)],
                 EventType::sudden_change, peak_dbm, delta_db);
         } else {
-            create_bundle(kSuddenReason, snapshot, observed_at, peak_dbm, delta_db);
+            create_bundle(kSuddenReason, snapshot, observed_at, observed_at_utc, peak_dbm, delta_db);
         }
     }
 

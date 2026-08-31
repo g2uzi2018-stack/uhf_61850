@@ -27,6 +27,7 @@ struct EventReasonStats {
 struct EventBundle {
     std::uint64_t id{0};
     std::chrono::steady_clock::time_point first_triggered_at;
+    std::chrono::system_clock::time_point first_triggered_at_utc;
     std::uint8_t reason_mask{0U};
     bool partial{false};
     EventReasonStats strong;
@@ -53,6 +54,11 @@ public:
         const acquisition::PublishedSnapshot& snapshot,
         std::chrono::steady_clock::time_point observed_at,
         bool fresh);
+    void observe(
+        const acquisition::PublishedSnapshot& snapshot,
+        std::chrono::steady_clock::time_point observed_at,
+        bool fresh,
+        std::chrono::system_clock::time_point observed_at_utc);
     std::vector<EventBundle> advance(std::chrono::steady_clock::time_point now);
     std::vector<EventBundle> take_completed();
 
@@ -86,6 +92,7 @@ private:
         std::uint8_t reason_mask,
         const acquisition::PublishedSnapshot& snapshot,
         std::chrono::steady_clock::time_point observed_at,
+        std::chrono::system_clock::time_point observed_at_utc,
         std::int32_t peak_dbm,
         std::int32_t delta_db);
     void attach_reason(
