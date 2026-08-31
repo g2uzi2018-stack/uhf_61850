@@ -52,12 +52,30 @@ int main() {
     write_executable(hook, "#!/bin/sh\nexit 0\n");
 
     uhf::network::ExecDhcpClient client(directory, fake_dhclient, hook);
+    {
+        std::ofstream active_result(directory / "eth0.result");
+        active_result << "active-result\n";
+        std::ofstream active_pid(directory / "eth0.pid");
+        active_pid << "active-pid\n";
+        std::ofstream active_lease(directory / "eth0.lease");
+        active_lease << "active-lease\n";
+    }
     uhf::network::DhcpLease lease;
     assert(client.acquire(dhcp_config(), lease));
     assert(lease.address == "192.168.3.240");
     assert(lease.prefix == 24U);
     assert(lease.gateway == "192.168.3.1");
     assert(lease.dns_count == 1U && lease.dns[0U] == "192.168.3.1");
+    assert(std::filesystem::exists(directory / "eth0.result"));
+    assert(std::filesystem::exists(directory / "eth0.pid"));
+    assert(std::filesystem::exists(directory / "eth0.lease"));
+    assert(client.release(dhcp_config(), lease));
+    assert(std::filesystem::exists(directory / "eth0.result"));
+    assert(std::filesystem::exists(directory / "eth0.pid"));
+    assert(std::filesystem::exists(directory / "eth0.lease"));
+    std::filesystem::remove(directory / "eth0.result");
+    std::filesystem::remove(directory / "eth0.pid");
+    std::filesystem::remove(directory / "eth0.lease");
     assert(client.start(dhcp_config(), lease));
     uhf::network::DhcpLease renewed;
     assert(client.current_lease(dhcp_config(), renewed));

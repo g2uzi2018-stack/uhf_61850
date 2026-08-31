@@ -48,10 +48,15 @@ public:
     bool release(const InterfaceConfig& config, const DhcpLease& lease) noexcept override;
 
 private:
-    bool read_result(const InterfaceConfig& config, DhcpLease& lease) const;
+    bool read_result(
+        const std::filesystem::path& result, const InterfaceConfig& config,
+        DhcpLease& lease) const;
     std::filesystem::path result_path(const InterfaceConfig& config) const;
     std::filesystem::path pid_path(const InterfaceConfig& config) const;
     std::filesystem::path lease_path(const InterfaceConfig& config) const;
+    std::filesystem::path probe_result_path(const InterfaceConfig& config) const;
+    std::filesystem::path probe_pid_path(const InterfaceConfig& config) const;
+    std::filesystem::path probe_lease_path(const InterfaceConfig& config) const;
     int interface_index(const InterfaceConfig& config) const noexcept;
     pid_t stored_pid(const InterfaceConfig& config) const noexcept;
     bool terminate_pid(pid_t pid) const noexcept;

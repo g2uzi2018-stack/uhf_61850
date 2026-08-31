@@ -456,9 +456,26 @@ std::filesystem::path ExecDhcpClient::lease_path(
     return state_directory_ / (config.name + ".lease");
 }
 
+std::filesystem::path ExecDhcpClient::probe_result_path(
+    const InterfaceConfig& config) const {
+    return state_directory_ / (config.name + ".probe.result");
+}
+
+std::filesystem::path ExecDhcpClient::probe_pid_path(
+    const InterfaceConfig& config) const {
+    return state_directory_ / (config.name + ".probe.pid");
+}
+
+std::filesystem::path ExecDhcpClient::probe_lease_path(
+    const InterfaceConfig& config) const {
+    return state_directory_ / (config.name + ".probe.lease");
+}
+
 bool ExecDhcpClient::read_result(
-    const InterfaceConfig& config, DhcpLease& lease) const {
-    const std::optional<std::string> contents = read_file(result_path(config));
+    const std::filesystem::path& result,
+    const InterfaceConfig& config,
+    DhcpLease& lease) const {
+    const std::optional<std::string> contents = read_file(result);
     if (!contents) {
         return false;
     }
@@ -509,21 +526,23 @@ bool ExecDhcpClient::acquire(const InterfaceConfig& config, DhcpLease& lease) {
         ::chmod(state_directory_.c_str(), kDirectoryMode) < 0) {
         return false;
     }
-    const std::filesystem::path result = result_path(config);
-    const std::filesystem::path pid = pid_path(config);
-    const std::filesystem::path lease_file = lease_path(config);
+    const std::filesystem::path result = probe_result_path(config);
+    const std::filesystem::path pid = probe_pid_path(config);
+    const std::filesystem::path lease_file = probe_lease_path(config);
     if (!remove_file(result) || !remove_file(pid)) {
         return false;
     }
     if (!run_dhclient(
             dhclient_path_, hook_path_, result, pid, lease_file, config) ||
-        !read_result(config, lease)) {
+        !read_result(result, config, lease)) {
         (void)remove_file(result);
         (void)remove_file(pid);
+        (void)remove_file(lease_file);
         return false;
     }
     (void)remove_file(result);
     (void)remove_file(pid);
+    (void)remove_file(lease_file);
     return true;
 }
 
@@ -627,7 +646,7 @@ bool ExecDhcpClient::start(
 
 bool ExecDhcpClient::current_lease(
     const InterfaceConfig& config, DhcpLease& lease) const {
-    return interface_index(config) >= 0 && read_result(config, lease);
+    return interface_index(config) >= 0 && read_result(result_path(config), config, lease);
 }
 
 bool ExecDhcpClient::stop(
@@ -652,8 +671,8 @@ bool ExecDhcpClient::release(
     if (config.name != "eth0" && config.name != "eth1") {
         return false;
     }
-    return remove_file(result_path(config)) && remove_file(pid_path(config)) &&
-        remove_file(lease_path(config));
+    return remove_file(probe_result_path(config)) && remove_file(probe_pid_path(config)) &&
+        remove_file(probe_lease_path(config));
 }
 
 }  // namespace uhf::network
