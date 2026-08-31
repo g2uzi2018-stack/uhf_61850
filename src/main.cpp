@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "app/build_info.hpp"
+#include "app/gateway_runtime.hpp"
 #include "logging/logger.hpp"
 #include "web/http_server.hpp"
 
 #include <charconv>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -22,6 +25,9 @@ struct WebOptions {
     std::filesystem::path state_directory{"/var/lib/uhf-gateway"};
     std::string bind_address{"127.0.0.1"};
     std::uint16_t port{8080};
+    bool start_acquisition{true};
+    bool simulate{false};
+    std::string acquisition_device{"/dev/ttyS1"};
 };
 
 bool parse_listen(std::string_view value, std::string& address, std::uint16_t& port) {
@@ -48,7 +54,8 @@ bool parse_listen(std::string_view value, std::string& address, std::uint16_t& p
 void print_usage() {
     std::cerr << "usage: " << uhf::app::kProductName
               << " [--version|--self-test|--web "
-                 "[--web-root PATH] [--state-dir PATH] [--listen IPV4:PORT]]\n";
+                 "[--web-root PATH] [--state-dir PATH] [--listen IPV4:PORT] "
+                 "[--simulate|--no-acquisition] [--acquisition-device PATH]]\n";
 }
 
 int run_self_test() {
@@ -88,6 +95,12 @@ int main(int argc, char* argv[]) {
                     std::cerr << "invalid --listen value\n";
                     return 2;
                 }
+            } else if (option == "--simulate") {
+                options.simulate = true;
+            } else if (option == "--no-acquisition") {
+                options.start_acquisition = false;
+            } else if (option == "--acquisition-device" && index + 1 < argc) {
+                options.acquisition_device = argv[++index];
             } else {
                 print_usage();
                 return 2;
@@ -103,12 +116,29 @@ int main(int argc, char* argv[]) {
                 "uhf-gatewayd web service starting",
                 {uhf::logging::Field{"listen", options.bind_address + ":" +
                         std::to_string(options.port)}});
+            std::unique_ptr<uhf::app::GatewayRuntime> runtime;
+            if (options.start_acquisition) {
+                runtime = std::make_unique<uhf::app::GatewayRuntime>(
+                    uhf::app::GatewayRuntimeOptions{
+                        options.simulate, options.acquisition_device, std::chrono::seconds(6)},
+                    logger);
+                runtime->start();
+            }
+            uhf::app::GatewayRuntime* runtime_pointer = runtime.get();
             uhf::web::HttpServer server(
                 std::move(options.document_root),
                 std::move(options.bind_address),
                 options.port,
-                std::move(options.state_directory));
+                std::move(options.state_directory),
+                runtime_pointer == nullptr ? nullptr : &runtime_pointer->snapshot_store(),
+                runtime_pointer == nullptr
+                    ? uhf::web::HealthInputProvider{}
+                    : uhf::web::HealthInputProvider{
+                          [runtime_pointer] { return runtime_pointer->health_input(); }});
             const int result = server.run();
+            if (runtime) {
+                runtime->stop();
+            }
             logger.log(
                 uhf::logging::Level::info,
                 uhf::logging::Component::system,

@@ -74,6 +74,7 @@ def main() -> int:
                 str(web_dir),
                 "--state-dir",
                 str(state_directory),
+                "--no-acquisition",
                 "--listen",
                 f"127.0.0.1:{port}",
             ],

@@ -17,4 +17,5 @@ exec "${host_build}/uhf-gatewayd" \
     --web \
     --web-root "${repo_dir}/web" \
     --state-dir "${state_dir}" \
+    --simulate \
     --listen "${web_listen}"
