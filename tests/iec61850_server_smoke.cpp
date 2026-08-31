@@ -4,6 +4,7 @@
 #include "iec61850_client.h"
 #include "iec61850/server.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -12,6 +13,17 @@
 #include <thread>
 
 namespace {
+
+struct ReportState {
+    std::atomic<unsigned int> count{0U};
+};
+
+void report_callback(void* parameter, ClientReport report) {
+    auto* state = static_cast<ReportState*>(parameter);
+    if (ClientReport_getDataSetValues(report) != nullptr) {
+        state->count.fetch_add(1U);
+    }
+}
 
 bool expect(bool condition, const char* message) {
     if (!condition) {
@@ -91,6 +103,40 @@ int main() {
         ok = expect(error == IED_ERROR_OK && rcb != nullptr, "read URCB") && ok;
         if (rcb != nullptr) {
             ok = expect(!ClientReportControlBlock_isBuffered(rcb), "report is unbuffered") && ok;
+            ReportState report_state;
+            IedConnection_installReportHandler(
+                connection,
+                "TESTIEDPDMON/LLN0.RP.RPMeasurements",
+                ClientReportControlBlock_getRptId(rcb),
+                report_callback,
+                &report_state);
+            ClientReportControlBlock_setTrgOps(
+                rcb, TRG_OPT_DATA_CHANGED | TRG_OPT_INTEGRITY);
+            ClientReportControlBlock_setRptEna(rcb, true);
+            IedConnection_setRCBValues(
+                connection,
+                &error,
+                rcb,
+                RCB_ELEMENT_RPT_ENA | RCB_ELEMENT_TRG_OPS,
+                true);
+            ok = expect(error == IED_ERROR_OK, "enable URCB") && ok;
+
+            uhf::domain::ParsedSnapshot changed = payload;
+            changed.measurements[2] = uhf::domain::Measurement{0U, -40, true};
+            const auto changed_at = std::chrono::steady_clock::now();
+            snapshots.publish(changed, changed_at, changed_at);
+            const auto report_deadline = std::chrono::steady_clock::now() +
+                std::chrono::seconds(2);
+            while (report_state.count.load() == 0U &&
+                   std::chrono::steady_clock::now() < report_deadline) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+            ok = expect(report_state.count.load() > 0U, "receive data-change report") && ok;
+
+            ClientReportControlBlock_setRptEna(rcb, false);
+            IedConnection_setRCBValues(
+                connection, &error, rcb, RCB_ELEMENT_RPT_ENA, true);
+            ok = expect(error == IED_ERROR_OK, "disable URCB") && ok;
             ClientReportControlBlock_destroy(rcb);
         }
         IedConnection_close(connection);
