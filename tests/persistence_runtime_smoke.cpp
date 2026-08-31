@@ -62,6 +62,36 @@ bool wait_for_file_count(
     return false;
 }
 
+bool run_stale_event_case(uhf::logging::Logger& logger) {
+    const std::filesystem::path root = std::filesystem::temp_directory_path() /
+        ("uhf-persistence-stale-" + std::to_string(static_cast<long long>(::getpid())));
+    std::error_code cleanup_error;
+    std::filesystem::remove_all(root, cleanup_error);
+    uhf::acquisition::SnapshotStore snapshot_store;
+    const auto now = std::chrono::steady_clock::now();
+    publish(snapshot_store, -40, now);
+    snapshot_store.record_failure(now, "serial timeout");
+
+    uhf::storage::PersistenceOptions options;
+    options.data_root = root;
+    options.periodic_period = std::chrono::hours(1);
+    options.cleanup_period = std::chrono::hours(1);
+    options.cleaner_options.min_free_bytes = 0U;
+    options.cleaner_options.low_watermark_percent = 0U;
+    options.cleaner_options.recovery_percent = 0U;
+    options.cleaner_options.recovery_extra_bytes = 0U;
+    options.event_options.post_collection_timeout = std::chrono::seconds(1);
+    options.event_options.merge_window = std::chrono::seconds(1);
+
+    uhf::storage::PersistenceWorker worker(snapshot_store, logger, options);
+    worker.start();
+    std::this_thread::sleep_for(std::chrono::milliseconds(2200));
+    worker.stop();
+    const uhf::storage::PersistenceStats stats = worker.stats();
+    std::filesystem::remove_all(root, cleanup_error);
+    return expect(stats.saved_event_count == 0U, "stale snapshot triggered an event");
+}
+
 }  // namespace
 
 int main() {
@@ -73,6 +103,9 @@ int main() {
         uhf::logging::Options logger_options;
         logger_options.use_syslog = false;
         uhf::logging::Logger logger(logger_options);
+        if (!run_stale_event_case(logger)) {
+            return 1;
+        }
         uhf::acquisition::SnapshotStore snapshot_store;
         uhf::storage::PersistenceOptions options;
         options.data_root = root;

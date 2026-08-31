@@ -129,19 +129,24 @@ void PersistenceWorker::run() {
             }
         }
 
-        const std::optional<acquisition::PublishedSnapshot> latest = snapshot_store_.latest();
-        if (latest && latest->generation != 0U && latest->generation > last_generation) {
-            last_generation = latest->generation;
-            event_detector_.observe(*latest, now, true, now_utc);
+        const acquisition::ServingView serving_view = snapshot_store_.serving_view();
+        if (serving_view.snapshot && serving_view.snapshot->generation != 0U &&
+            serving_view.snapshot->generation > last_generation) {
+            last_generation = serving_view.snapshot->generation;
+            event_detector_.observe(
+                *serving_view.snapshot,
+                now,
+                serving_view.status.availability == acquisition::Availability::fresh,
+                now_utc);
             alarm_active_.store(!event_detector_.strong_armed());
 
             const bool period_elapsed = !last_periodic_save ||
                 options_.periodic_period <= std::chrono::seconds::zero() ||
                 now >= *last_periodic_save + options_.periodic_period;
-            if (period_elapsed && latest->generation != last_periodic_generation) {
+            if (period_elapsed && serving_view.snapshot->generation != last_periodic_generation) {
                 if (!cleaner_.accepting_writes()) {
-                    if (dropped_generation != latest->generation) {
-                        dropped_generation = latest->generation;
+                    if (dropped_generation != serving_view.snapshot->generation) {
+                        dropped_generation = serving_view.snapshot->generation;
                         increment_dropped_frame();
                     }
                     logger_.log(
@@ -149,15 +154,15 @@ void PersistenceWorker::run() {
                         logging::Component::storage,
                         "frame.dropped",
                         "periodic frame dropped while storage writes are paused");
-                } else if (frame_store_.save(*latest, now_utc)) {
+                } else if (frame_store_.save(*serving_view.snapshot, now_utc)) {
                     last_periodic_save = now;
-                    last_periodic_generation = latest->generation;
+                    last_periodic_generation = serving_view.snapshot->generation;
                     dropped_generation = 0U;
                     std::lock_guard<std::mutex> lock(stats_mutex_);
                     ++stats_.saved_frame_count;
                 } else {
-                    if (dropped_generation != latest->generation) {
-                        dropped_generation = latest->generation;
+                    if (dropped_generation != serving_view.snapshot->generation) {
+                        dropped_generation = serving_view.snapshot->generation;
                         increment_dropped_frame();
                     }
                     logger_.log(
