@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <thread>
@@ -16,6 +17,7 @@ struct ServerOptions {
     std::string bind_address{"127.0.0.1"};
     std::uint16_t port{102U};
     std::string ied_name{"UHFPD1"};
+    std::function<bool()> alarm_provider;
 };
 
 class Server final {
@@ -43,6 +45,7 @@ private:
     std::atomic<bool> stop_requested_{false};
     std::atomic<bool> running_{false};
     std::thread update_worker_;
+    std::function<bool()> alarm_provider_;
 };
 
 }  // namespace uhf::iec61850

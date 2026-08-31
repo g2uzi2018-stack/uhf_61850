@@ -54,6 +54,10 @@ PersistenceStats PersistenceWorker::stats() const {
     return stats_;
 }
 
+bool PersistenceWorker::alarm_active() const noexcept {
+    return alarm_active_.load();
+}
+
 void PersistenceWorker::update_cleanup_state(const CleanupResult& result) {
     {
         std::lock_guard<std::mutex> lock(stats_mutex_);
@@ -129,6 +133,7 @@ void PersistenceWorker::run() {
         if (latest && latest->generation != 0U && latest->generation > last_generation) {
             last_generation = latest->generation;
             event_detector_.observe(*latest, now, true, now_utc);
+            alarm_active_.store(!event_detector_.strong_armed());
 
             const bool period_elapsed = !last_periodic_save ||
                 options_.periodic_period <= std::chrono::seconds::zero() ||

@@ -51,6 +51,7 @@ public:
     void start();
     void stop() noexcept;
     PersistenceStats stats() const;
+    bool alarm_active() const noexcept;
 
 private:
     void run();
@@ -69,6 +70,7 @@ private:
     std::thread worker_;
     mutable std::mutex stats_mutex_;
     PersistenceStats stats_;
+    std::atomic<bool> alarm_active_{false};
 };
 
 }  // namespace uhf::storage

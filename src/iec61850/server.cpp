@@ -31,7 +31,8 @@ namespace uhf::iec61850 {
 Server::Server(acquisition::SnapshotStore& snapshot_store, ServerOptions options)
     : snapshot_store_(snapshot_store),
       options_(std::move(options)),
-      model_(std::make_unique<Model>(options_.ied_name)) {
+      model_(std::make_unique<Model>(options_.ied_name)),
+      alarm_provider_(options_.alarm_provider) {
     server_ = IedServer_create(model_->raw());
     if (server_ == nullptr) {
         throw std::runtime_error("unable to create IEC 61850 MMS server");
@@ -121,7 +122,8 @@ void Server::publish_snapshot(const acquisition::PublishedSnapshot& snapshot) {
 
     const domain::Measurement& peak = payload.measurements[2U];
     const bool alarm_valid = peak.valid && payload.payload_status != domain::PayloadStatus::not_refreshed;
-    const bool alarm = alarm_valid && peak.value >= -45;
+    const bool alarm = alarm_valid &&
+        (alarm_provider_ ? alarm_provider_() : peak.value >= -45);
     IedServer_updateFloatAttributeValue(
         server_, model_->peak_value(), static_cast<float>(peak.value));
     IedServer_updateBooleanAttributeValue(server_, model_->alarm_value(), alarm);

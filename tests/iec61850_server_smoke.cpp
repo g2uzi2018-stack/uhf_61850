@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <iostream>
 #include <thread>
+#include <utility>
 
 namespace {
 
@@ -46,8 +47,12 @@ int main() {
     const auto now = std::chrono::steady_clock::now();
     snapshots.publish(payload, now, now);
 
-    uhf::iec61850::Server server(
-        snapshots, uhf::iec61850::ServerOptions{"127.0.0.1", 15102U, "TESTIED"});
+    uhf::iec61850::ServerOptions server_options;
+    server_options.bind_address = "127.0.0.1";
+    server_options.port = 15102U;
+    server_options.ied_name = "TESTIED";
+    server_options.alarm_provider = [] { return true; };
+    uhf::iec61850::Server server(snapshots, std::move(server_options));
     server.start();
     bool ok = expect(server.running(), "MMS server is running");
 
@@ -97,6 +102,17 @@ int main() {
                 std::fabs(static_cast<double>(MmsValue_toFloat(peak)) + 50.0) < 0.01,
                 "standard peak value") && ok;
             MmsValue_delete(peak);
+        }
+
+        MmsValue* alarm = IedConnection_readObject(
+            connection,
+            &error,
+            "TESTIEDPDMON/SPDC1.PaDschAlm.stVal",
+            IEC61850_FC_ST);
+        ok = expect(error == IED_ERROR_OK && alarm != nullptr, "read event alarm") && ok;
+        if (alarm != nullptr) {
+            ok = expect(MmsValue_getBoolean(alarm), "shared event alarm state") && ok;
+            MmsValue_delete(alarm);
         }
 
         ClientDataSet data_set = IedConnection_readDataSetValues(

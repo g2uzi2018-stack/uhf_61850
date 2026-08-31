@@ -34,17 +34,20 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
         modbus_rtu_server_ = std::make_unique<modbus::ModbusRtuServer>(
             *modbus_rtu_serial_port_, snapshot_store_, options_.modbus_rtu_options);
     }
-    if (options_.start_iec61850) {
-        iec61850_server_ = std::make_unique<iec61850::Server>(
-            snapshot_store_,
-            iec61850::ServerOptions{
-                options_.iec61850_bind,
-                options_.iec61850_port,
-                options_.iec61850_ied_name});
-    }
     if (options_.start_persistence) {
         persistence_worker_ = std::make_unique<storage::PersistenceWorker>(
             snapshot_store_, logger_, options_.persistence_options);
+    }
+    if (options_.start_iec61850) {
+        iec61850::ServerOptions iec_options;
+        iec_options.bind_address = options_.iec61850_bind;
+        iec_options.port = options_.iec61850_port;
+        iec_options.ied_name = options_.iec61850_ied_name;
+        if (persistence_worker_) {
+            iec_options.alarm_provider = [this] { return persistence_worker_->alarm_active(); };
+        }
+        iec61850_server_ = std::make_unique<iec61850::Server>(
+            snapshot_store_, std::move(iec_options));
     }
 }
 
