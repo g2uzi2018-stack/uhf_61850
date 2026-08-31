@@ -1,0 +1,18 @@
+{
+  "eth0_mode": "static",
+  "eth0_address": "192.168.3.230",
+  "eth0_prefix": 24,
+  "eth0_gateway": "192.168.3.1",
+  "eth0_dns1": "",
+  "eth0_dns2": "",
+  "eth0_hostname": "",
+  "eth0_dhcp_timeout_seconds": 15,
+  "eth1_mode": "static",
+  "eth1_address": "192.168.0.230",
+  "eth1_prefix": 24,
+  "eth1_gateway": "",
+  "eth1_dns1": "",
+  "eth1_dns2": "",
+  "eth1_hostname": "",
+  "eth1_dhcp_timeout_seconds": 15
+}

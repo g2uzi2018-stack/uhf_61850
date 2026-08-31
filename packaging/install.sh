@@ -180,6 +180,14 @@ if [[ "$no_systemd" == false ]]; then
 fi
 install -m 0644 "$release_dir/config/schema.json" "${root_prefix}/etc/uhf-gateway/schema.json"
 install -m 0644 "$release_dir/config/defaults.json" "${root_prefix}/etc/uhf-gateway/defaults.json"
+network_config_file="${root_prefix}/etc/uhf-gateway/network.json"
+if [[ -e "$network_config_file" && ! -f "$network_config_file" ]]; then
+    printf 'network configuration path is not a regular file: %s\n' "$network_config_file" >&2
+    exit 1
+fi
+if [[ ! -e "$network_config_file" ]]; then
+    install -m 0600 "$release_dir/config/network.json" "$network_config_file"
+fi
 install -m 0644 "$release_dir/config/UHFPD1.icd" "${root_prefix}/etc/uhf-gateway/UHFPD1.icd"
 install -m 0755 "$release_dir/libexec/uhf-gateway/uhf-gateway-hook" \
     "${root_prefix}/usr/lib/uhf-gateway/dhclient-hook"

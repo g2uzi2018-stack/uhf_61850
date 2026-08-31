@@ -55,6 +55,7 @@ required_files=(
     "web/login.html"
     "config/defaults.json"
     "config/schema.json"
+    "config/network.json"
     "config/UHFPD1.icd"
     "config/manifest.json"
     "libexec/uhf-gateway/uhf-gateway-hook"

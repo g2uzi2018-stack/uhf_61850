@@ -84,6 +84,11 @@ def main() -> int:
             fail("DHCP hook was not installed")
         if not (target / "etc/uhf-gateway/defaults.json").is_file():
             fail("default configuration was not installed")
+        network_config = target / "etc/uhf-gateway/network.json"
+        if not network_config.is_file():
+            fail("default network configuration was not installed")
+        if json.loads(network_config.read_text(encoding="utf-8"))["eth0_address"] != "192.168.3.230":
+            fail("unexpected default network configuration")
         bootstrap = target / "var/lib/uhf-gateway/initial-password"
         auth = target / "var/lib/uhf-gateway/auth.json"
         if not bootstrap.is_file() or not auth.is_file():
@@ -109,6 +114,11 @@ def main() -> int:
             if not path.is_file():
                 fail(f"missing installed support file: {path.relative_to(target)}")
 
+        network_config.write_text(
+            network_config.read_text(encoding="utf-8").replace("192.168.3.230", "192.168.3.231"),
+            encoding="utf-8",
+        )
+
         second = build_release(root, packages, "smoke-2")
         result = install(root, second, target)
         if result.returncode != 0:
@@ -122,6 +132,8 @@ def main() -> int:
         )
         if state != {"version": 1, "current": "smoke-2", "previous": "smoke-1", "pending": ""}:
             fail(f"unexpected upgrade state: {state!r}")
+        if json.loads(network_config.read_text(encoding="utf-8"))["eth0_address"] != "192.168.3.231":
+            fail("upgrade overwrote the existing network configuration")
         result = install(root, second, target)
         if result.returncode == 0:
             fail("duplicate release was accepted")
