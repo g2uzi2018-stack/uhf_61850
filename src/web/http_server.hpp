@@ -5,6 +5,7 @@
 #include "config/config_store.hpp"
 #include "health/health.hpp"
 #include "logging/logger.hpp"
+#include "platform/privileged/unix_socket.hpp"
 #include "storage/event_store.hpp"
 #include "storage/frame_store.hpp"
 #include "web/auth_store.hpp"
@@ -38,7 +39,8 @@ public:
         bool tls_enabled = true,
         TlsFiles tls_files = {},
         logging::Logger* logger = nullptr,
-        std::filesystem::path data_root = {});
+        std::filesystem::path data_root = {},
+        privileged::UnixSocketClient* network_client = nullptr);
 
     int run();
 
@@ -77,6 +79,7 @@ private:
     std::unique_ptr<TlsContext> tls_context_;
     logging::Logger* logger_{nullptr};
     std::filesystem::path data_root_;
+    privileged::UnixSocketClient* network_client_{nullptr};
     health::Aggregator health_aggregator_;
     std::unordered_map<std::string, Session> sessions_;
     std::unordered_map<std::string, LoginFailures> login_failures_;

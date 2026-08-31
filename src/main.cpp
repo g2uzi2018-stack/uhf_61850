@@ -3,6 +3,7 @@
 #include "app/gateway_runtime.hpp"
 #include "config/config_store.hpp"
 #include "logging/logger.hpp"
+#include "platform/privileged/unix_socket.hpp"
 #include "web/http_server.hpp"
 
 #include <charconv>
@@ -52,6 +53,8 @@ struct WebOptions {
     bool data_directory_explicit{false};
     std::filesystem::path config_file{"/var/lib/uhf-gateway/config.json"};
     bool config_file_explicit{false};
+    std::filesystem::path privileged_socket{"/run/uhf-gateway/privileged.sock"};
+    bool privileged_socket_explicit{false};
 };
 
 bool parse_listen(std::string_view value, std::string& address, std::uint16_t& port) {
@@ -83,7 +86,7 @@ void print_usage() {
                  "[--simulate|--no-acquisition] [--acquisition-device PATH] "
                  "[--modbus-tcp-listen IPV4:PORT] [--modbus-rtu-device PATH] "
                  "[--no-modbus-rtu] [--iec61850-listen IPV4:PORT] [--no-iec61850] "
-                 "[--data-dir PATH] [--config PATH]]\n";
+                 "[--data-dir PATH] [--config PATH] [--privileged-socket PATH]]\n";
 }
 
 int run_self_test() {
@@ -167,6 +170,9 @@ int main(int argc, char* argv[]) {
             } else if (option == "--config" && index + 1 < argc) {
                 options.config_file = argv[++index];
                 options.config_file_explicit = true;
+            } else if (option == "--privileged-socket" && index + 1 < argc) {
+                options.privileged_socket = argv[++index];
+                options.privileged_socket_explicit = true;
             } else {
                 print_usage();
                 return 2;
@@ -181,6 +187,9 @@ int main(int argc, char* argv[]) {
         }
         if (options.simulate && !options.data_directory_explicit) {
             options.data_directory = options.state_directory / "data";
+        }
+        if (options.simulate && !options.privileged_socket_explicit) {
+            options.privileged_socket = options.state_directory / "privileged.sock";
         }
             if (!options.config_file_explicit) {
             options.config_file = options.state_directory / "config.json";
@@ -268,6 +277,7 @@ int main(int argc, char* argv[]) {
                 runtime->start();
             }
             uhf::app::GatewayRuntime* runtime_pointer = runtime.get();
+            uhf::privileged::UnixSocketClient network_client(options.privileged_socket);
             uhf::web::HttpServer server(
                 std::move(options.document_root),
                 std::move(options.bind_address),
@@ -282,7 +292,8 @@ int main(int argc, char* argv[]) {
                 options.tls_enabled,
                 uhf::web::TlsFiles{options.tls_certificate, options.tls_private_key},
                 &logger,
-                options.data_directory);
+                options.data_directory,
+                &network_client);
             const int result = server.run();
             if (runtime) {
                 runtime->stop();

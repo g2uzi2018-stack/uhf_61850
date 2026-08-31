@@ -54,15 +54,26 @@ Reply NetworkService::handle(std::string_view request, uid_t uid, gid_t gid) {
             return {false, "backend_error", {}};
         }
         const network::LoadResult transaction = transaction_manager_.inspect();
-        std::string body = "{\"config\":" + network::to_flat_json(current) + ",\"transaction\":";
-        if (transaction.status != network::LoadStatus::valid || !transaction.transaction) {
+        if (transaction.status == network::LoadStatus::corrupt ||
+            transaction.status == network::LoadStatus::io_error) {
+            return {false, "transaction_error", {}};
+        }
+        std::string body = "{\"config\":" + network::to_json(current) + ",\"transaction\":";
+        if (!transaction.transaction) {
             body += "null";
         } else {
+            const std::uint64_t now = clock_.boottime_ns();
+            const std::uint64_t remaining_ns = transaction.transaction->deadline_boottime_ns > now
+                ? transaction.transaction->deadline_boottime_ns - now
+                : 0U;
+            const std::uint64_t remaining_seconds =
+                (remaining_ns + 999999999ULL) / 1000000000ULL;
             body += "{\"id\":" + std::to_string(transaction.transaction->id) +
                 ",\"state\":\"" +
                 network::transaction_state_name(transaction.transaction->state) +
                 "\",\"deadline_boottime_ns\":" +
-                std::to_string(transaction.transaction->deadline_boottime_ns) + "}";
+                std::to_string(transaction.transaction->deadline_boottime_ns) +
+                ",\"remaining_seconds\":" + std::to_string(remaining_seconds) + "}";
         }
         body += "}\n";
         return {true, "ok", std::move(body)};

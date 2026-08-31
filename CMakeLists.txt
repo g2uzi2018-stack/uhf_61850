@@ -60,6 +60,8 @@ add_executable(uhf-gatewayd
     src/web/crypto.cpp
     src/web/tls_context.cpp
     src/web/http_server.cpp
+    src/platform/privileged/unix_socket.cpp
+    src/platform/network/network_config.cpp
 )
 
 find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto SSL)

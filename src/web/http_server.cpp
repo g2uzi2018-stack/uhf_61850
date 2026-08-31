@@ -804,6 +804,59 @@ bool json_string_field(
     return false;
 }
 
+bool json_object_field(
+    std::string_view json, std::string_view key, std::string_view& value) {
+    const std::string marker = "\"" + std::string(key) + "\"";
+    const std::size_t marker_position = json.find(marker);
+    if (marker_position == std::string_view::npos) {
+        return false;
+    }
+    std::size_t position = marker_position + marker.size();
+    while (position < json.size() &&
+           (json[position] == ' ' || json[position] == '\t' || json[position] == '\r' ||
+            json[position] == '\n')) {
+        ++position;
+    }
+    if (position >= json.size() || json[position++] != ':') {
+        return false;
+    }
+    while (position < json.size() &&
+           (json[position] == ' ' || json[position] == '\t' || json[position] == '\r' ||
+            json[position] == '\n')) {
+        ++position;
+    }
+    if (position >= json.size() || json[position] != '{') {
+        return false;
+    }
+    const std::size_t begin = position;
+    std::size_t depth = 0U;
+    bool quoted = false;
+    bool escaped = false;
+    for (; position < json.size(); ++position) {
+        const char character = json[position];
+        if (quoted) {
+            if (escaped) {
+                escaped = false;
+            } else if (character == '\\') {
+                escaped = true;
+            } else if (character == '"') {
+                quoted = false;
+            }
+            continue;
+        }
+        if (character == '"') {
+            quoted = true;
+        } else if (character == '{') {
+            ++depth;
+        } else if (character == '}' && depth-- == 1U) {
+            ++position;
+            value = json.substr(begin, position - begin);
+            return true;
+        }
+    }
+    return false;
+}
+
 std::string session_cookie(const ParsedRequest& request) {
     const std::string_view cookie_header = header_value(request, "cookie");
     std::size_t position = 0;
@@ -934,7 +987,8 @@ HttpServer::HttpServer(
     bool tls_enabled,
     TlsFiles tls_files,
     logging::Logger* logger,
-    std::filesystem::path data_root)
+    std::filesystem::path data_root,
+    privileged::UnixSocketClient* network_client)
     : document_root_(std::move(document_root)),
       bind_address_(std::move(bind_address)),
       port_(port),
@@ -944,7 +998,8 @@ HttpServer::HttpServer(
       config_store_(config_store),
       tls_enabled_(tls_enabled),
       logger_(logger),
-      data_root_(std::move(data_root)) {
+      data_root_(std::move(data_root)),
+      network_client_(network_client) {
     std::error_code error;
     document_root_ = std::filesystem::weakly_canonical(document_root_, error);
     if (error || !std::filesystem::is_directory(document_root_, error) || error) {
@@ -1581,6 +1636,97 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
         return false;
     }
 
+    if (request_path == "/api/v1/network" || request_path == "/api/v1/network/stage" ||
+        request_path == "/api/v1/network/confirm" || request_path == "/api/v1/network/rollback") {
+        const bool status_request = request_path == "/api/v1/network";
+        const bool stage_request = request_path == "/api/v1/network/stage";
+        const bool confirm_request = request_path == "/api/v1/network/confirm";
+        const bool rollback_request = request_path == "/api/v1/network/rollback";
+        const std::string token = session_cookie(parsed);
+        const auto iterator = sessions_.find(token);
+        if (token.empty() || iterator == sessions_.end() || iterator->second.expires_at <= now) {
+            if (iterator != sessions_.end()) {
+                sessions_.erase(iterator);
+            }
+            send_error(client_fd, tls, 401, "authentication required");
+            return false;
+        }
+        iterator->second.expires_at = now + kSessionLifetime;
+        if (network_client_ == nullptr) {
+            send_error(client_fd, tls, 503, "privileged network service unavailable");
+            return false;
+        }
+        if (status_request) {
+            if (parsed.method != "GET") {
+                send_method_not_allowed(client_fd, tls, "GET");
+                return false;
+            }
+            const ::uhf::privileged::Reply reply = network_client_->network_status();
+            if (!reply.ok || reply.body.size() > kMaxBodyBytes) {
+                send_error(client_fd, tls, 503, "network status unavailable");
+                return false;
+            }
+            send_json(client_fd, tls, 200, reply.body, "Cache-Control: no-store\r\n");
+            return false;
+        }
+        if (parsed.method != "POST") {
+            send_method_not_allowed(client_fd, tls, "POST");
+            return false;
+        }
+        const std::string_view csrf = header_value(parsed, "x-csrf-token");
+        if (!constant_time_equal(csrf, iterator->second.csrf_token)) {
+            send_error(client_fd, tls, 403, "CSRF token required");
+            return false;
+        }
+        if (stage_request || rollback_request) {
+            std::string current_password;
+            if (!json_string_field(
+                    parsed.body, "current_password", current_password, kMaxPasswordJsonBytes) ||
+                !auth_store_.verify_password("admin", current_password)) {
+                send_error(client_fd, tls, 401, "current password is incorrect");
+                return false;
+            }
+        }
+        ::uhf::privileged::Reply reply;
+        if (stage_request) {
+            std::string_view candidate_json;
+            ::uhf::network::NetworkConfig candidate;
+            if (!json_object_field(parsed.body, "candidate", candidate_json) ||
+                !::uhf::network::parse_flat_json(candidate_json, candidate)) {
+                send_error(client_fd, tls, 400, "invalid network candidate");
+                return false;
+            }
+            reply = network_client_->network_stage(candidate);
+        } else if (confirm_request) {
+            reply = network_client_->network_confirm();
+        } else if (rollback_request) {
+            reply = network_client_->network_rollback();
+        }
+        if (reply.ok) {
+            send_json(
+                client_fd,
+                tls,
+                200,
+                reply.body.empty() ? "{\"result\":\"ok\"}\n" : reply.body);
+            return false;
+        }
+        int status = 502;
+        if (reply.code == "busy" || reply.code == "expired" || reply.code == "boot_changed" ||
+            reply.code == "no_transaction") {
+            status = 409;
+        } else if (reply.code == "unavailable") {
+            status = 503;
+        } else if (reply.code == "invalid_candidate") {
+            status = 400;
+        }
+        send_error(
+            client_fd,
+            tls,
+            status,
+            reply.code.empty() ? "network operation failed" : reply.code);
+        return false;
+    }
+
     if (request_path == "/api/v1/logs") {
         if (parsed.method != "GET") {
             send_method_not_allowed(client_fd, tls, "GET");
@@ -1942,7 +2088,8 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
         request_path = "/login.html";
     } else if (request_path == "/index.html" || request_path == "/overview" ||
                request_path == "/overview.html" || request_path == "/settings.html" ||
-               request_path == "/logs.html" || request_path == "/storage.html") {
+               request_path == "/logs.html" || request_path == "/storage.html" ||
+               request_path == "/network.html") {
         if (parsed.method != "GET") {
             send_method_not_allowed(client_fd, tls, "GET");
             return false;
