@@ -102,6 +102,14 @@ def main() -> int:
             if b'"web_auth":"ready"' not in health_body:
                 fail(f"authentication is not ready: {health_body!r}")
 
+            slow = socket.create_connection(("127.0.0.1", port), timeout=2)
+            slow.sendall(f"GET /healthz HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n".encode())
+            try:
+                concurrent_status, _, _ = request(port, "GET", "/healthz")
+                assert_status(concurrent_status, 200, "health while another client is slow")
+            finally:
+                slow.close()
+
             if stat.S_IMODE(state_directory.stat().st_mode) != 0o700:
                 fail("authentication state directory is not mode 0700")
             bootstrap_path = state_directory / "initial-password"

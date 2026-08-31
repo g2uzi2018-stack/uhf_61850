@@ -28,6 +28,7 @@
 #include <string>
 #include <string_view>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <thread>
 #include <unistd.h>
@@ -41,6 +42,8 @@ constexpr std::size_t kMaxHeaderBytes = 16U * 1024U;
 constexpr std::size_t kMaxBodyBytes = 64U * 1024U;
 constexpr std::size_t kMaxRequestBytes = kMaxHeaderBytes + kMaxBodyBytes;
 constexpr std::uint16_t kListenBacklog = 16;
+constexpr std::size_t kMaxHttpConnections = 16U;
+constexpr int kClientTimeoutSeconds = 5;
 constexpr std::uintmax_t kMaxResponseBytes = 512U * 1024U;
 constexpr std::size_t kMaxSessions = 64;
 constexpr std::size_t kMaxLoginFailureRecords = 64;
@@ -1370,8 +1373,11 @@ int HttpServer::run() {
         }
         sockaddr_in client_address{};
         socklen_t client_length = sizeof(client_address);
-        const int client_fd = ::accept(
-            server_fd, reinterpret_cast<sockaddr*>(&client_address), &client_length);
+        const int client_fd = ::accept4(
+            server_fd,
+            reinterpret_cast<sockaddr*>(&client_address),
+            &client_length,
+            SOCK_CLOEXEC);
         if (client_fd < 0) {
             if (errno == EINTR) {
                 continue;
@@ -1381,19 +1387,48 @@ int HttpServer::run() {
             return 1;
         }
 
-        SSL* tls = nullptr;
+        std::size_t active = active_http_count_.load();
+        while (active < kMaxHttpConnections &&
+               !active_http_count_.compare_exchange_weak(active, active + 1U)) {
+        }
+        if (active >= kMaxHttpConnections) {
+            ::close(client_fd);
+            continue;
+        }
+        try {
+            std::thread(&HttpServer::serve_client, this, client_fd, client_address).detach();
+        } catch (...) {
+            active_http_count_.fetch_sub(1U);
+            ::close(client_fd);
+        }
+    }
+}
+
+void HttpServer::serve_client(int client_fd, sockaddr_in client_address) {
+    const timeval timeout{kClientTimeoutSeconds, 0};
+    if (::setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0 ||
+        ::setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) < 0) {
+        ::close(client_fd);
+        active_http_count_.fetch_sub(1U);
+        return;
+    }
+
+    SSL* tls = nullptr;
+    try {
         if (tls_enabled_) {
             tls = SSL_new(tls_context_->native());
             if (tls == nullptr || SSL_set_fd(tls, client_fd) != 1) {
                 SSL_free(tls);
                 ::close(client_fd);
-                continue;
+                active_http_count_.fetch_sub(1U);
+                return;
             }
             SSL_set_accept_state(tls);
             if (SSL_accept(tls) != 1) {
                 SSL_free(tls);
                 ::close(client_fd);
-                continue;
+                active_http_count_.fetch_sub(1U);
+                return;
             }
         }
 
@@ -1406,7 +1441,11 @@ int HttpServer::run() {
             SSL_free(tls);
             ::close(client_fd);
         }
+    } catch (...) {
+        SSL_free(tls);
+        ::close(client_fd);
     }
+    active_http_count_.fetch_sub(1U);
 }
 
 void HttpServer::cleanup_sessions(std::chrono::steady_clock::time_point now) {
@@ -1536,6 +1575,7 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
         return false;
     }
 
+    std::lock_guard<std::mutex> lock(state_mutex_);
     const auto now = std::chrono::steady_clock::now();
     cleanup_sessions(now);
 

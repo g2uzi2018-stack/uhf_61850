@@ -16,8 +16,10 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
-#include <optional>
 #include <memory>
+#include <mutex>
+#include <netinet/in.h>
+#include <optional>
 #include <string_view>
 #include <string>
 #include <unordered_map>
@@ -58,6 +60,7 @@ private:
     };
 
     bool handle_client(int client_fd, SSL* tls, std::string remote_address);
+    void serve_client(int client_fd, sockaddr_in client_address);
     void run_websocket(int client_fd, SSL* tls);
     void cleanup_sessions(std::chrono::steady_clock::time_point now);
     health::Report health_report(std::chrono::steady_clock::time_point now) const;
@@ -84,6 +87,8 @@ private:
     health::Aggregator health_aggregator_;
     std::unordered_map<std::string, Session> sessions_;
     std::unordered_map<std::string, LoginFailures> login_failures_;
+    std::mutex state_mutex_;
+    std::atomic<std::size_t> active_http_count_{0U};
     std::atomic<std::size_t> active_websocket_count_{0U};
 };
 
