@@ -5,6 +5,7 @@
 #include "web/crypto.hpp"
 
 #include <algorithm>
+#include <array>
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstddef>
@@ -383,6 +384,8 @@ std::string_view status_text(int status) {
         return "Too Many Requests";
     case 500:
         return "Internal Server Error";
+    case 503:
+        return "Service Unavailable";
     default:
         return "Error";
     }
@@ -585,6 +588,18 @@ std::string expired_session_cookie_header() {
     return "Set-Cookie: uhf_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict\r\n";
 }
 
+std::string_view payload_status_name(uhf::domain::PayloadStatus status) {
+    switch (status) {
+    case uhf::domain::PayloadStatus::good:
+        return "good";
+    case uhf::domain::PayloadStatus::degraded:
+        return "degraded";
+    case uhf::domain::PayloadStatus::not_refreshed:
+        return "not_refreshed";
+    }
+    return "degraded";
+}
+
 }  // namespace
 
 namespace uhf::web {
@@ -593,16 +608,95 @@ HttpServer::HttpServer(
     std::filesystem::path document_root,
     std::string bind_address,
     std::uint16_t port,
-    std::filesystem::path state_directory)
+    std::filesystem::path state_directory,
+    const acquisition::SnapshotStore* snapshot_store,
+    HealthInputProvider health_input_provider)
     : document_root_(std::move(document_root)),
       bind_address_(std::move(bind_address)),
       port_(port),
-      auth_store_(std::move(state_directory)) {
+      auth_store_(std::move(state_directory)),
+      snapshot_store_(snapshot_store),
+      health_input_provider_(std::move(health_input_provider)) {
     std::error_code error;
     document_root_ = std::filesystem::weakly_canonical(document_root_, error);
     if (error || !std::filesystem::is_directory(document_root_, error) || error) {
         throw std::invalid_argument("web root is not a directory");
     }
+}
+
+health::Report HttpServer::health_report(std::chrono::steady_clock::time_point now) const {
+    health::Input input;
+    if (health_input_provider_) {
+        try {
+            input = health_input_provider_();
+        } catch (...) {
+            input.storage_writable = false;
+        }
+    } else {
+        input.storage_writable = true;
+        if (snapshot_store_) {
+            const std::optional<acquisition::PublishedSnapshot> latest = snapshot_store_->latest();
+            if (latest) {
+                input.last_acquisition_success = latest->completed_at;
+                input.acquisition_last_cycle_ok = true;
+            }
+        }
+    }
+    return health_aggregator_.evaluate(input, now);
+}
+
+std::optional<std::string> HttpServer::snapshot_json() const {
+    if (!snapshot_store_) {
+        return std::nullopt;
+    }
+    const std::optional<acquisition::PublishedSnapshot> latest = snapshot_store_->latest();
+    if (!latest) {
+        return std::nullopt;
+    }
+
+    const domain::ParsedSnapshot& payload = latest->payload;
+    constexpr std::array<std::string_view, 5U> measurement_names = {
+        "average", "frequency", "peak", "phase", "noise"};
+    std::string body = "{\"schema_version\":1,\"generation\":" +
+        std::to_string(latest->generation) + ",\"payload_status\":\"" +
+        std::string(payload_status_name(payload.payload_status)) +
+        "\",\"poll_duration_ms\":" + std::to_string(latest->poll_duration.count()) +
+        ",\"measurements\":[";
+    for (std::size_t index = 0; index < payload.measurements.size(); ++index) {
+        if (index > 0U) {
+            body.append(",");
+        }
+        const domain::Measurement& measurement = payload.measurements[index];
+        body.append("{\"name\":\"");
+        body.append(measurement_names[index]);
+        body.append("\",\"raw\":");
+        body.append(std::to_string(measurement.raw));
+        body.append(",\"value\":");
+        body.append(std::to_string(measurement.value));
+        body.append(",\"valid\":");
+        body.append(measurement.valid ? "true" : "false");
+        body.append("}");
+    }
+    body.append("],\"spectrum\":[");
+    for (std::size_t index = 0; index < payload.spectrum.size(); ++index) {
+        if (index > 0U) {
+            body.append(",");
+        }
+        if (payload.spectrum_valid.test(index)) {
+            body.append(std::to_string(payload.spectrum[index]));
+        } else {
+            body.append("null");
+        }
+    }
+    body.append("],\"spectrum_valid\":[");
+    for (std::size_t index = 0; index < payload.spectrum_valid.size(); ++index) {
+        if (index > 0U) {
+            body.append(",");
+        }
+        body.append(payload.spectrum_valid.test(index) ? "true" : "false");
+    }
+    body.append("]}\n");
+    return body;
 }
 
 int HttpServer::run() {
@@ -715,10 +809,45 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
             send_method_not_allowed(client_fd, "GET");
             return;
         }
-        std::string body{"{\"status\":\"degraded\",\"version\":\""};
+        const health::Report report = health_report(now);
+        std::string body{"{\"status\":\""};
+        body.append(health::state_name(report.overall));
+        body.append("\",\"version\":\"");
         body.append(uhf::app::kVersion.data(), uhf::app::kVersion.size());
         body.append("\",\"web_auth\":\"ready\"}\n");
         send_json(client_fd, 200, body);
+        return;
+    }
+
+    if (request_path == "/api/v1/health" || request_path == "/api/v1/snapshot/latest") {
+        if (parsed.method != "GET") {
+            send_method_not_allowed(client_fd, "GET");
+            return;
+        }
+        const std::string token = session_cookie(parsed);
+        const auto iterator = sessions_.find(token);
+        if (token.empty() || iterator == sessions_.end() || iterator->second.expires_at <= now) {
+            if (iterator != sessions_.end()) {
+                sessions_.erase(iterator);
+            }
+            send_error(client_fd, 401, "authentication required");
+            return;
+        }
+        iterator->second.expires_at = now + kSessionLifetime;
+        if (request_path == "/api/v1/health") {
+            send_json(client_fd, 200, health_report(now).to_json());
+            return;
+        }
+        const std::optional<std::string> body = snapshot_json();
+        if (!body) {
+            send_error(client_fd, 503, "no snapshot available");
+            return;
+        }
+        if (body->size() > kMaxBodyBytes) {
+            send_error(client_fd, 500, "snapshot response too large");
+            return;
+        }
+        send_json(client_fd, 200, *body);
         return;
     }
 

@@ -118,6 +118,9 @@ def main() -> int:
             assert_status(root_status, 302, "unauthenticated root")
             if root_headers.get("Location") != "/login":
                 fail("unauthenticated root did not redirect to /login")
+            for protected_path in ("/api/v1/health", "/api/v1/snapshot/latest"):
+                protected_status, _, _ = request(port, "GET", protected_path)
+                assert_status(protected_status, 401, f"unauthenticated {protected_path}")
 
             login_status, login_body, _ = request(port, "GET", "/login")
             assert_status(login_status, 200, "login page")
@@ -245,6 +248,16 @@ def main() -> int:
             new_session = assert_json(new_login_body, "must_change", False, "new password login")
             new_cookie = new_login_headers["Set-Cookie"].split(";", 1)[0]
             new_csrf = str(new_session["csrf_token"])
+
+            health_status, health_body, _ = request(
+                port, "GET", "/api/v1/health", headers={"Cookie": new_cookie}
+            )
+            assert_status(health_status, 200, "authenticated health")
+            assert_json(health_body, "status", "down", "authenticated health")
+            snapshot_status, _, _ = request(
+                port, "GET", "/api/v1/snapshot/latest", headers={"Cookie": new_cookie}
+            )
+            assert_status(snapshot_status, 503, "snapshot without acquisition")
 
             logout_without_csrf_status, _, _ = request(
                 port, "DELETE", "/api/v1/session", headers={"Cookie": new_cookie}
