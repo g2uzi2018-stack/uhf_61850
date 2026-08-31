@@ -2,6 +2,7 @@
 #include "platform/network/linux_backend.hpp"
 
 #include <cerrno>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <fcntl.h>
@@ -21,10 +22,6 @@ constexpr std::size_t kMaxConfigBytes = 16U * 1024U;
 constexpr mode_t kDirectoryMode = S_IRWXU;
 constexpr mode_t kFileMode = S_IRUSR | S_IWUSR;
 constexpr std::string_view kCandidateRouteMetric = "42700";
-
-std::string address_with_prefix(const uhf::network::InterfaceConfig& config) {
-    return config.address + "/" + std::to_string(config.prefix);
-}
 
 bool run_ip(
     uhf::network::CommandRunner& runner,
@@ -55,6 +52,21 @@ std::optional<std::string> read_file(const std::filesystem::path& path) {
         return std::nullopt;
     }
     return contents;
+}
+
+std::string effective_address(
+    const uhf::network::InterfaceConfig& config,
+    const std::optional<uhf::network::DhcpLease>& lease) {
+    if (config.mode == uhf::network::Mode::dhcp && lease) {
+        return lease->address + "/" + std::to_string(lease->prefix);
+    }
+    return config.address + "/" + std::to_string(config.prefix);
+}
+
+std::string effective_gateway(
+    const uhf::network::InterfaceConfig& config,
+    const std::optional<uhf::network::DhcpLease>& lease) {
+    return config.mode == uhf::network::Mode::dhcp && lease ? lease->gateway : config.gateway;
 }
 
 bool write_atomic(const std::filesystem::path& path, std::string_view contents) noexcept {
@@ -133,11 +145,25 @@ bool ExecCommandRunner::run(const std::vector<std::string>& arguments) {
 }
 
 LinuxNetworkBackend::LinuxNetworkBackend(
-    std::filesystem::path persistent_file, CommandRunner& command_runner)
-    : persistent_file_(std::move(persistent_file)), command_runner_(command_runner) {}
+    std::filesystem::path persistent_file,
+    CommandRunner& command_runner,
+    DhcpClient* dhcp_client)
+    : persistent_file_(std::move(persistent_file)),
+      command_runner_(command_runner),
+      dhcp_client_(dhcp_client),
+      lease_store_(persistent_file_.string() + ".leases"),
+      staged_lease_store_(persistent_file_.string() + ".staged-leases") {}
 
 bool LinuxNetworkBackend::read_current(NetworkConfig& config) {
     if (load(config)) {
+        if (config.eth0.mode == Mode::dhcp || config.eth1.mode == Mode::dhcp) {
+            std::array<std::optional<DhcpLease>, 2U> leases;
+            if (!load_leases(lease_store_, leases) ||
+                (config.eth0.mode == Mode::dhcp && !leases[0U]) ||
+                (config.eth1.mode == Mode::dhcp && !leases[1U])) {
+                return false;
+            }
+        }
         return true;
     }
     config = NetworkConfig{};
@@ -149,10 +175,47 @@ bool LinuxNetworkBackend::apply_stage(
     if (staged_ || !validate(previous).valid || !validate(candidate).valid) {
         return false;
     }
-    if (candidate.eth0.mode == Mode::dhcp || candidate.eth1.mode == Mode::dhcp) {
+    std::array<std::optional<DhcpLease>, 2U> previous_leases;
+    if (!load_leases(lease_store_, previous_leases) ||
+        (previous.eth0.mode == Mode::dhcp && !previous_leases[0U]) ||
+        (previous.eth1.mode == Mode::dhcp && !previous_leases[1U])) {
         return false;
     }
-    if (!apply_address_additions(previous, candidate)) {
+
+    std::array<std::optional<DhcpLease>, 2U> candidate_leases;
+    const auto release_candidate_leases = [&]() noexcept {
+        bool success = true;
+        if (dhcp_client_ == nullptr) {
+            return true;
+        }
+        for (std::size_t index = 0U; index < candidate_leases.size(); ++index) {
+            if (candidate_leases[index]) {
+                const InterfaceConfig& config = index == 0U ? candidate.eth0 : candidate.eth1;
+                success = dhcp_client_->release(config, *candidate_leases[index]) && success;
+            }
+        }
+        return success;
+    };
+    for (std::size_t index = 0U; index < candidate_leases.size(); ++index) {
+        const InterfaceConfig& config = index == 0U ? candidate.eth0 : candidate.eth1;
+        if (config.mode != Mode::dhcp) {
+            continue;
+        }
+        if (dhcp_client_ == nullptr) {
+            return false;
+        }
+        DhcpLease lease;
+        if (!dhcp_client_->acquire(config, lease) || !validate_lease(lease)) {
+            (void)release_candidate_leases();
+            return false;
+        }
+        candidate_leases[index] = std::move(lease);
+    }
+    if (!staged_lease_store_.save(candidate_leases) ||
+        !apply_address_additions(previous, candidate, previous_leases, candidate_leases)) {
+        (void)remove_candidate_state(previous, candidate, previous_leases, candidate_leases);
+        (void)release_candidate_leases();
+        (void)staged_lease_store_.clear();
         return false;
     }
     staged_previous_ = previous;
@@ -164,16 +227,40 @@ bool LinuxNetworkBackend::apply_stage(
 bool LinuxNetworkBackend::confirm(
     const NetworkConfig& previous, const NetworkConfig& candidate) {
     if (!validate(previous).valid || !validate(candidate).valid ||
-        (staged_ && (staged_previous_.eth0.address != previous.eth0.address ||
-                     staged_candidate_.eth0.address != candidate.eth0.address))) {
+        (staged_ && (to_flat_json(staged_previous_) != to_flat_json(previous) ||
+                     to_flat_json(staged_candidate_) != to_flat_json(candidate)))) {
         return false;
     }
-    if (!remove_previous_state(previous, candidate)) {
-        (void)restore_previous_state(previous, candidate);
+    std::array<std::optional<DhcpLease>, 2U> previous_leases;
+    std::array<std::optional<DhcpLease>, 2U> candidate_leases;
+    if (!load_leases(lease_store_, previous_leases)) {
+        return false;
+    }
+    const LeaseLoadResult staged = staged_lease_store_.load();
+    if (staged.status == LeaseLoadStatus::valid) {
+        candidate_leases = staged.leases;
+    } else if (staged.status == LeaseLoadStatus::none) {
+        candidate_leases = {};
+    } else {
+        return false;
+    }
+    if ((candidate.eth0.mode == Mode::dhcp && !candidate_leases[0U]) ||
+        (candidate.eth1.mode == Mode::dhcp && !candidate_leases[1U]) ||
+        (previous.eth0.mode == Mode::dhcp && !previous_leases[0U]) ||
+        (previous.eth1.mode == Mode::dhcp && !previous_leases[1U])) {
+        return false;
+    }
+    if (!remove_previous_state(previous, candidate, previous_leases, candidate_leases)) {
+        (void)restore_previous_state(previous, candidate, previous_leases, candidate_leases);
         return false;
     }
     if (!save(candidate)) {
-        (void)restore_previous_state(previous, candidate);
+        (void)restore_previous_state(previous, candidate, previous_leases, candidate_leases);
+        return false;
+    }
+    if (!lease_store_.save(candidate_leases) || !staged_lease_store_.clear()) {
+        (void)save(previous);
+        (void)restore_previous_state(previous, candidate, previous_leases, candidate_leases);
         return false;
     }
     staged_ = false;
@@ -183,11 +270,40 @@ bool LinuxNetworkBackend::confirm(
 bool LinuxNetworkBackend::rollback(
     const NetworkConfig& previous, const NetworkConfig& candidate) {
     if (!validate(previous).valid || !validate(candidate).valid ||
-        (staged_ && (previous.eth0.address != staged_previous_.eth0.address ||
-                     candidate.eth0.address != staged_candidate_.eth0.address))) {
+        (staged_ && (to_flat_json(staged_previous_) != to_flat_json(previous) ||
+                     to_flat_json(staged_candidate_) != to_flat_json(candidate)))) {
         return false;
     }
-    if (!remove_candidate_state(previous, candidate)) {
+    std::array<std::optional<DhcpLease>, 2U> previous_leases;
+    std::array<std::optional<DhcpLease>, 2U> candidate_leases;
+    if (!load_leases(lease_store_, previous_leases)) {
+        return false;
+    }
+    const LeaseLoadResult staged = staged_lease_store_.load();
+    if (staged.status == LeaseLoadStatus::valid) {
+        candidate_leases = staged.leases;
+    } else if (staged.status == LeaseLoadStatus::none) {
+        candidate_leases = {};
+    } else {
+        return false;
+    }
+    if ((candidate.eth0.mode == Mode::dhcp && !candidate_leases[0U]) ||
+        (candidate.eth1.mode == Mode::dhcp && !candidate_leases[1U])) {
+        return false;
+    }
+    const bool state_removed = remove_candidate_state(
+        previous, candidate, previous_leases, candidate_leases);
+    bool leases_released = true;
+    if (dhcp_client_ != nullptr) {
+        for (std::size_t index = 0U; index < candidate_leases.size(); ++index) {
+            if (candidate_leases[index]) {
+                const InterfaceConfig& config = index == 0U ? candidate.eth0 : candidate.eth1;
+                leases_released = dhcp_client_->release(config, *candidate_leases[index]) &&
+                    leases_released;
+            }
+        }
+    }
+    if (!state_removed || !leases_released || !staged_lease_store_.clear()) {
         return false;
     }
     staged_ = false;
@@ -205,6 +321,21 @@ bool LinuxNetworkBackend::load(NetworkConfig& config) const {
     return parse_flat_json(*contents, config);
 }
 
+bool LinuxNetworkBackend::load_leases(
+    const LeaseStore& store,
+    std::array<std::optional<DhcpLease>, 2U>& leases) const {
+    const LeaseLoadResult result = store.load();
+    if (result.status == LeaseLoadStatus::none) {
+        leases = {};
+        return true;
+    }
+    if (result.status != LeaseLoadStatus::valid) {
+        return false;
+    }
+    leases = result.leases;
+    return true;
+}
+
 bool LinuxNetworkBackend::save(const NetworkConfig& config) const noexcept {
     const std::filesystem::path directory =
         persistent_file_.parent_path().empty() ? "." : persistent_file_.parent_path();
@@ -218,123 +349,111 @@ bool LinuxNetworkBackend::save(const NetworkConfig& config) const noexcept {
 }
 
 bool LinuxNetworkBackend::apply_address_additions(
-    const NetworkConfig& previous, const NetworkConfig& candidate) {
-    bool eth0_added = false;
-    bool eth1_added = false;
-    const auto add_address = [this](
-        const InterfaceConfig& old_config, const InterfaceConfig& new_config) {
-        return old_config.address == new_config.address && old_config.prefix == new_config.prefix
-            ? true
-            : run_ip(command_runner_, {
-                  "address", "add", address_with_prefix(new_config), "dev", new_config.name});
-    };
-    if (previous.eth0.address != candidate.eth0.address || previous.eth0.prefix != candidate.eth0.prefix) {
-        if (!add_address(previous.eth0, candidate.eth0)) {
+    const NetworkConfig& previous,
+    const NetworkConfig& candidate,
+    const std::array<std::optional<DhcpLease>, 2U>& previous_leases,
+    const std::array<std::optional<DhcpLease>, 2U>& candidate_leases) {
+    const InterfaceConfig* old_configs[] = {&previous.eth0, &previous.eth1};
+    const InterfaceConfig* new_configs[] = {&candidate.eth0, &candidate.eth1};
+    for (std::size_t index = 0U; index < 2U; ++index) {
+        const std::string old_address = effective_address(*old_configs[index], previous_leases[index]);
+        const std::string new_address = effective_address(*new_configs[index], candidate_leases[index]);
+        if (old_address == new_address) {
+            continue;
+        }
+        if (!run_ip(command_runner_, {
+                "address", "add", new_address, "dev", new_configs[index]->name})) {
             return false;
         }
-        eth0_added = true;
     }
-    if (previous.eth1.address != candidate.eth1.address || previous.eth1.prefix != candidate.eth1.prefix) {
-        if (!add_address(previous.eth1, candidate.eth1)) {
-            if (eth0_added) {
-                (void)run_ip(command_runner_, {
-                    "address", "del", address_with_prefix(candidate.eth0), "dev", candidate.eth0.name});
-            }
+    for (std::size_t index = 0U; index < 2U; ++index) {
+        const std::string old_gateway = effective_gateway(*old_configs[index], previous_leases[index]);
+        const std::string new_gateway = effective_gateway(*new_configs[index], candidate_leases[index]);
+        if (old_gateway == new_gateway || new_gateway.empty()) {
+            continue;
+        }
+        if (!run_ip(command_runner_, {
+                "route", "add", "default", "via", new_gateway, "dev", new_configs[index]->name,
+                "metric", std::string(kCandidateRouteMetric)})) {
+            (void)remove_candidate_state(previous, candidate, previous_leases, candidate_leases);
             return false;
         }
-        eth1_added = true;
-    }
-    const auto add_route = [this](
-        const InterfaceConfig& old_config, const InterfaceConfig& new_config) {
-        if (old_config.gateway == new_config.gateway) {
-            return true;
-        }
-        if (new_config.gateway.empty()) {
-            return true;
-        }
-        return run_ip(command_runner_, {
-            "route", "add", "default", "via", new_config.gateway, "dev", new_config.name,
-            "metric", std::string(kCandidateRouteMetric)});
-    };
-    if (!add_route(previous.eth0, candidate.eth0) || !add_route(previous.eth1, candidate.eth1)) {
-        if (eth1_added) {
-            (void)run_ip(command_runner_, {
-                "address", "del", address_with_prefix(candidate.eth1), "dev", candidate.eth1.name});
-        }
-        if (eth0_added) {
-            (void)run_ip(command_runner_, {
-                "address", "del", address_with_prefix(candidate.eth0), "dev", candidate.eth0.name});
-        }
-        return false;
     }
     return true;
 }
 
 bool LinuxNetworkBackend::remove_candidate_state(
-    const NetworkConfig& previous, const NetworkConfig& candidate) {
+    const NetworkConfig& previous,
+    const NetworkConfig& candidate,
+    const std::array<std::optional<DhcpLease>, 2U>& previous_leases,
+    const std::array<std::optional<DhcpLease>, 2U>& candidate_leases) {
     bool success = true;
-    const auto remove_address = [this, &success](
-        const InterfaceConfig& old_config, const InterfaceConfig& new_config) {
-        if (old_config.address != new_config.address || old_config.prefix != new_config.prefix) {
+    const InterfaceConfig* old_configs[] = {&previous.eth0, &previous.eth1};
+    const InterfaceConfig* new_configs[] = {&candidate.eth0, &candidate.eth1};
+    for (std::size_t index = 0U; index < 2U; ++index) {
+        const std::string old_address = effective_address(*old_configs[index], previous_leases[index]);
+        const std::string new_address = effective_address(*new_configs[index], candidate_leases[index]);
+        if (old_address != new_address) {
             success = run_ip(command_runner_, {
-                "address", "del", address_with_prefix(new_config), "dev", new_config.name}) && success;
+                "address", "del", new_address, "dev", new_configs[index]->name}) && success;
         }
-    };
-    remove_address(previous.eth0, candidate.eth0);
-    remove_address(previous.eth1, candidate.eth1);
-    if (previous.eth0.gateway != candidate.eth0.gateway && !candidate.eth0.gateway.empty()) {
-        success = run_ip(command_runner_, {
-            "route", "del", "default", "via", candidate.eth0.gateway, "dev", candidate.eth0.name,
-            "metric", std::string(kCandidateRouteMetric)}) && success;
-    }
-    if (previous.eth1.gateway != candidate.eth1.gateway && !candidate.eth1.gateway.empty()) {
-        success = run_ip(command_runner_, {
-            "route", "del", "default", "via", candidate.eth1.gateway, "dev", candidate.eth1.name,
-            "metric", std::string(kCandidateRouteMetric)}) && success;
+        const std::string old_gateway = effective_gateway(*old_configs[index], previous_leases[index]);
+        const std::string new_gateway = effective_gateway(*new_configs[index], candidate_leases[index]);
+        if (old_gateway != new_gateway && !new_gateway.empty()) {
+            success = run_ip(command_runner_, {
+                "route", "del", "default", "via", new_gateway, "dev", new_configs[index]->name,
+                "metric", std::string(kCandidateRouteMetric)}) && success;
+        }
     }
     return success;
 }
 
 bool LinuxNetworkBackend::remove_previous_state(
-    const NetworkConfig& previous, const NetworkConfig& candidate) {
+    const NetworkConfig& previous,
+    const NetworkConfig& candidate,
+    const std::array<std::optional<DhcpLease>, 2U>& previous_leases,
+    const std::array<std::optional<DhcpLease>, 2U>& candidate_leases) {
     bool success = true;
-    if (previous.eth0.gateway != candidate.eth0.gateway && !previous.eth0.gateway.empty()) {
-        success = run_ip(command_runner_, {
-            "route", "del", "default", "via", previous.eth0.gateway, "dev", previous.eth0.name}) && success;
-    }
-    if (previous.eth1.gateway != candidate.eth1.gateway && !previous.eth1.gateway.empty()) {
-        success = run_ip(command_runner_, {
-            "route", "del", "default", "via", previous.eth1.gateway, "dev", previous.eth1.name}) && success;
-    }
-    if (previous.eth0.address != candidate.eth0.address || previous.eth0.prefix != candidate.eth0.prefix) {
-        success = run_ip(command_runner_, {
-            "address", "del", address_with_prefix(previous.eth0), "dev", previous.eth0.name}) && success;
-    }
-    if (previous.eth1.address != candidate.eth1.address || previous.eth1.prefix != candidate.eth1.prefix) {
-        success = run_ip(command_runner_, {
-            "address", "del", address_with_prefix(previous.eth1), "dev", previous.eth1.name}) && success;
+    const InterfaceConfig* old_configs[] = {&previous.eth0, &previous.eth1};
+    const InterfaceConfig* new_configs[] = {&candidate.eth0, &candidate.eth1};
+    for (std::size_t index = 0U; index < 2U; ++index) {
+        const std::string old_address = effective_address(*old_configs[index], previous_leases[index]);
+        const std::string new_address = effective_address(*new_configs[index], candidate_leases[index]);
+        const std::string old_gateway = effective_gateway(*old_configs[index], previous_leases[index]);
+        const std::string new_gateway = effective_gateway(*new_configs[index], candidate_leases[index]);
+        if (old_gateway != new_gateway && !old_gateway.empty()) {
+            success = run_ip(command_runner_, {
+                "route", "del", "default", "via", old_gateway, "dev", old_configs[index]->name}) && success;
+        }
+        if (old_address != new_address) {
+            success = run_ip(command_runner_, {
+                "address", "del", old_address, "dev", old_configs[index]->name}) && success;
+        }
     }
     return success;
 }
 
 bool LinuxNetworkBackend::restore_previous_state(
-    const NetworkConfig& previous, const NetworkConfig& candidate) {
+    const NetworkConfig& previous,
+    const NetworkConfig& candidate,
+    const std::array<std::optional<DhcpLease>, 2U>& previous_leases,
+    const std::array<std::optional<DhcpLease>, 2U>& candidate_leases) {
     bool success = true;
-    if (previous.eth0.address != candidate.eth0.address || previous.eth0.prefix != candidate.eth0.prefix) {
-        success = run_ip(command_runner_, {
-            "address", "add", address_with_prefix(previous.eth0), "dev", previous.eth0.name}) && success;
-    }
-    if (previous.eth1.address != candidate.eth1.address || previous.eth1.prefix != candidate.eth1.prefix) {
-        success = run_ip(command_runner_, {
-            "address", "add", address_with_prefix(previous.eth1), "dev", previous.eth1.name}) && success;
-    }
-    if (previous.eth0.gateway != candidate.eth0.gateway && !previous.eth0.gateway.empty()) {
-        success = run_ip(command_runner_, {
-            "route", "add", "default", "via", previous.eth0.gateway, "dev", previous.eth0.name}) && success;
-    }
-    if (previous.eth1.gateway != candidate.eth1.gateway && !previous.eth1.gateway.empty()) {
-        success = run_ip(command_runner_, {
-            "route", "add", "default", "via", previous.eth1.gateway, "dev", previous.eth1.name}) && success;
+    const InterfaceConfig* old_configs[] = {&previous.eth0, &previous.eth1};
+    const InterfaceConfig* new_configs[] = {&candidate.eth0, &candidate.eth1};
+    for (std::size_t index = 0U; index < 2U; ++index) {
+        const std::string old_address = effective_address(*old_configs[index], previous_leases[index]);
+        const std::string new_address = effective_address(*new_configs[index], candidate_leases[index]);
+        const std::string old_gateway = effective_gateway(*old_configs[index], previous_leases[index]);
+        const std::string new_gateway = effective_gateway(*new_configs[index], candidate_leases[index]);
+        if (old_address != new_address) {
+            success = run_ip(command_runner_, {
+                "address", "add", old_address, "dev", old_configs[index]->name}) && success;
+        }
+        if (old_gateway != new_gateway && !old_gateway.empty()) {
+            success = run_ip(command_runner_, {
+                "route", "add", "default", "via", old_gateway, "dev", old_configs[index]->name}) && success;
+        }
     }
     return success;
 }

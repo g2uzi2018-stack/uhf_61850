@@ -251,6 +251,7 @@ endif()
 add_executable(uhf_linux_backend_smoke
     tests/linux_backend_smoke.cpp
     src/platform/network/linux_backend.cpp
+    src/platform/network/dhcp_client.cpp
     src/platform/network/network_transaction.cpp
     src/platform/network/network_config.cpp
 )
@@ -312,6 +313,7 @@ add_executable(uhf_network_service_smoke
     src/platform/privileged/maintenance.cpp
     src/platform/privileged/unix_socket.cpp
     src/platform/network/linux_backend.cpp
+    src/platform/network/dhcp_client.cpp
     src/platform/network/network_transaction.cpp
     src/platform/network/network_config.cpp
     src/platform/network/linux_status.cpp
@@ -337,6 +339,7 @@ add_executable(uhf-privilegedd
     src/platform/privileged/maintenance.cpp
     src/platform/privileged/unix_socket.cpp
     src/platform/network/linux_backend.cpp
+    src/platform/network/dhcp_client.cpp
     src/platform/network/network_transaction.cpp
     src/platform/network/network_config.cpp
     src/platform/network/linux_status.cpp
