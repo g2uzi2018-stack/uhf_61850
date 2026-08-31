@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="UHF 61850 局放监测管理机登录">
+    <title>登录 · UHF 61850</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="login-body">
+    <main class="login-layout">
+        <section class="login-card" aria-labelledby="login-title">
+            <div class="login-brand"><div class="brand-mark">U</div><div><strong>UHF 61850</strong><span>局放监测管理机</span></div></div>
+            <div class="login-kicker">SECURE CONSOLE</div>
+            <h1 id="login-title">登录控制台</h1>
+            <p class="login-subtitle">请输入管理员账号，进入设备 Web 管理界面。</p>
+            <div class="login-warning"><strong>首次登录</strong><span>初始密码位于服务端的 root/服务用户私有文件中，首次登录后必须修改。</span></div>
+            <form id="login-form">
+                <label>账号<input name="username" type="text" value="admin" autocomplete="username" required></label>
+                <label>密码<input name="password" type="password" autocomplete="current-password" required></label>
+                <p class="form-error" id="login-error" role="alert"></p>
+                <button class="primary-button login-button" type="submit">登录</button>
+            </form>
+            <p class="login-footnote">当前为 HTTP 开发模式，密码不会在页面中保存；正式部署需启用 HTTPS。</p>
+        </section>
+    </main>
+    <noscript>此页面需要启用 JavaScript 才能登录。</noscript>
+    <script src="login.js"></script>
+</body>
+</html>

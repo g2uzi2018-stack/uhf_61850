@@ -18,6 +18,7 @@ namespace {
 
 struct WebOptions {
     std::filesystem::path document_root{"web"};
+    std::filesystem::path state_directory{"/var/lib/uhf-gateway"};
     std::string bind_address{"127.0.0.1"};
     std::uint16_t port{8080};
 };
@@ -46,7 +47,7 @@ bool parse_listen(std::string_view value, std::string& address, std::uint16_t& p
 void print_usage() {
     std::cerr << "usage: " << uhf::app::kProductName
               << " [--version|--self-test|--web "
-                 "[--web-root PATH] [--listen IPV4:PORT]]\n";
+                 "[--web-root PATH] [--state-dir PATH] [--listen IPV4:PORT]]\n";
 }
 
 int run_self_test() {
@@ -79,6 +80,8 @@ int main(int argc, char* argv[]) {
             const std::string_view option = argv[index];
             if (option == "--web-root" && index + 1 < argc) {
                 options.document_root = argv[++index];
+            } else if (option == "--state-dir" && index + 1 < argc) {
+                options.state_directory = argv[++index];
             } else if (option == "--listen" && index + 1 < argc) {
                 if (!parse_listen(argv[++index], options.bind_address, options.port)) {
                     std::cerr << "invalid --listen value\n";
@@ -92,7 +95,10 @@ int main(int argc, char* argv[]) {
 
         try {
             uhf::web::HttpServer server(
-                std::move(options.document_root), std::move(options.bind_address), options.port);
+                std::move(options.document_root),
+                std::move(options.bind_address),
+                options.port,
+                std::move(options.state_directory));
             return server.run();
         } catch (const std::exception& error) {
             std::cerr << "unable to start web server: " << error.what() << '\n';

@@ -19,8 +19,13 @@ configure_file(
 
 add_executable(uhf-gatewayd
     src/main.cpp
+    src/web/auth_store.cpp
+    src/web/crypto.cpp
     src/web/http_server.cpp
 )
+
+find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto)
+target_link_libraries(uhf-gatewayd PRIVATE OpenSSL::Crypto)
 
 target_compile_features(uhf-gatewayd PRIVATE cxx_std_17)
 target_include_directories(uhf-gatewayd PRIVATE

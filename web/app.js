@@ -5,6 +5,7 @@
     var form = document.getElementById("password-form");
     var error = document.getElementById("form-error");
     var toast = document.getElementById("toast");
+    var csrfToken = "";
     var toastTimer;
 
     function showToast(message) {
@@ -14,6 +15,14 @@
         toastTimer = window.setTimeout(function () {
             toast.classList.remove("visible");
         }, 2800);
+    }
+
+    function responseMessage(response, fallback) {
+        return response.json().then(function (payload) {
+            return payload && payload.error ? payload.error : fallback;
+        }).catch(function () {
+            return fallback;
+        });
     }
 
     function openModal() {
@@ -27,6 +36,51 @@
     function closeModal() {
         modal.hidden = true;
         document.body.classList.remove("modal-open");
+    }
+
+    function redirectToLogin() {
+        window.location.replace("/login");
+    }
+
+    function updatePasswordChecklist(mustChange) {
+        var icon = document.getElementById("password-check-icon");
+        var status = document.getElementById("password-check-status");
+        if (!icon || !status) {
+            return;
+        }
+        if (mustChange) {
+            icon.textContent = "";
+            icon.classList.remove("completed");
+            status.textContent = "去设置";
+            status.disabled = false;
+        } else {
+            icon.textContent = "✓";
+            icon.classList.add("completed");
+            status.textContent = "已完成";
+            status.disabled = true;
+        }
+    }
+
+    function loadSession() {
+        return fetch("/api/v1/session", {credentials: "same-origin"}).then(function (response) {
+            if (!response.ok) {
+                redirectToLogin();
+                return null;
+            }
+            return response.json();
+        }).then(function (session) {
+            if (!session) {
+                return;
+            }
+            csrfToken = session.csrf_token;
+            updatePasswordChecklist(Boolean(session.must_change));
+            if (session.must_change) {
+                window.setTimeout(openModal, 120);
+                showToast("首次登录必须先修改管理员密码");
+            }
+        }).catch(function () {
+            showToast("无法读取登录会话");
+        });
     }
 
     document.querySelectorAll('[data-action="change-password"]').forEach(function (button) {
@@ -47,6 +101,7 @@
     });
     form.addEventListener("submit", function (event) {
         event.preventDefault();
+        var currentPassword = form.elements["current-password"].value;
         var newPassword = form.elements["new-password"].value;
         var confirmedPassword = form.elements["confirm-password"].value;
         if (newPassword.length < 12) {
@@ -57,21 +112,71 @@
             error.textContent = "两次输入的新密码不一致。";
             return;
         }
-        closeModal();
-        showToast("开发操作完成：密码表单已通过校验");
+        fetch("/api/v1/password", {
+            method: "PUT",
+            credentials: "same-origin",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": csrfToken
+            },
+            body: JSON.stringify({
+                current_password: currentPassword,
+                new_password: newPassword
+            })
+        }).then(function (response) {
+            if (response.ok) {
+                showToast("密码已保存，请重新登录");
+                window.setTimeout(redirectToLogin, 500);
+                return null;
+            }
+            if (response.status === 401) {
+                redirectToLogin();
+                return null;
+            }
+            return responseMessage(response, "密码保存失败").then(function (message) {
+                error.textContent = message;
+                return null;
+            });
+        }).catch(function () {
+            error.textContent = "无法连接服务，请稍后再试。";
+        });
     });
     document.querySelectorAll('[data-action="revoke-other-sessions"]').forEach(function (button) {
         button.addEventListener("click", function () {
-            showToast("开发操作完成：其他会话已撤销");
+            fetch("/api/v1/session/revoke-others", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {"X-CSRF-Token": csrfToken}
+            }).then(function (response) {
+                if (response.ok) {
+                    showToast("其他会话已撤销");
+                } else if (response.status === 401) {
+                    redirectToLogin();
+                } else {
+                    showToast("撤销其他会话失败");
+                }
+            }).catch(function () {
+                showToast("无法连接服务");
+            });
         });
     });
-    document.querySelectorAll('[data-action="remove-session"]').forEach(function (button) {
+    document.querySelectorAll('[data-action="logout"]').forEach(function (button) {
         button.addEventListener("click", function () {
-            var row = button.closest("tr");
-            if (row) {
-                row.remove();
-            }
-            showToast("开发操作完成：会话已从列表移除");
+            fetch("/api/v1/session", {
+                method: "DELETE",
+                credentials: "same-origin",
+                headers: {"X-CSRF-Token": csrfToken}
+            }).then(function (response) {
+                if (response.ok || response.status === 401) {
+                    redirectToLogin();
+                } else {
+                    showToast("退出登录失败");
+                }
+            }).catch(function () {
+                showToast("无法连接服务");
+            });
         });
     });
+
+    loadSession();
 }());

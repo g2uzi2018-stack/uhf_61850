@@ -8,6 +8,10 @@ set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR aarch64)
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
+# Keep target dependency discovery inside the cross sysroot. In particular,
+# never let find_package(OpenSSL) silently link the host x86_64 library.
+set(CMAKE_FIND_ROOT_PATH "/usr/aarch64-linux-gnu")
+
 if(NOT DEFINED CMAKE_C_COMPILER)
     set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc CACHE FILEPATH
         "AArch64 C compiler")
