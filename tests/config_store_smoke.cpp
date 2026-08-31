@@ -66,6 +66,19 @@ int main() {
         if (!expect(invalid == uhf::config::UpdateResult::invalid, "invalid value rejected")) {
             return 1;
         }
+        const uhf::config::UpdateResult incomplete = store.update(
+            1U,
+            "{\"acquisition_device\":\"/dev/ttyS1\",\"acquisition_slave_id\":2,"
+            "\"acquisition_period_ms\":6000,\"acquisition_response_timeout_ms\":150,"
+            "\"acquisition_max_retries\":2,\"rtu_device\":\"/dev/ttyS4\","
+            "\"rtu_unit_id\":3,\"modbus_tcp_bind\":\"127.0.0.1\","
+            "\"modbus_tcp_unit_id\":4,\"modbus_tcp_port\":15021,\"web_port\":8081,"
+            "\"tls_enabled\":true,\"iec_enabled\":false,\"iec_port\":15102,"
+            "\"iec_ied_name\":\"UHFPD2\",\"storage_period_seconds\":600,"
+            "\"storage_retention_days\":2}");
+        if (!expect(incomplete == uhf::config::UpdateResult::invalid, "incomplete config rejected")) {
+            return 1;
+        }
         const std::string insecure_object = [] {
             std::string value = valid_object();
             const std::string enabled = "\"tls_enabled\":true";

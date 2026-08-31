@@ -54,8 +54,7 @@ public:
             if (consume('}')) {
                 skip_space();
                 return position_ == input_.size() &&
-                    (keys_.size() == 16U || keys_.size() == 17U ||
-                     keys_.size() == 18U || keys_.size() == 19U);
+                    (keys_.size() == 18U || keys_.size() == 19U);
             }
             if (!consume(',')) {
                 return false;
