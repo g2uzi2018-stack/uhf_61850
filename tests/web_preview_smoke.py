@@ -23,7 +23,7 @@ def main() -> int:
     javascript = (web_dir / "app.js").read_text(encoding="utf-8")
     stylesheet = (web_dir / "styles.css").read_text(encoding="utf-8")
 
-    for marker in ("用户管理", "本地预览", "admin", 'id="password-modal"', 'id="password-form"'):
+    for marker in ("用户管理", "本地开发模式", "admin", 'id="password-modal"', 'id="password-form"'):
         if marker not in html:
             fail(f"index.html is missing {marker!r}")
     for marker in ('data-action="change-password"', "showToast", "password-form"):

@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="UHF 61850 局放监测管理机用户管理界面预览">
+    <meta name="description" content="UHF 61850 局放监测管理机用户管理界面">
     <title>用户管理 · UHF 61850</title>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -14,7 +14,7 @@
                 <div class="brand-mark">U</div>
                 <div class="brand-copy"><strong>UHF 61850</strong><span>局放监测管理机</span></div>
             </div>
-            <div class="preview-chip"><span class="chip-dot"></span>本地预览模式</div>
+            <div class="preview-chip"><span class="chip-dot"></span>本地开发模式</div>
             <nav class="primary-nav" aria-label="主导航">
                 <a class="nav-item" href="#"><span class="nav-icon">⌂</span><span>总览</span></a>
                 <a class="nav-item" href="#"><span class="nav-icon">◈</span><span>采集与转发</span></a>
@@ -30,7 +30,7 @@
 
         <main class="main-content">
             <header class="topbar">
-                <div class="topbar-status"><span class="status-dot"></span>演示数据 · 采集未启动</div>
+                <div class="topbar-status"><span class="status-dot"></span>开发模式 · 采集未启动</div>
                 <div class="topbar-account">
                     <button class="icon-button" type="button" aria-label="通知">♢<i></i></button>
                     <div class="account-summary">
@@ -45,13 +45,13 @@
                 <div class="breadcrumb"><span>安全与维护</span><b>/</b><strong>用户管理</strong></div>
                 <div class="page-heading">
                     <div><div class="heading-kicker">SECURITY &amp; ACCESS</div><h1>用户管理</h1><p>管理访问设备 Web 控制台的账号、密码策略与登录会话。</p></div>
-                    <span class="heading-badge"><i></i>安全状态良好</span>
+                    <span class="heading-badge dev-badge"><i></i>开发模式</span>
                 </div>
 
                 <div class="preview-notice">
                     <div class="notice-icon">!</div>
-                    <div><strong>这是本地界面预览</strong><p>当前页面使用模拟数据，按钮仅演示交互，不会修改真实账号、配置或设备。</p></div>
-                    <span>MOCK UI</span>
+                    <div><strong>这是开发环境界面</strong><p>当前页面由 uhf-gatewayd 的本地 HTTP 服务提供；账号和会话接口尚未接入，按钮仅做交互演示。</p></div>
+                    <span>DEV SERVER</span>
                 </div>
 
                 <div class="dashboard-grid">
@@ -70,9 +70,9 @@
                     <section class="panel security-panel">
                         <div class="panel-header"><div><h2>安全策略</h2><p>当前服务端安全配置摘要</p></div><span class="shield-mark">◇</span></div>
                         <div class="security-list">
-                            <div class="security-item"><i class="purple">⌁</i><div><strong>密码存储</strong><span>PBKDF2-HMAC-SHA256 · 随机盐</span></div><b>✓</b></div>
-                            <div class="security-item"><i class="blue">◷</i><div><strong>会话有效期</strong><span>30 分钟无操作自动过期</span></div><b>✓</b></div>
-                            <div class="security-item"><i class="teal">⌁</i><div><strong>传输加密</strong><span>HTTPS · 设备自签名证书</span></div><b>✓</b></div>
+                            <div class="security-item"><i class="purple">⌁</i><div><strong>密码存储</strong><span>后端待接入 · 当前不存储密码</span></div><b>—</b></div>
+                            <div class="security-item"><i class="blue">◷</i><div><strong>会话有效期</strong><span>后端待接入 · 当前不创建会话</span></div><b>—</b></div>
+                            <div class="security-item"><i class="teal">⌁</i><div><strong>传输方式</strong><span>HTTP 开发模式 · 正式 HTTPS 待接入</span></div><b>!</b></div>
                         </div>
                     </section>
                 </div>
@@ -84,7 +84,7 @@
                             <thead><tr><th>设备 / 浏览器</th><th>来源地址</th><th>最近活动</th><th>状态</th><th></th></tr></thead>
                             <tbody>
                                 <tr><td><div class="device-cell"><i>▣</i><div><strong>当前浏览器</strong><span>Windows · Chrome</span></div></div></td><td>192.168.30.42</td><td>刚刚</td><td><span class="current-session"><i></i>当前会话</span></td><td>—</td></tr>
-                                <tr class="muted-row"><td><div class="device-cell"><i>▣</i><div><strong>开发机预览</strong><span>Linux · Firefox</span></div></div></td><td>127.0.0.1</td><td>演示数据</td><td><span class="expired-session">已过期</span></td><td><button class="small-text-button" type="button" data-action="remove-session">移除</button></td></tr>
+                                <tr class="muted-row"><td><div class="device-cell"><i>▣</i><div><strong>开发机服务</strong><span>Linux · uhf-gatewayd</span></div></div></td><td>127.0.0.1</td><td>开发模式</td><td><span class="expired-session">未创建</span></td><td><button class="small-text-button" type="button" data-action="remove-session">移除</button></td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -93,12 +93,12 @@
                 <section class="panel checklist-panel">
                     <div class="panel-header"><div><h2>首次接入检查</h2><p>部署到设备后建议完成以下安全操作</p></div><span class="progress-label">1 / 3 已完成</span></div>
                     <div class="checklist">
-                        <div class="checklist-item completed"><i>✓</i><div><strong>使用 HTTPS 访问</strong><span>当前页面使用本地预览 HTTP 服务</span></div><em>预览</em></div>
+                        <div class="checklist-item completed"><i>✓</i><div><strong>使用 HTTPS 访问</strong><span>正式 HTTPS 服务将在 Web 安全增量中接入</span></div><em>开发中</em></div>
                         <div class="checklist-item"><i></i><div><strong>修改初始管理员密码</strong><span>首次登录后必须设置新的强密码</span></div><button class="small-text-button" type="button" data-action="change-password">去设置</button></div>
                         <div class="checklist-item"><i></i><div><strong>确认设备证书</strong><span>替换自签名证书并核对设备名称与 SAN</span></div><em class="pending">待完成</em></div>
                     </div>
                 </section>
-                <footer class="page-footer"><span>UHF 61850 局放监测管理机</span><span>本地开发预览 · v0.1.0</span></footer>
+                <footer class="page-footer"><span>UHF 61850 局放监测管理机</span><span>本地开发服务 · v0.1.0</span></footer>
             </div>
         </main>
     </div>
@@ -106,7 +106,7 @@
     <div class="modal-backdrop" id="password-modal" hidden>
         <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
             <button class="modal-close" type="button" data-action="close-modal" aria-label="关闭">×</button>
-            <div class="modal-icon">♙</div><div class="modal-heading"><h2 id="modal-title">修改管理员密码</h2><p>演示表单不会提交到服务器。</p></div>
+            <div class="modal-icon">♙</div><div class="modal-heading"><h2 id="modal-title">修改管理员密码</h2><p>当前为开发模式，表单不会提交到服务器。</p></div>
             <form id="password-form">
                 <label>当前密码<input name="current-password" type="password" autocomplete="current-password" required></label>
                 <label>新密码<input name="new-password" type="password" autocomplete="new-password" minlength="12" required><small>至少 12 位，建议混合大小写、数字和符号</small></label>

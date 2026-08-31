@@ -19,10 +19,14 @@ configure_file(
 
 add_executable(uhf-gatewayd
     src/main.cpp
+    src/web/http_server.cpp
 )
 
 target_compile_features(uhf-gatewayd PRIVATE cxx_std_17)
-target_include_directories(uhf-gatewayd PRIVATE "${UHF_GENERATED_INCLUDE_DIR}")
+target_include_directories(uhf-gatewayd PRIVATE
+    "${UHF_GENERATED_INCLUDE_DIR}"
+    "${PROJECT_SOURCE_DIR}/src"
+)
 
 if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(uhf-gatewayd PRIVATE
@@ -73,6 +77,13 @@ if(BUILD_TESTING)
             NAME uhf_web_preview_smoke
             COMMAND "${Python3_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/tests/web_preview_smoke.py"
+                "${PROJECT_SOURCE_DIR}/web"
+        )
+        add_test(
+            NAME uhf_web_server_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/web_server_smoke.py"
+                "$<TARGET_FILE:uhf-gatewayd>"
                 "${PROJECT_SOURCE_DIR}/web"
         )
     endif()

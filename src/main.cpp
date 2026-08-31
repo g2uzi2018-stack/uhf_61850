@@ -1,10 +1,53 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "app/build_info.hpp"
+#include "web/http_server.hpp"
 
+#include <charconv>
+#include <cstddef>
+#include <cstdint>
+#include <exception>
+#include <filesystem>
 #include <iostream>
+#include <limits>
+#include <string>
 #include <string_view>
+#include <system_error>
+#include <utility>
 
 namespace {
+
+struct WebOptions {
+    std::filesystem::path document_root{"web"};
+    std::string bind_address{"127.0.0.1"};
+    std::uint16_t port{8080};
+};
+
+bool parse_listen(std::string_view value, std::string& address, std::uint16_t& port) {
+    const std::size_t separator = value.rfind(':');
+    if (separator == std::string_view::npos || separator == 0 ||
+        separator + 1 >= value.size()) {
+        return false;
+    }
+
+    const std::string_view port_text = value.substr(separator + 1);
+    std::uint32_t parsed_port = 0;
+    const auto result = std::from_chars(
+        port_text.data(), port_text.data() + port_text.size(), parsed_port);
+    if (result.ec != std::errc{} || result.ptr != port_text.data() + port_text.size() ||
+        parsed_port > std::numeric_limits<std::uint16_t>::max()) {
+        return false;
+    }
+
+    address = std::string(value.substr(0, separator));
+    port = static_cast<std::uint16_t>(parsed_port);
+    return true;
+}
+
+void print_usage() {
+    std::cerr << "usage: " << uhf::app::kProductName
+              << " [--version|--self-test|--web "
+                 "[--web-root PATH] [--listen IPV4:PORT]]\n";
+}
 
 int run_self_test() {
     if (uhf::app::kProductName != "uhf-gatewayd" ||
@@ -30,7 +73,33 @@ int main(int argc, char* argv[]) {
         return run_self_test();
     }
 
-    std::cerr << "usage: " << uhf::app::kProductName
-              << " [--version|--self-test]\n";
+    if (argument == "--web") {
+        WebOptions options;
+        for (int index = 2; index < argc; ++index) {
+            const std::string_view option = argv[index];
+            if (option == "--web-root" && index + 1 < argc) {
+                options.document_root = argv[++index];
+            } else if (option == "--listen" && index + 1 < argc) {
+                if (!parse_listen(argv[++index], options.bind_address, options.port)) {
+                    std::cerr << "invalid --listen value\n";
+                    return 2;
+                }
+            } else {
+                print_usage();
+                return 2;
+            }
+        }
+
+        try {
+            uhf::web::HttpServer server(
+                std::move(options.document_root), std::move(options.bind_address), options.port);
+            return server.run();
+        } catch (const std::exception& error) {
+            std::cerr << "unable to start web server: " << error.what() << '\n';
+            return 1;
+        }
+    }
+
+    print_usage();
     return 2;
 }

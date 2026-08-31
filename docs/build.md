@@ -34,15 +34,17 @@ format-check 是可选的 CMake 目标；安装 clang-format 后执行：
 
 ## 界面预览
 
-用户管理页面目前以本地静态预览形式提供，不包含真实登录、会话或密码接口。启动预览服务器：
+用户管理页面现在由 uhf-gatewayd 的 C++ 开发 HTTP 服务提供；账号、会话和密码 API 仍在后续安全增量中实现。启动开发服务：
 
-    bash tools/preview-web.sh
+    bash tools/run-web-local.sh
 
 在 Windows 浏览器打开 Linux 开发机的局域网地址，例如：
 
     http://192.168.30.13:8080/
 
-本机网卡地址可能不同，可用 ip -br addr 查看。预览服务器绑定所有接口且没有认证，只应在可信的开发网络中使用；看完后在启动终端按 Ctrl-C 停止。若只想本机监听，可设置 UHF_PREVIEW_HOST=127.0.0.1。
+本机网卡地址可能不同，可用 ip -br addr 查看。开发服务绑定所有接口且没有认证，只应在可信的开发网络中使用；看完后在启动终端按 Ctrl-C 停止。若只想本机监听，可设置 UHF_WEB_LISTEN=127.0.0.1:8080。
+
+该开发服务不读取 485、不连接设备，也不会修改配置文件；当前健康接口会返回 degraded，并标记 web_auth=pending。
 
 ## 发布材料
 

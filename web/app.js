@@ -58,11 +58,11 @@
             return;
         }
         closeModal();
-        showToast("演示操作完成：密码表单已通过校验");
+        showToast("开发操作完成：密码表单已通过校验");
     });
     document.querySelectorAll('[data-action="revoke-other-sessions"]').forEach(function (button) {
         button.addEventListener("click", function () {
-            showToast("演示操作完成：其他会话已撤销");
+            showToast("开发操作完成：其他会话已撤销");
         });
     });
     document.querySelectorAll('[data-action="remove-session"]').forEach(function (button) {
@@ -71,7 +71,7 @@
             if (row) {
                 row.remove();
             }
-            showToast("演示操作完成：会话已从列表移除");
+            showToast("开发操作完成：会话已从列表移除");
         });
     });
 }());
