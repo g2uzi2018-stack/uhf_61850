@@ -721,6 +721,11 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}/tests/packaging_policy_smoke.py"
                 "${PROJECT_SOURCE_DIR}"
         )
+        add_test(
+            NAME uhf_privileged_service_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/privileged_service_smoke.py"
+        )
     endif()
     add_test(NAME uhf_acquisition_fault_smoke COMMAND uhf_acquisition_fault_smoke)
     add_test(NAME uhf_loopback_acquisition_smoke COMMAND uhf_loopback_acquisition_smoke)
