@@ -2,6 +2,7 @@
 #pragma once
 
 #include "acquisition/acquisition.hpp"
+#include "config/config_store.hpp"
 #include "logging/logger.hpp"
 #include "storage/event_detector.hpp"
 #include "storage/event_store.hpp"
@@ -20,6 +21,7 @@
 namespace uhf::storage {
 
 struct PersistenceOptions {
+    config::ConfigStore* config_store{nullptr};
     std::filesystem::path data_root{"/var/lib/uhf-gateway/data"};
     std::chrono::seconds periodic_period{std::chrono::seconds(300)};
     std::chrono::seconds cleanup_period{std::chrono::hours(1)};
@@ -54,6 +56,7 @@ public:
     bool alarm_active() const noexcept;
 
 private:
+    void apply_runtime_configuration(std::uint64_t& applied_version);
     void run();
     void update_cleanup_state(const CleanupResult& result);
     void save_completed_events(std::vector<EventBundle> bundles);

@@ -246,6 +246,10 @@ CleanupResult StorageCleaner::run(std::chrono::system_clock::time_point now) {
     return result;
 }
 
+void StorageCleaner::update_options(CleanerOptions options) {
+    options_ = options;
+}
+
 bool StorageCleaner::accepting_writes() const noexcept {
     return !writes_paused_;
 }

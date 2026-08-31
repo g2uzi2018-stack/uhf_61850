@@ -44,6 +44,7 @@ public:
         SpaceProbe space_probe = {});
 
     CleanupResult run(std::chrono::system_clock::time_point now);
+    void update_options(CleanerOptions options);
     bool accepting_writes() const noexcept;
 
 private:

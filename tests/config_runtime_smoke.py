@@ -138,6 +138,8 @@ def main() -> int:
             update["acquisition_slave_id"] = 3
             update["acquisition_response_timeout_ms"] = 120
             update["acquisition_max_retries"] = 1
+            update["storage_period_seconds"] = 60
+            update["storage_retention_days"] = 3
             update_status, update_body, _ = request(
                 configured_web_port,
                 "PUT",
@@ -164,6 +166,10 @@ def main() -> int:
                     entries = json.loads(logs_body).get("entries", [])
                     if any(
                         entry.get("event") == "configuration.reloaded" and
+                        entry.get("fields", {}).get("version") == "8"
+                        for entry in entries
+                    ) and any(
+                        entry.get("event") == "storage.configuration.reloaded" and
                         entry.get("fields", {}).get("version") == "8"
                         for entry in entries
                     ):

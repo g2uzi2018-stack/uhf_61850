@@ -97,6 +97,15 @@ int main() {
             return 1;
         }
 
+        uhf::storage::CleanerOptions updated_options = options;
+        updated_options.min_free_bytes = 350U;
+        cleaner.update_options(updated_options);
+        const uhf::storage::CleanupResult updated = cleaner.run(now);
+        if (!expect(updated.low_threshold_bytes == 350U, "updated low threshold") ||
+            !expect(updated.writes_paused, "updated cleaner options were not applied")) {
+            return 1;
+        }
+
         const std::filesystem::path second_root = root / "second";
         std::filesystem::create_directories(second_root / "frames");
         std::vector<std::uintmax_t> second_readings = {100U, 300U};

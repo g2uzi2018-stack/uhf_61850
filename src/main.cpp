@@ -267,6 +267,7 @@ int main(int argc, char* argv[]) {
                 runtime_options.iec61850_bind = options.iec61850_bind;
                 runtime_options.iec61850_port = options.iec61850_port;
                 runtime_options.iec61850_ied_name = configured.values.iec_ied_name;
+                runtime_options.persistence_options.config_store = config_store.get();
                 runtime_options.persistence_options.data_root = options.data_directory;
                 runtime_options.persistence_options.periodic_period = std::chrono::seconds(
                     configured.values.storage_period_seconds);

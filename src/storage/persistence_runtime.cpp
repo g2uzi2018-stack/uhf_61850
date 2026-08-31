@@ -79,6 +79,30 @@ void PersistenceWorker::increment_dropped_frame() {
     ++stats_.dropped_frame_count;
 }
 
+void PersistenceWorker::apply_runtime_configuration(std::uint64_t& applied_version) {
+    if (options_.config_store == nullptr) {
+        return;
+    }
+    const config::Snapshot configured = options_.config_store->snapshot();
+    if (configured.version == applied_version) {
+        return;
+    }
+
+    options_.periodic_period = std::chrono::seconds(
+        configured.values.storage_period_seconds);
+    options_.cleaner_options.retention = std::chrono::hours(
+        24U * configured.values.storage_retention_days);
+    options_.cleaner_options.min_free_bytes = configured.values.storage_min_free_bytes;
+    cleaner_.update_options(options_.cleaner_options);
+    applied_version = configured.version;
+    logger_.log(
+        logging::Level::info,
+        logging::Component::config,
+        "storage.configuration.reloaded",
+        "hot-reloadable storage settings applied",
+        {logging::Field{"version", std::to_string(applied_version)}});
+}
+
 void PersistenceWorker::save_completed_events(std::vector<EventBundle> bundles) {
     for (EventBundle& bundle : bundles) {
         if (!cleaner_.accepting_writes()) {
@@ -111,6 +135,7 @@ void PersistenceWorker::save_completed_events(std::vector<EventBundle> bundles) 
 }
 
 void PersistenceWorker::run() {
+    std::uint64_t applied_config_version = 0U;
     std::uint64_t last_generation = 0U;
     std::optional<std::chrono::steady_clock::time_point> last_periodic_save;
     std::uint64_t last_periodic_generation = 0U;
@@ -120,6 +145,7 @@ void PersistenceWorker::run() {
 
     while (!stop_requested_.load()) {
         const auto now = std::chrono::steady_clock::now();
+        apply_runtime_configuration(applied_config_version);
         const auto now_utc = std::chrono::system_clock::now();
         if (now >= next_cleanup) {
             update_cleanup_state(cleaner_.run(now_utc));
