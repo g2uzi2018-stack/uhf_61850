@@ -22,6 +22,16 @@ if(UHF_ENABLE_IEC61850)
     set(CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS 4 CACHE STRING "" FORCE)
     set(CONFIG_MMS_SINGLE_THREADED ON CACHE BOOL "" FORCE)
     set(CONFIG_MMS_MAX_NUMBER_OF_DATA_SET_MEMBERS 16 CACHE STRING "" FORCE)
+    set(CONFIG_DEFAULT_MAX_SERV_OUTSTANDING_CALLING 2)
+    set(CONFIG_DEFAULT_MAX_SERV_OUTSTANDING_CALLED 2)
+    set(CONFIG_MMS_MAX_DATA_STRUCTURE_NESTING_LEVEL 32)
+    set(CONFIG_INCLUDE_GOOSE_SUPPORT OFF)
+    set(CONFIG_IEC61850_SAMPLED_VALUES_SUPPORT OFF)
+    set(CONFIG_IEC61850_CONTROL_SERVICE OFF CACHE BOOL "" FORCE)
+    set(CONFIG_IEC61850_SETTING_GROUPS OFF CACHE BOOL "" FORCE)
+    set(CONFIG_IEC61850_LOG_SERVICE OFF CACHE BOOL "" FORCE)
+    # libIEC61850's private IED header uses this internal type unconditionally.
+    set(CONFIG_IEC61850_SERVICE_TRACKING ON CACHE BOOL "" FORCE)
     set(CONFIG_IEC61850_L2_GOOSE OFF CACHE BOOL "" FORCE)
     set(CONFIG_IEC61850_L2_SMV OFF CACHE BOOL "" FORCE)
     set(CONFIG_IEC61850_R_GOOSE OFF CACHE BOOL "" FORCE)
@@ -914,6 +924,14 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}/tests/iec61850_icd_smoke.py"
                 "${PROJECT_SOURCE_DIR}/config/UHFPD1.icd"
         )
+        if(UHF_ENABLE_IEC61850)
+            add_test(
+                NAME uhf_iec61850_stack_config_smoke
+                COMMAND "${Python3_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/iec61850_stack_config_smoke.py"
+                    "${CMAKE_BINARY_DIR}/third_party/libiec61850/config/stack_config.h"
+            )
+        endif()
         add_test(
             NAME uhf_acquisition_smoke
             COMMAND "${Python3_EXECUTABLE}"

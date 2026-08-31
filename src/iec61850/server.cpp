@@ -38,7 +38,30 @@ Server::Server(acquisition::SnapshotStore& snapshot_store, ServerOptions options
       options_(std::move(options)),
       model_(std::make_unique<Model>(options_.ied_name)),
       alarm_provider_(options_.alarm_provider) {
-    server_ = IedServer_create(model_->raw());
+    IedServerConfig server_config = IedServerConfig_create();
+    if (server_config == nullptr) {
+        throw std::runtime_error("unable to create IEC 61850 server configuration");
+    }
+    IedServerConfig_setMaxMmsConnections(server_config, 4);
+    IedServerConfig_setReportBufferSize(server_config, 65536);
+    IedServerConfig_setReportBufferSizeForURCBs(server_config, 65536);
+    IedServerConfig_enableFileService(server_config, false);
+    IedServerConfig_enableDynamicDataSetService(server_config, false);
+    IedServerConfig_enableLogService(server_config, false);
+    IedServerConfig_setMaxAssociationSpecificDataSets(server_config, 0);
+    IedServerConfig_setMaxDomainSpecificDataSets(server_config, 0);
+    IedServerConfig_setMaxDataSetEntries(server_config, 0);
+    IedServerConfig_enableEditSG(server_config, false);
+    IedServerConfig_enableResvTmsForBRCB(server_config, false);
+    IedServerConfig_enableOwnerForRCB(server_config, false);
+    IedServerConfig_useIntegratedGoosePublisher(server_config, false);
+    IedServerConfig_setReportSetting(server_config, IEC61850_REPORTSETTINGS_RPT_ID, false);
+    IedServerConfig_setReportSetting(server_config, IEC61850_REPORTSETTINGS_BUF_TIME, false);
+    IedServerConfig_setReportSetting(server_config, IEC61850_REPORTSETTINGS_DATSET, false);
+    IedServerConfig_setReportSetting(server_config, IEC61850_REPORTSETTINGS_OPT_FIELDS, false);
+    IedServerConfig_setReportSetting(server_config, IEC61850_REPORTSETTINGS_INTG_PD, false);
+    server_ = IedServer_createWithConfig(model_->raw(), nullptr, server_config);
+    IedServerConfig_destroy(server_config);
     if (server_ == nullptr) {
         throw std::runtime_error("unable to create IEC 61850 MMS server");
     }

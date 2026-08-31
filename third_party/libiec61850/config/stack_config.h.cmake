@@ -48,6 +48,9 @@
 /* number of concurrent MMS client connections the server accepts, -1 for no limit */
 #cmakedefine CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS @CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS@
 
+/* maximum nested MMS data structures accepted by the server */
+#cmakedefine CONFIG_MMS_MAX_DATA_STRUCTURE_NESTING_LEVEL @CONFIG_MMS_MAX_DATA_STRUCTURE_NESTING_LEVEL@
+
 /* activate TCP keep alive mechanism. 1 -> activate */
 #cmakedefine01 CONFIG_ACTIVATE_TCP_KEEPALIVE
 
@@ -72,7 +75,7 @@
 #cmakedefine01 CONFIG_INCLUDE_GOOSE_SUPPORT
 
 /* Set to 1 to include generic Sampled Values support in the build. Otherwise set to 0 */
-#define CONFIG_IEC61850_SAMPLED_VALUES_SUPPORT 1
+#cmakedefine01 CONFIG_IEC61850_SAMPLED_VALUES_SUPPORT
 
 /* compile with support for R-GOOSE (mbedtls requried) */
 #cmakedefine01 CONFIG_IEC61850_R_GOOSE
@@ -249,10 +252,10 @@
 #define CONFIG_MMS_SERVER_CONFIG_SERVICES_AT_RUNTIME 1
 
 /* Define the default number of the maximum outstanding calls allowed by the caller (client) */
-#define CONFIG_DEFAULT_MAX_SERV_OUTSTANDING_CALLING 5
+#cmakedefine CONFIG_DEFAULT_MAX_SERV_OUTSTANDING_CALLING @CONFIG_DEFAULT_MAX_SERV_OUTSTANDING_CALLING@
 
 /* Define the default number of the maximum outstanding calls allowed by the calling endpoint (server) */
-#define CONFIG_DEFAULT_MAX_SERV_OUTSTANDING_CALLED 5
+#cmakedefine CONFIG_DEFAULT_MAX_SERV_OUTSTANDING_CALLED @CONFIG_DEFAULT_MAX_SERV_OUTSTANDING_CALLED@
 
 /************************************************************************************
  * Check configuration for consistency - DO NOT MODIFY THIS PART!

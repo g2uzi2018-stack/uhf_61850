@@ -690,41 +690,6 @@ copySGCBValuesToTrackingObject(MmsMapping* self, SettingGroupControlBlock* sgcb)
     }
 }
 
-IEC61850_ServiceError
-private_IedServer_convertMmsDataAccessErrorToServiceError(MmsDataAccessError mmsError)
-{
-    IEC61850_ServiceError errVal = IEC61850_SERVICE_ERROR_NO_ERROR;
-
-    switch (mmsError)
-    {
-    case DATA_ACCESS_ERROR_SUCCESS:
-        break;
-    case DATA_ACCESS_ERROR_TEMPORARILY_UNAVAILABLE:
-        errVal = IEC61850_SERVICE_ERROR_INSTANCE_LOCKED_BY_OTHER_CLIENT;
-        break;
-    case DATA_ACCESS_ERROR_OBJECT_ACCESS_DENIED:
-        errVal = IEC61850_SERVICE_ERROR_ACCESS_VIOLATION;
-        break;
-    case DATA_ACCESS_ERROR_OBJECT_VALUE_INVALID:
-        errVal = IEC61850_SERVICE_ERROR_PARAMETER_VALUE_INAPPROPRIATE;
-        break;
-    case DATA_ACCESS_ERROR_TYPE_INCONSISTENT:
-    case DATA_ACCESS_ERROR_OBJECT_ATTRIBUTE_INCONSISTENT:
-        errVal = IEC61850_SERVICE_ERROR_PARAMETER_VALUE_INCONSISTENT;
-        break;
-    case DATA_ACCESS_ERROR_OBJECT_NONE_EXISTENT:
-        errVal = IEC61850_SERVICE_ERROR_INSTANCE_NOT_AVAILABLE;
-        break;
-    default:
-        if (DEBUG_IED_SERVER)
-            printf("IED_SERVER: Data access error %i not mapped!\n", mmsError);
-        errVal = IEC61850_SERVICE_ERROR_FAILED_DUE_TO_SERVER_CONSTRAINT;
-        break;
-    }
-
-    return errVal;
-}
-
 static void
 updateGenericTrackingObjectValues(MmsMapping* self, SettingGroupControlBlock* sgcb, IEC61850_ServiceType serviceType,
                                   MmsDataAccessError errVal)
@@ -777,21 +742,6 @@ MmsMapping_checkForSettingGroupReservationTimeouts(MmsMapping* self, uint64_t cu
                 unselectEditSettingGroup(settingGroup);
 
         settingGroupElement = LinkedList_getNext(settingGroupElement);
-    }
-}
-
-void
-MmsMapping_initializeControlObjects(MmsMapping* self)
-{
-    LinkedList element = LinkedList_getNext(self->controlObjects);
-
-    while (element)
-    {
-        ControlObject* controlObject = (ControlObject*)LinkedList_getData(element);
-
-        ControlObject_initialize(controlObject);
-
-        element = LinkedList_getNext(element);
     }
 }
 
@@ -906,6 +856,64 @@ MmsMapping_changeActiveSettingGroup(MmsMapping* self, SettingGroupControlBlock* 
 }
 
 #endif /* (CONFIG_IEC61850_SETTING_GROUPS == 1) */
+
+#if (CONFIG_IEC61850_SERVICE_TRACKING == 1)
+
+IEC61850_ServiceError
+private_IedServer_convertMmsDataAccessErrorToServiceError(MmsDataAccessError mmsError)
+{
+    IEC61850_ServiceError errVal = IEC61850_SERVICE_ERROR_NO_ERROR;
+
+    switch (mmsError)
+    {
+    case DATA_ACCESS_ERROR_SUCCESS:
+        break;
+    case DATA_ACCESS_ERROR_TEMPORARILY_UNAVAILABLE:
+        errVal = IEC61850_SERVICE_ERROR_INSTANCE_LOCKED_BY_OTHER_CLIENT;
+        break;
+    case DATA_ACCESS_ERROR_OBJECT_ACCESS_DENIED:
+        errVal = IEC61850_SERVICE_ERROR_ACCESS_VIOLATION;
+        break;
+    case DATA_ACCESS_ERROR_OBJECT_VALUE_INVALID:
+        errVal = IEC61850_SERVICE_ERROR_PARAMETER_VALUE_INAPPROPRIATE;
+        break;
+    case DATA_ACCESS_ERROR_TYPE_INCONSISTENT:
+    case DATA_ACCESS_ERROR_OBJECT_ATTRIBUTE_INCONSISTENT:
+        errVal = IEC61850_SERVICE_ERROR_PARAMETER_VALUE_INCONSISTENT;
+        break;
+    case DATA_ACCESS_ERROR_OBJECT_NONE_EXISTENT:
+        errVal = IEC61850_SERVICE_ERROR_INSTANCE_NOT_AVAILABLE;
+        break;
+    default:
+        if (DEBUG_IED_SERVER)
+            printf("IED_SERVER: Data access error %i not mapped!\n", mmsError);
+        errVal = IEC61850_SERVICE_ERROR_FAILED_DUE_TO_SERVER_CONSTRAINT;
+        break;
+    }
+
+    return errVal;
+}
+
+#endif /* (CONFIG_IEC61850_SERVICE_TRACKING == 1) */
+
+#if (CONFIG_IEC61850_CONTROL_SERVICE == 1)
+
+void
+MmsMapping_initializeControlObjects(MmsMapping* self)
+{
+    LinkedList element = LinkedList_getNext(self->controlObjects);
+
+    while (element)
+    {
+        ControlObject* controlObject = (ControlObject*)LinkedList_getData(element);
+
+        ControlObject_initialize(controlObject);
+
+        element = LinkedList_getNext(element);
+    }
+}
+
+#endif /* (CONFIG_IEC61850_CONTROL_SERVICE == 1) */
 
 static int
 determineLogicalNodeComponentCount(LogicalNode* logicalNode)

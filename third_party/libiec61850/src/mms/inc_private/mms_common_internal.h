@@ -30,7 +30,11 @@
 #include "byte_buffer.h"
 #include "mms_server.h"
 
-#define DEFAULT_DATA_STRUCTURE_NESTING_LEVEL 10
+#ifndef CONFIG_MMS_MAX_DATA_STRUCTURE_NESTING_LEVEL
+#define CONFIG_MMS_MAX_DATA_STRUCTURE_NESTING_LEVEL 10
+#endif
+
+#define DEFAULT_DATA_STRUCTURE_NESTING_LEVEL CONFIG_MMS_MAX_DATA_STRUCTURE_NESTING_LEVEL
 
 typedef struct sMmsOutstandingCall* MmsOutstandingCall;
 
@@ -126,4 +130,3 @@ LIB61850_INTERNAL void
 mmsMsg_deleteAccessResultList(AccessResult_t** accessResult, int variableCount);
 
 #endif /* MMS_COMMON_INTERNAL */
-

@@ -729,7 +729,9 @@ IedServer_createWithConfig(IedModel* dataModel, TLSConfiguration tlsConfiguratio
             /* default write access policy allows access to SP, SE and SV FCDAs but denies access to DC and CF FCDAs */
             self->writeAccessPolicies = ALLOW_WRITE_ACCESS_SP | ALLOW_WRITE_ACCESS_SV | ALLOW_WRITE_ACCESS_SE;
 
+#if (CONFIG_IEC61850_CONTROL_SERVICE == 1)
             MmsMapping_initializeControlObjects(self->mmsMapping);
+#endif
 
 #if (CONFIG_IEC61850_REPORT_SERVICE == 1)
             Reporting_activateBufferedReports(self->mmsMapping);
