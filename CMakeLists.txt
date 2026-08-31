@@ -73,6 +73,7 @@ if(UHF_ENABLE_IEC61850)
         "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/iec61850/inc_private"
         "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/inc_private"
         "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/iso_mms/asn1c"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/logging"
         "${PROJECT_BINARY_DIR}/third_party/libiec61850/config"
     )
 endif()
@@ -386,6 +387,38 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+if(UHF_ENABLE_IEC61850)
+    add_executable(uhf_iec61850_model_smoke
+        tests/iec61850_model_smoke.cpp
+        src/iec61850/model.cpp
+    )
+    target_compile_features(uhf_iec61850_model_smoke PRIVATE cxx_std_17)
+    target_include_directories(uhf_iec61850_model_smoke PRIVATE
+        "${PROJECT_SOURCE_DIR}/src"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/hal/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/common/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/iec61850/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/iec61850/inc_private"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/inc_private"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/iso_mms/asn1c"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/logging"
+        "${PROJECT_BINARY_DIR}/third_party/libiec61850/config"
+    )
+    target_link_libraries(uhf_iec61850_model_smoke PRIVATE iec61850)
+    if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(uhf_iec61850_model_smoke PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Wconversion
+            -Wsign-conversion
+            -Wshadow
+            -Werror
+        )
+    endif()
+endif()
+
 if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(uhf_modbus_rtu_smoke PRIVATE
         -Wall
@@ -512,6 +545,9 @@ if(BUILD_TESTING)
     add_test(NAME uhf_storage_cleaner_smoke COMMAND uhf_storage_cleaner_smoke)
     add_test(NAME uhf_persistence_runtime_smoke COMMAND uhf_persistence_runtime_smoke)
     add_test(NAME uhf_config_store_smoke COMMAND uhf_config_store_smoke)
+    if(UHF_ENABLE_IEC61850)
+        add_test(NAME uhf_iec61850_model_smoke COMMAND uhf_iec61850_model_smoke)
+    endif()
 endif()
 
 if(UHF_BUILD_FORMAT_TARGET)
