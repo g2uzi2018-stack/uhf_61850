@@ -753,6 +753,12 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}/tests/fixtures/pd1000_request_plan.txt"
         )
         add_test(
+            NAME uhf_iec61850_icd_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/iec61850_icd_smoke.py"
+                "${PROJECT_SOURCE_DIR}/config/UHFPD1.icd"
+        )
+        add_test(
             NAME uhf_acquisition_smoke
             COMMAND "${Python3_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/tests/acquisition_smoke.py"

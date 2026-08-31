@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" version="2007" revision="B">
+  <Header id="UHFPD1-generic-model" version="0.1.0" toolID="uhf-61850-gateway"/>
+  <Communication>
+    <SubNetwork name="MMS" type="8-MMS">
+      <ConnectedAP iedName="UHFPD1" apName="AP1">
+        <Address><P type="IP">0.0.0.0</P></Address>
+      </ConnectedAP>
+    </SubNetwork>
+  </Communication>
+  <IED name="UHFPD1" manufacturer="UHF 61850 Gateway" type="UHF-PD-MON">
+    <AccessPoint name="AP1">
+      <Server>
+        <Authentication none="true"/>
+        <LDevice inst="PDMON">
+          <LN0 lnClass="LLN0" lnType="LT_LLN0" inst="">
+            <DataSet name="DSMeasurements">
+              <FCDA ldInst="PDMON" lnClass="GGIO" lnInst="1" doName="AnIn1" daName="mag.f" fc="MX"/>
+              <FCDA ldInst="PDMON" lnClass="GGIO" lnInst="1" doName="IntIn1" daName="stVal" fc="ST"/>
+              <FCDA ldInst="PDMON" lnClass="GGIO" lnInst="1" doName="AnIn2" daName="mag.f" fc="MX"/>
+              <FCDA ldInst="PDMON" lnClass="GGIO" lnInst="1" doName="AnIn3" daName="mag.f" fc="MX"/>
+              <FCDA ldInst="PDMON" lnClass="GGIO" lnInst="1" doName="AnIn4" daName="mag.f" fc="MX"/>
+              <FCDA ldInst="PDMON" lnClass="SPDC" lnInst="1" doName="PaDschAlm" daName="stVal" fc="ST"/>
+            </DataSet>
+            <ReportControl name="RPMeasurements" rptID="UHFPD1/RPMeasurements" datSet="DSMeasurements" confRev="1" buffered="false" intgPd="60000">
+              <TrgOps dchg="true" qchg="true" intg="true"/>
+              <OptFields seqNum="true" timeStamp="true" reasonCode="true" dataSet="true" dataRef="true"/>
+              <RptEnabled max="4"/>
+            </ReportControl>
+            <DO name="Health" type="DOT_ENS"/>
+          </LN0>
+          <LN lnClass="LPHD" lnType="LT_LPHD1" inst="1"/>
+          <LN lnClass="SPDC" lnType="LT_SPDC1" inst="1"/>
+          <LN lnClass="GGIO" lnType="LT_GGIO1" inst="1"/>
+        </LDevice>
+      </Server>
+    </AccessPoint>
+  </IED>
+  <DataTypeTemplates>
+    <LNodeType id="LT_LLN0" lnClass="LLN0">
+      <DO name="Health" type="DOT_ENS"/>
+    </LNodeType>
+    <LNodeType id="LT_LPHD1" lnClass="LPHD">
+      <DO name="PhyHealth" type="DOT_SPS"/>
+    </LNodeType>
+    <LNodeType id="LT_SPDC1" lnClass="SPDC">
+      <DO name="UhfPaDsch" type="DOT_MV"/>
+      <DO name="PaDschAlm" type="DOT_SPS"/>
+    </LNodeType>
+    <LNodeType id="LT_GGIO1" lnClass="GGIO">
+      <DO name="AnIn1" type="DOT_MV"/>
+      <DO name="IntIn1" type="DOT_INS"/>
+      <DO name="AnIn2" type="DOT_MV"/>
+      <DO name="AnIn3" type="DOT_MV"/>
+      <DO name="AnIn4" type="DOT_MV"/>
+    </LNodeType>
+    <DOType id="DOT_MV" cdc="MV">
+      <DA name="mag" bType="Struct" type="DAT_AnalogueValue" fc="MX"/>
+      <DA name="q" bType="Quality" fc="MX"/>
+      <DA name="t" bType="Timestamp" fc="MX"/>
+    </DOType>
+    <DOType id="DOT_SPS" cdc="SPS">
+      <DA name="stVal" bType="BOOLEAN" fc="ST" dchg="true"/>
+      <DA name="q" bType="Quality" fc="ST" qchg="true"/>
+      <DA name="t" bType="Timestamp" fc="ST"/>
+    </DOType>
+    <DOType id="DOT_INS" cdc="INS">
+      <DA name="stVal" bType="INT32" fc="ST" dchg="true"/>
+      <DA name="q" bType="Quality" fc="ST" qchg="true"/>
+      <DA name="t" bType="Timestamp" fc="ST"/>
+    </DOType>
+    <DOType id="DOT_ENS" cdc="ENS">
+      <DA name="stVal" bType="Enum" type="DAT_Health" fc="ST" dchg="true"/>
+      <DA name="q" bType="Quality" fc="ST" qchg="true"/>
+      <DA name="t" bType="Timestamp" fc="ST"/>
+    </DOType>
+    <DAType id="DAT_AnalogueValue">
+      <BDA name="f" bType="FLOAT32"/>
+    </DAType>
+    <EnumType id="DAT_Health">
+      <EnumVal ord="1">Ok</EnumVal>
+      <EnumVal ord="2">Warning</EnumVal>
+      <EnumVal ord="3">Failure</EnumVal>
+    </EnumType>
+  </DataTypeTemplates>
+</SCL>
