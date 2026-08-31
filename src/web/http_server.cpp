@@ -2,6 +2,7 @@
 #include "web/http_server.hpp"
 
 #include "app/build_info.hpp"
+#include "platform/systemd/notify.hpp"
 #include "web/crypto.hpp"
 
 #include <algorithm>
@@ -1345,8 +1346,28 @@ int HttpServer::run() {
         std::cout << "bootstrap password file: " << auth_store_.bootstrap_password_path() << "\n";
     }
     std::cout << std::flush;
+    (void)uhf::systemd::notify("READY=1\nSTATUS=web listener ready");
+    auto next_watchdog = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 
     while (true) {
+        pollfd listener{server_fd, POLLIN, 0};
+        const int poll_result = ::poll(&listener, 1, 1000);
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= next_watchdog) {
+            (void)uhf::systemd::notify("WATCHDOG=1");
+            next_watchdog = now + std::chrono::seconds(5);
+        }
+        if (poll_result < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            std::perror("poll");
+            ::close(server_fd);
+            return 1;
+        }
+        if (poll_result == 0 || (listener.revents & POLLIN) == 0) {
+            continue;
+        }
         sockaddr_in client_address{};
         socklen_t client_length = sizeof(client_address);
         const int client_fd = ::accept(
