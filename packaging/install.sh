@@ -128,6 +128,8 @@ mv -T "$temporary_release" "$release_dir"
 
 mkdir -p "${root_prefix}/etc/uhf-gateway" \
     "${root_prefix}/etc/systemd/system" \
+    "${root_prefix}/etc/rsyslog.d" \
+    "${root_prefix}/etc/logrotate.d" \
     "${root_prefix}/usr/lib/uhf-gateway" \
     "$state_dir" \
     "${root_prefix}/var/lib/uhf-privileged" \
@@ -144,6 +146,10 @@ install -m 0755 "$release_dir/libexec/uhf-gateway/legacy-cutover.sh" \
     "${root_prefix}/usr/lib/uhf-gateway/legacy-cutover.sh"
 install -m 0755 "$release_dir/libexec/uhf-gateway/legacy-recovery.sh" \
     "${root_prefix}/usr/lib/uhf-gateway/legacy-recovery.sh"
+install -m 0644 "$release_dir/share/uhf-gateway/rsyslog/uhf-gateway.conf" \
+    "${root_prefix}/etc/rsyslog.d/uhf-gateway.conf"
+install -m 0644 "$release_dir/share/uhf-gateway/logrotate/uhf-gateway" \
+    "${root_prefix}/etc/logrotate.d/uhf-gateway"
 for unit in "$release_dir"/share/uhf-gateway/systemd/*; do
     install -m 0644 "$unit" "${root_prefix}/etc/systemd/system/$(basename "$unit")"
 done

@@ -50,6 +50,8 @@ def main() -> int:
             release / "web/index.html",
             release / "config/UHFPD1.icd",
             release / "share/uhf-gateway/systemd/uhf-gateway.service",
+            release / "share/uhf-gateway/rsyslog/uhf-gateway.conf",
+            release / "share/uhf-gateway/logrotate/uhf-gateway",
         )
         for path in required:
             if not path.is_file():

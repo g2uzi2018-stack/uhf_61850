@@ -51,6 +51,8 @@ def main() -> int:
             prefix / "share/uhf-gateway/systemd/uhf-legacy-recovery.service",
             prefix / "libexec/uhf-gateway/legacy-cutover.sh",
             prefix / "libexec/uhf-gateway/legacy-recovery.sh",
+            prefix / "share/uhf-gateway/rsyslog/uhf-gateway.conf",
+            prefix / "share/uhf-gateway/logrotate/uhf-gateway",
             prefix / "share/doc/uhf_61850/LICENSE",
         )
         for path in required:

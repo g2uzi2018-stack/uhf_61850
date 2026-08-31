@@ -61,6 +61,8 @@ required_files=(
     "share/uhf-gateway/systemd/uhf-legacy-recovery.service"
     "libexec/uhf-gateway/legacy-cutover.sh"
     "libexec/uhf-gateway/legacy-recovery.sh"
+    "share/uhf-gateway/rsyslog/uhf-gateway.conf"
+    "share/uhf-gateway/logrotate/uhf-gateway"
 )
 for relative in "${required_files[@]}"; do
     if [[ ! -f "${release_dir}/${relative}" ]]; then

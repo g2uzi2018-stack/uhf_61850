@@ -968,3 +968,5 @@ install(PROGRAMS
     DESTINATION libexec/uhf-gateway
 )
 install(DIRECTORY packaging/systemd/ DESTINATION share/uhf-gateway/systemd)
+install(FILES packaging/rsyslog/uhf-gateway.conf DESTINATION share/uhf-gateway/rsyslog)
+install(FILES packaging/logrotate/uhf-gateway DESTINATION share/uhf-gateway/logrotate)
