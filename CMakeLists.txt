@@ -269,12 +269,36 @@ endif()
 add_executable(uhf_unix_socket_smoke
     tests/unix_socket_smoke.cpp
     src/platform/privileged/unix_socket.cpp
+    src/platform/network/network_config.cpp
 )
 target_compile_features(uhf_unix_socket_smoke PRIVATE cxx_std_17)
 target_include_directories(uhf_unix_socket_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_link_libraries(uhf_unix_socket_smoke PRIVATE Threads::Threads)
 if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(uhf_unix_socket_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
+add_executable(uhf-privilegedd
+    src/privileged_main.cpp
+    src/platform/privileged/network_service.cpp
+    src/platform/privileged/unix_socket.cpp
+    src/platform/network/linux_backend.cpp
+    src/platform/network/network_transaction.cpp
+    src/platform/network/network_config.cpp
+)
+target_compile_features(uhf-privilegedd PRIVATE cxx_std_17)
+target_include_directories(uhf-privilegedd PRIVATE "${PROJECT_SOURCE_DIR}/src")
+target_link_libraries(uhf-privilegedd PRIVATE Threads::Threads)
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf-privilegedd PRIVATE
         -Wall
         -Wextra
         -Wpedantic
@@ -748,6 +772,6 @@ if(UHF_BUILD_FORMAT_TARGET)
     endif()
 endif()
 
-install(TARGETS uhf-gatewayd RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(TARGETS uhf-gatewayd uhf-privilegedd RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(FILES LICENSE DESTINATION "${CMAKE_INSTALL_DOCDIR}")
 install(FILES config/schema.json DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/uhf-gateway")

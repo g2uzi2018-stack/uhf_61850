@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
+#include "platform/network/network_config.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <atomic>
 #include <string>
 #include <string_view>
 #include <sys/types.h>
@@ -26,6 +29,10 @@ public:
     explicit UnixSocketClient(std::filesystem::path socket_path);
 
     Reply request(std::string_view message) const;
+    Reply network_status() const;
+    Reply network_stage(const uhf::network::NetworkConfig& candidate) const;
+    Reply network_confirm() const;
+    Reply network_rollback() const;
 
 private:
     std::filesystem::path socket_path_;
@@ -50,7 +57,7 @@ private:
     uid_t allowed_uid_;
     RequestHandler handler_;
     int server_fd_{-1};
-    bool stop_requested_{false};
+    std::atomic<bool> stop_requested_{false};
 };
 
 }  // namespace uhf::privileged

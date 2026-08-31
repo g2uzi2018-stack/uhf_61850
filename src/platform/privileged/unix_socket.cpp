@@ -170,6 +170,22 @@ Reply UnixSocketClient::request(std::string_view message) const {
     return received ? parse_reply(response) : Reply{false, "unavailable", {}};
 }
 
+Reply UnixSocketClient::network_status() const {
+    return request("network.status");
+}
+
+Reply UnixSocketClient::network_stage(const uhf::network::NetworkConfig& candidate) const {
+    return request("network.stage\n" + uhf::network::to_flat_json(candidate));
+}
+
+Reply UnixSocketClient::network_confirm() const {
+    return request("network.confirm");
+}
+
+Reply UnixSocketClient::network_rollback() const {
+    return request("network.rollback");
+}
+
 UnixSocketServer::UnixSocketServer(
     std::filesystem::path socket_path, uid_t allowed_uid, RequestHandler handler)
     : socket_path_(std::move(socket_path)), allowed_uid_(allowed_uid), handler_(std::move(handler)) {
