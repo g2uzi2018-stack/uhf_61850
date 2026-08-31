@@ -28,6 +28,9 @@ struct WebOptions {
     bool start_acquisition{true};
     bool simulate{false};
     std::string acquisition_device{"/dev/ttyS1"};
+    bool modbus_tcp_explicit{false};
+    std::string modbus_tcp_bind{"127.0.0.1"};
+    std::uint16_t modbus_tcp_port{502};
 };
 
 bool parse_listen(std::string_view value, std::string& address, std::uint16_t& port) {
@@ -55,7 +58,8 @@ void print_usage() {
     std::cerr << "usage: " << uhf::app::kProductName
               << " [--version|--self-test|--web "
                  "[--web-root PATH] [--state-dir PATH] [--listen IPV4:PORT] "
-                 "[--simulate|--no-acquisition] [--acquisition-device PATH]]\n";
+                 "[--simulate|--no-acquisition] [--acquisition-device PATH] "
+                 "[--modbus-tcp-listen IPV4:PORT]]\n";
 }
 
 int run_self_test() {
@@ -101,10 +105,20 @@ int main(int argc, char* argv[]) {
                 options.start_acquisition = false;
             } else if (option == "--acquisition-device" && index + 1 < argc) {
                 options.acquisition_device = argv[++index];
+            } else if (option == "--modbus-tcp-listen" && index + 1 < argc) {
+                if (!parse_listen(argv[++index], options.modbus_tcp_bind, options.modbus_tcp_port)) {
+                    std::cerr << "invalid --modbus-tcp-listen value\n";
+                    return 2;
+                }
+                options.modbus_tcp_explicit = true;
             } else {
                 print_usage();
                 return 2;
             }
+        }
+
+        if (options.simulate && !options.modbus_tcp_explicit) {
+            options.modbus_tcp_port = 15020U;
         }
 
         try {
@@ -120,7 +134,12 @@ int main(int argc, char* argv[]) {
             if (options.start_acquisition) {
                 runtime = std::make_unique<uhf::app::GatewayRuntime>(
                     uhf::app::GatewayRuntimeOptions{
-                        options.simulate, options.acquisition_device, std::chrono::seconds(6)},
+                        options.simulate,
+                        options.acquisition_device,
+                        std::chrono::seconds(6),
+                        true,
+                        options.modbus_tcp_bind,
+                        options.modbus_tcp_port},
                     logger);
                 runtime->start();
             }

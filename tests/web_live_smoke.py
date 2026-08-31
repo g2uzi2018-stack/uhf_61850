@@ -5,6 +5,7 @@ from http.client import HTTPConnection
 import json
 from pathlib import Path
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -39,6 +40,30 @@ def request(
 
 def json_body(payload: dict[str, str]) -> bytes:
     return json.dumps(payload, separators=(",", ":")).encode("utf-8")
+
+
+def receive_exact(sock: socket.socket, size: int) -> bytes:
+    payload = bytearray()
+    while len(payload) < size:
+        chunk = sock.recv(size - len(payload))
+        if not chunk:
+            fail("Modbus TCP connection closed before response")
+        payload.extend(chunk)
+    return bytes(payload)
+
+
+def modbus_read(port: int, start_address: int, count: int) -> list[int]:
+    with socket.create_connection(("127.0.0.1", port), timeout=2) as sock:
+        sock.sendall(struct.pack("!HHHBBHH", 0x4321, 0, 6, 1, 4, start_address, count))
+        header = receive_exact(sock, 6)
+        transaction, protocol, length = struct.unpack("!HHH", header)
+        if transaction != 0x4321 or protocol != 0 or length != 3 + count * 2:
+            fail("invalid Modbus TCP response header")
+        body = receive_exact(sock, length)
+    unit_id, function, byte_count = body[:3]
+    if unit_id != 1 or function != 4 or byte_count != count * 2:
+        fail("invalid Modbus TCP response body")
+    return list(struct.unpack(f"!{count}H", body[3:]))
 
 
 def main() -> int:
@@ -131,6 +156,17 @@ def main() -> int:
             if spectrum[:7] != [-60, -59, -58, -57, -56, -55, -60]:
                 fail(f"unexpected spectrum prefix: {spectrum[:7]!r}")
 
+            modbus_values: list[int] | None = None
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                try:
+                    modbus_values = modbus_read(15020, 10001, 5)
+                    break
+                except OSError:
+                    time.sleep(0.05)
+            if modbus_values != [0xFFC9, 12, 0xFFCE, 180, 240]:
+                fail(f"unexpected runtime Modbus TCP values: {modbus_values!r}")
+
             health_status, health_body, _ = request(
                 port, "GET", "/api/v1/health", headers={"Cookie": cookie}
             )
@@ -139,6 +175,8 @@ def main() -> int:
             health_payload = json.loads(health_body)
             if health_payload.get("acquisition", {}).get("status") != "up":
                 fail(f"acquisition health is not up: {health_payload!r}")
+            if health_payload.get("modbus_tcp", {}).get("status") != "up":
+                fail(f"Modbus TCP health is not up: {health_payload!r}")
             print("web live smoke: OK")
             return 0
         finally:

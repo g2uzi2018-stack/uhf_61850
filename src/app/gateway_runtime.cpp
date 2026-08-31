@@ -19,6 +19,12 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
     }
     acquisition_engine_ = std::make_unique<acquisition::AcquisitionEngine>(
         *serial_port_, snapshot_store_);
+    if (options_.start_modbus_tcp) {
+        modbus_tcp_server_ = std::make_unique<modbus::ModbusTcpServer>(
+            snapshot_store_,
+            modbus::ModbusTcpOptions{
+                options_.modbus_tcp_bind, options_.modbus_tcp_port, 1U, 16U});
+    }
 }
 
 GatewayRuntime::~GatewayRuntime() {
@@ -31,10 +37,28 @@ void GatewayRuntime::start() {
     }
     stop_requested_.store(false);
     worker_ = std::thread(&GatewayRuntime::run, this);
+    if (modbus_tcp_server_) {
+        modbus_tcp_worker_ = std::thread([this] {
+            const int result = modbus_tcp_server_->run();
+            if (result != 0 && !stop_requested_.load()) {
+                logger_.log(
+                    logging::Level::error,
+                    logging::Component::modbus_tcp,
+                    "server.failed",
+                    "Modbus TCP server stopped unexpectedly");
+            }
+        });
+    }
 }
 
 void GatewayRuntime::stop() noexcept {
     stop_requested_.store(true);
+    if (modbus_tcp_server_) {
+        modbus_tcp_server_->stop();
+    }
+    if (modbus_tcp_worker_.joinable()) {
+        modbus_tcp_worker_.join();
+    }
     if (worker_.joinable()) {
         worker_.join();
     }
@@ -52,6 +76,8 @@ health::Input GatewayRuntime::health_input() const {
         input.acquisition_last_cycle_ok = last_cycle_ok_;
     }
     input.storage_writable = true;
+    input.modbus_tcp_listening =
+        modbus_tcp_server_ != nullptr && modbus_tcp_server_->bound_port() != 0U;
     return input;
 }
 
