@@ -45,6 +45,9 @@ def main() -> int:
             prefix / "share/uhf-gateway/systemd/uhf-network-rollback.service",
             prefix / "share/uhf-gateway/systemd/uhf-network-rollback.timer",
             prefix / "share/uhf-gateway/systemd/uhf-network-recovery.service",
+            prefix / "share/uhf-gateway/systemd/uhf-release-guard.service",
+            prefix / "share/uhf-gateway/systemd/uhf-release-guard.timer",
+            prefix / "libexec/uhf-gateway/release-guard.sh",
             prefix / "share/doc/uhf_61850/LICENSE",
         )
         for path in required:

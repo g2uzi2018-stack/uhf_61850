@@ -55,6 +55,9 @@ required_files=(
     "share/uhf-gateway/systemd/uhf-network-rollback.service"
     "share/uhf-gateway/systemd/uhf-network-rollback.timer"
     "share/uhf-gateway/systemd/uhf-network-recovery.service"
+    "share/uhf-gateway/systemd/uhf-release-guard.service"
+    "share/uhf-gateway/systemd/uhf-release-guard.timer"
+    "libexec/uhf-gateway/release-guard.sh"
 )
 for relative in "${required_files[@]}"; do
     if [[ ! -f "${release_dir}/${relative}" ]]; then
@@ -75,6 +78,10 @@ fi
 
 if ! sh -n "${release_dir}/libexec/uhf-gateway/uhf-gateway-hook"; then
     printf 'preflight: DHCP hook syntax check failed\n' >&2
+    exit 1
+fi
+if ! sh -n "${release_dir}/libexec/uhf-gateway/release-guard.sh"; then
+    printf 'preflight: release guard syntax check failed\n' >&2
     exit 1
 fi
 

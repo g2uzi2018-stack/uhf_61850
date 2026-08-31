@@ -24,6 +24,8 @@ def main() -> int:
         "uhf-network-rollback.service",
         "uhf-network-rollback.timer",
         "uhf-network-recovery.service",
+        "uhf-release-guard.service",
+        "uhf-release-guard.timer",
     )
     units = {}
     for name in names:
@@ -69,6 +71,10 @@ def main() -> int:
         require(text, "--transaction /var/lib/uhf-privileged/network-transaction.json", unit)
     require(units["uhf-network-rollback.timer"], "OnUnitActiveSec=5s", "uhf-network-rollback.timer")
     require(units["uhf-network-rollback.timer"], "Persistent=true", "uhf-network-rollback.timer")
+    guard = units["uhf-release-guard.service"]
+    require(guard, "ExecStart=/usr/lib/uhf-gateway/release-guard.sh", "uhf-release-guard.service")
+    require(guard, "ReadWritePaths=/opt/uhf-gateway /var/lib/uhf-gateway", "uhf-release-guard.service")
+    require(units["uhf-release-guard.timer"], "OnUnitActiveSec=5s", "uhf-release-guard.timer")
     print("systemd policy smoke: OK")
     return 0
 

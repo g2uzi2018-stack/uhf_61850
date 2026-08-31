@@ -138,6 +138,8 @@ install -m 0644 "$release_dir/config/schema.json" "${root_prefix}/etc/uhf-gatewa
 install -m 0644 "$release_dir/config/UHFPD1.icd" "${root_prefix}/etc/uhf-gateway/UHFPD1.icd"
 install -m 0755 "$release_dir/libexec/uhf-gateway/uhf-gateway-hook" \
     "${root_prefix}/usr/lib/uhf-gateway/dhclient-hook"
+install -m 0755 "$release_dir/libexec/uhf-gateway/release-guard.sh" \
+    "${root_prefix}/usr/lib/uhf-gateway/release-guard.sh"
 for unit in "$release_dir"/share/uhf-gateway/systemd/*; do
     install -m 0644 "$unit" "${root_prefix}/etc/systemd/system/$(basename "$unit")"
 done
@@ -181,8 +183,10 @@ if [[ "$no_systemd" == false ]]; then
     systemctl daemon-reload
     systemctl enable --now uhf-network-recovery.service
     systemctl enable --now uhf-network-rollback.timer
+    systemctl enable --now uhf-release-guard.timer
     systemctl enable --now uhf-privileged.service
     systemctl restart uhf-gateway.service
+else
+    write_state ""
 fi
-write_state ""
 printf 'release installed: %s\n' "$release_dir"

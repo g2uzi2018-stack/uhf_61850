@@ -880,6 +880,12 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}/tests/installer_smoke.py"
                 "${PROJECT_SOURCE_DIR}"
         )
+        add_test(
+            NAME uhf_release_guard_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/release_guard_smoke.py"
+                "${PROJECT_SOURCE_DIR}"
+        )
     endif()
     add_test(NAME uhf_acquisition_fault_smoke COMMAND uhf_acquisition_fault_smoke)
     add_test(NAME uhf_loopback_acquisition_smoke COMMAND uhf_loopback_acquisition_smoke)
@@ -949,4 +955,5 @@ install(FILES
     DESTINATION config
 )
 install(PROGRAMS packaging/dhclient/uhf-gateway-hook DESTINATION libexec/uhf-gateway)
+install(PROGRAMS packaging/release-guard.sh DESTINATION libexec/uhf-gateway)
 install(DIRECTORY packaging/systemd/ DESTINATION share/uhf-gateway/systemd)

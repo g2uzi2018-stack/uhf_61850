@@ -1,6 +1,6 @@
 [Unit]
 Description=UHF 61850 partial-discharge gateway
-Wants=network-online.target uhf-network-recovery.service
+Wants=network-online.target uhf-network-recovery.service uhf-release-guard.timer
 Requires=uhf-privileged.service
 After=network-online.target uhf-network-recovery.service uhf-privileged.service
 ConditionPathIsExecutable=/opt/uhf-gateway/current/bin/uhf-gatewayd
