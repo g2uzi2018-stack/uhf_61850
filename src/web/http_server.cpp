@@ -1302,6 +1302,68 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
         return false;
     }
 
+    if (request_path == "/api/v1/tls") {
+        if (parsed.method != "GET" && parsed.method != "PUT") {
+            send_method_not_allowed(client_fd, tls, "GET, PUT");
+            return false;
+        }
+        const std::string token = session_cookie(parsed);
+        const auto iterator = sessions_.find(token);
+        if (token.empty() || iterator == sessions_.end() || iterator->second.expires_at <= now) {
+            if (iterator != sessions_.end()) {
+                sessions_.erase(iterator);
+            }
+            send_error(client_fd, tls, 401, "authentication required");
+            return false;
+        }
+        iterator->second.expires_at = now + kSessionLifetime;
+        if (parsed.method == "GET") {
+            const std::string body =
+                "{\"enabled\":" + std::string(tls_context_ == nullptr ? "false" : "true") +
+                ",\"certificate_ready\":" +
+                std::string(tls_context_ == nullptr ? "false" : "true") + "}\n";
+            send_json(client_fd, tls, 200, body);
+            return false;
+        }
+        const std::string_view csrf = header_value(parsed, "x-csrf-token");
+        if (!constant_time_equal(csrf, iterator->second.csrf_token)) {
+            send_error(client_fd, tls, 403, "CSRF token required");
+            return false;
+        }
+        if (tls_context_ == nullptr) {
+            send_error(client_fd, tls, 400, "TLS is disabled in recovery mode");
+            return false;
+        }
+        std::string current_password;
+        std::string certificate_pem;
+        std::string private_key_pem;
+        if (!json_string_field(
+                parsed.body, "current_password", current_password, kMaxPasswordJsonBytes) ||
+            !json_string_field(parsed.body, "certificate_pem", certificate_pem, 32768U) ||
+            !json_string_field(parsed.body, "private_key_pem", private_key_pem, 32768U) ||
+            !auth_store_.verify_password("admin", current_password)) {
+            send_error(client_fd, tls, 401, "current password is incorrect");
+            return false;
+        }
+        const TlsReplaceResult result = tls_context_->replace(certificate_pem, private_key_pem);
+        if (result == TlsReplaceResult::invalid) {
+            send_error(client_fd, tls, 400, "invalid TLS certificate or private key");
+            return false;
+        }
+        if (result == TlsReplaceResult::storage_error) {
+            send_error(client_fd, tls, 500, "unable to save TLS credentials");
+            return false;
+        }
+        sessions_.clear();
+        send_json(
+            client_fd,
+            tls,
+            200,
+            "{\"updated\":true,\"reauthenticate\":true}\n",
+            expired_session_cookie_header(tls != nullptr) + "Cache-Control: no-store\r\n");
+        return false;
+    }
+
     if (request_path == "/api/v1/config") {
         if (parsed.method != "GET" && parsed.method != "PUT") {
             send_method_not_allowed(client_fd, tls, "GET, PUT");

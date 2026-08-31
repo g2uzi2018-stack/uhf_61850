@@ -112,6 +112,60 @@ def main() -> int:
             cookie = headers.get("Set-Cookie", "")
             if "Secure" not in cookie or "HttpOnly" not in cookie or "SameSite=Strict" not in cookie:
                 fail(f"secure session cookie attributes are missing: {cookie!r}")
+            session = json.loads(body)
+            csrf_token = session.get("csrf_token")
+            certificate_pem = certificate.read_text(encoding="ascii")
+            private_key_pem = private_key.read_text(encoding="ascii")
+            status, _, _ = https_request(port, "GET", "/api/v1/tls", headers={"Cookie": cookie.split(";", 1)[0]})
+            if status != 200:
+                fail(f"TLS status returned {status}")
+            replacement_body = json.dumps(
+                {
+                    "current_password": initial_password,
+                    "certificate_pem": certificate_pem,
+                    "private_key_pem": "not a private key",
+                },
+                separators=(",", ":"),
+            ).encode("utf-8")
+            status, _, _ = https_request(
+                port,
+                "PUT",
+                "/api/v1/tls",
+                replacement_body,
+                {
+                    "Content-Type": "application/json",
+                    "Cookie": cookie.split(";", 1)[0],
+                    "X-CSRF-Token": str(csrf_token),
+                },
+            )
+            if status != 400:
+                fail(f"invalid TLS replacement returned {status}")
+            replacement_body = json.dumps(
+                {
+                    "current_password": initial_password,
+                    "certificate_pem": certificate_pem,
+                    "private_key_pem": private_key_pem,
+                },
+                separators=(",", ":"),
+            ).encode("utf-8")
+            status, body, _ = https_request(
+                port,
+                "PUT",
+                "/api/v1/tls",
+                replacement_body,
+                {
+                    "Content-Type": "application/json",
+                    "Cookie": cookie.split(";", 1)[0],
+                    "X-CSRF-Token": str(csrf_token),
+                },
+            )
+            if status != 200 or json.loads(body).get("reauthenticate") is not True:
+                fail(f"valid TLS replacement returned {status}: {body!r}")
+            status, _, _ = https_request(
+                port, "GET", "/api/v1/tls", headers={"Cookie": cookie.split(";", 1)[0]}
+            )
+            if status != 401:
+                fail("TLS replacement did not revoke the old session")
             print("web TLS smoke: OK")
             return 0
         finally:
