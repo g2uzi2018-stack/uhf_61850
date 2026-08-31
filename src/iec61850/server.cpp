@@ -19,9 +19,14 @@ std::uint64_t now_milliseconds() noexcept {
     return static_cast<std::uint64_t>(milliseconds.count());
 }
 
-Quality quality_for(bool valid) noexcept {
-    return valid ? static_cast<Quality>(QUALITY_VALIDITY_GOOD)
-                 : static_cast<Quality>(QUALITY_VALIDITY_INVALID);
+Quality quality_for(uhf::acquisition::Availability availability, bool valid) noexcept {
+    if (availability == uhf::acquisition::Availability::invalid || !valid) {
+        return static_cast<Quality>(QUALITY_VALIDITY_INVALID);
+    }
+    if (availability == uhf::acquisition::Availability::stale) {
+        return static_cast<Quality>(QUALITY_VALIDITY_QUESTIONABLE | QUALITY_DETAIL_OLD_DATA);
+    }
+    return static_cast<Quality>(QUALITY_VALIDITY_GOOD);
 }
 
 }  // namespace
@@ -91,54 +96,91 @@ void Server::publish_invalid_values() {
             IedServer_updateFloatAttributeValue(server_, model_->measurement_value(index), 0.0F);
         }
         IedServer_updateQuality(
-            server_, model_->measurement_quality(index), quality_for(false));
+            server_,
+            model_->measurement_quality(index),
+            quality_for(acquisition::Availability::invalid, false));
         update_timestamp(model_->measurement_time(index), timestamp_ms);
     }
     IedServer_updateFloatAttributeValue(server_, model_->peak_value(), 0.0F);
     IedServer_updateBooleanAttributeValue(server_, model_->alarm_value(), false);
-    IedServer_updateQuality(server_, model_->alarm_quality(), quality_for(false));
+    IedServer_updateQuality(
+        server_, model_->alarm_quality(), quality_for(acquisition::Availability::invalid, false));
     update_timestamp(model_->alarm_time(), timestamp_ms);
     IedServer_unlockDataModel(server_);
 }
 
-void Server::publish_snapshot(const acquisition::PublishedSnapshot& snapshot) {
+void Server::publish_snapshot(const acquisition::ServingView& serving_view) {
+    if (!serving_view.snapshot) {
+        publish_invalid_values();
+        return;
+    }
     const std::uint64_t timestamp_ms = now_milliseconds();
-    const domain::ParsedSnapshot& payload = snapshot.payload;
+    const domain::ParsedSnapshot& payload = serving_view.snapshot->payload;
     IedServer_lockDataModel(server_);
     for (std::size_t index = 0; index < kMeasurementCount; ++index) {
         const domain::Measurement& measurement = payload.measurements[index];
+        const bool measurement_usable =
+            serving_view.status.availability != acquisition::Availability::invalid &&
+            measurement.valid;
         if (model_->measurement_integer(index)) {
             IedServer_updateInt32AttributeValue(
                 server_, model_->measurement_value(index),
-                static_cast<std::int32_t>(measurement.value));
+                measurement_usable ? static_cast<std::int32_t>(measurement.value) : 0);
         } else {
             IedServer_updateFloatAttributeValue(
-                server_, model_->measurement_value(index), static_cast<float>(measurement.value));
+                server_,
+                model_->measurement_value(index),
+                measurement_usable ? static_cast<float>(measurement.value) : 0.0F);
         }
         IedServer_updateQuality(
-            server_, model_->measurement_quality(index), quality_for(measurement.valid));
+            server_,
+            model_->measurement_quality(index),
+            quality_for(serving_view.status.availability, measurement.valid));
         update_timestamp(model_->measurement_time(index), timestamp_ms);
     }
 
     const domain::Measurement& peak = payload.measurements[2U];
-    const bool alarm_valid = peak.valid && payload.payload_status != domain::PayloadStatus::not_refreshed;
-    const bool alarm = alarm_valid &&
+    const bool alarm_valid = serving_view.status.availability != acquisition::Availability::invalid &&
+        peak.valid && payload.payload_status != domain::PayloadStatus::not_refreshed;
+    const bool alarm = serving_view.status.availability == acquisition::Availability::fresh &&
+        alarm_valid &&
         (alarm_provider_ ? alarm_provider_() : peak.value >= -45);
     IedServer_updateFloatAttributeValue(
-        server_, model_->peak_value(), static_cast<float>(peak.value));
+        server_,
+        model_->peak_value(),
+        peak.valid && serving_view.status.availability != acquisition::Availability::invalid
+            ? static_cast<float>(peak.value)
+            : 0.0F);
     IedServer_updateBooleanAttributeValue(server_, model_->alarm_value(), alarm);
-    IedServer_updateQuality(server_, model_->alarm_quality(), quality_for(alarm_valid));
+    IedServer_updateQuality(
+        server_,
+        model_->alarm_quality(),
+        quality_for(serving_view.status.availability, alarm_valid));
     update_timestamp(model_->alarm_time(), timestamp_ms);
     IedServer_unlockDataModel(server_);
 }
 
 void Server::update_loop() {
     std::uint64_t last_generation = 0U;
+    std::optional<acquisition::Availability> last_availability;
+    bool last_has_snapshot = false;
     while (!stop_requested_.load()) {
-        const std::optional<acquisition::PublishedSnapshot> latest = snapshot_store_.latest();
-        if (latest && latest->generation > last_generation) {
-            publish_snapshot(*latest);
-            last_generation = latest->generation;
+        const acquisition::ServingView serving_view = snapshot_store_.serving_view();
+        const bool has_snapshot = serving_view.snapshot.has_value();
+        const bool status_changed =
+            !last_availability || *last_availability != serving_view.status.availability;
+        const bool generation_changed = serving_view.snapshot &&
+            serving_view.snapshot->generation > last_generation;
+        if (status_changed || has_snapshot != last_has_snapshot || generation_changed) {
+            if (has_snapshot) {
+                publish_snapshot(serving_view);
+                last_generation = serving_view.snapshot->generation;
+            } else {
+                publish_invalid_values();
+                last_generation = 0U;
+            }
+            last_has_snapshot = has_snapshot;
+            last_availability = serving_view.status.availability;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }

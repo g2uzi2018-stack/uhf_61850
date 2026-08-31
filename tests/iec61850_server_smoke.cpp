@@ -78,6 +78,44 @@ int main() {
             MmsValue_delete(value);
         }
 
+        const Quality fresh_quality = IedConnection_readQualityValue(
+            connection,
+            &error,
+            "TESTIEDPDMON/GGIO1.AnIn1.q",
+            IEC61850_FC_MX);
+        ok = expect(
+            error == IED_ERROR_OK && fresh_quality == static_cast<Quality>(QUALITY_VALIDITY_GOOD),
+            "fresh measurement quality") && ok;
+
+        snapshots.record_failure(std::chrono::steady_clock::now(), "serial timeout");
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        error = IED_ERROR_OK;
+        const Quality stale_quality = IedConnection_readQualityValue(
+            connection,
+            &error,
+            "TESTIEDPDMON/GGIO1.AnIn1.q",
+            IEC61850_FC_MX);
+        ok = expect(
+            error == IED_ERROR_OK &&
+                stale_quality == static_cast<Quality>(
+                    QUALITY_VALIDITY_QUESTIONABLE | QUALITY_DETAIL_OLD_DATA),
+            "stale measurement quality") && ok;
+        MmsValue* stale_value = IedConnection_readObject(
+            connection,
+            &error,
+            "TESTIEDPDMON/GGIO1.AnIn1.mag.f",
+            IEC61850_FC_MX);
+        ok = expect(
+            error == IED_ERROR_OK && stale_value != nullptr &&
+                std::fabs(static_cast<double>(MmsValue_toFloat(stale_value)) + 55.0) < 0.01,
+            "stale measurement retains last-good value") && ok;
+        if (stale_value != nullptr) {
+            MmsValue_delete(stale_value);
+        }
+        const auto recovered_at = std::chrono::steady_clock::now();
+        snapshots.publish(payload, recovered_at, recovered_at);
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
         MmsValue* frequency = IedConnection_readObject(
             connection,
             &error,

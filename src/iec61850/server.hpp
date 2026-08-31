@@ -35,7 +35,7 @@ public:
 private:
     void update_loop();
     void publish_invalid_values();
-    void publish_snapshot(const acquisition::PublishedSnapshot& snapshot);
+    void publish_snapshot(const acquisition::ServingView& serving_view);
     void update_timestamp(DataAttribute* attribute, std::uint64_t timestamp_ms);
 
     acquisition::SnapshotStore& snapshot_store_;
