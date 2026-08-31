@@ -376,6 +376,32 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         -Werror
     )
 endif()
+
+add_executable(uhf-network-recovery
+    src/network_recovery_main.cpp
+    src/platform/privileged/network_service.cpp
+    src/platform/privileged/maintenance.cpp
+    src/platform/privileged/unix_socket.cpp
+    src/platform/network/linux_backend.cpp
+    src/platform/network/dhcp_client.cpp
+    src/platform/network/network_transaction.cpp
+    src/platform/network/network_config.cpp
+    src/platform/network/linux_status.cpp
+)
+target_compile_features(uhf-network-recovery PRIVATE cxx_std_17)
+target_include_directories(uhf-network-recovery PRIVATE "${PROJECT_SOURCE_DIR}/src")
+target_link_libraries(uhf-network-recovery PRIVATE Threads::Threads)
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf-network-recovery PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
 if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(uhf_serial_port_smoke PRIVATE
         -Wall
@@ -805,6 +831,12 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}"
                 "${CMAKE_BINARY_DIR}"
         )
+        add_test(
+            NAME uhf_network_recovery_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/network_recovery_smoke.py"
+                "$<TARGET_FILE:uhf-network-recovery>"
+        )
     endif()
     add_test(NAME uhf_acquisition_fault_smoke COMMAND uhf_acquisition_fault_smoke)
     add_test(NAME uhf_loopback_acquisition_smoke COMMAND uhf_loopback_acquisition_smoke)
@@ -861,7 +893,8 @@ if(UHF_BUILD_FORMAT_TARGET)
     endif()
 endif()
 
-install(TARGETS uhf-gatewayd uhf-privilegedd RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(TARGETS uhf-gatewayd uhf-privilegedd uhf-network-recovery
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(FILES LICENSE DESTINATION "${CMAKE_INSTALL_DOCDIR}")
 install(FILES config/schema.json DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/uhf-gateway")
 install(DIRECTORY web/ DESTINATION web)
