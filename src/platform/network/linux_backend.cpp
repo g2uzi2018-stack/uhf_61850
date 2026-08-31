@@ -8,8 +8,10 @@
 #include <fcntl.h>
 #include <fstream>
 #include <initializer_list>
+#include <string>
 #include <optional>
 #include <string_view>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -31,6 +33,22 @@ bool run_ip(
     arguments.emplace_back(kIpCommand);
     arguments.insert(arguments.end(), suffix.begin(), suffix.end());
     return runner.run(arguments);
+}
+
+bool run_ip_allow_missing(
+    uhf::network::CommandRunner& runner,
+    std::initializer_list<std::string> suffix) {
+    std::vector<std::string> arguments;
+    arguments.reserve(suffix.size() + 1U);
+    arguments.emplace_back(kIpCommand);
+    arguments.insert(arguments.end(), suffix.begin(), suffix.end());
+    return runner.run_allow_missing(arguments);
+}
+
+bool is_missing_network_object(std::string_view error) noexcept {
+    return error.find("Cannot assign requested address") != std::string_view::npos ||
+        error.find("No such process") != std::string_view::npos ||
+        error.find("Cannot find device") != std::string_view::npos;
 }
 
 std::optional<std::string> read_file(const std::filesystem::path& path) {
@@ -107,7 +125,8 @@ bool write_atomic(const std::filesystem::path& path, std::string_view contents) 
 
 namespace uhf::network {
 
-bool ExecCommandRunner::run(const std::vector<std::string>& arguments) {
+bool execute_ip_command(
+    const std::vector<std::string>& arguments, bool allow_missing) {
     if (arguments.empty() || arguments.front() != kIpCommand) {
         return false;
     }
@@ -118,21 +137,54 @@ bool ExecCommandRunner::run(const std::vector<std::string>& arguments) {
     }
     argv.push_back(nullptr);
 
+    int error_pipe[2] = {-1, -1};
+    if (allow_missing && ::pipe2(error_pipe, O_CLOEXEC) < 0) {
+        return false;
+    }
     const pid_t child = ::fork();
     if (child < 0) {
+        if (error_pipe[0] >= 0) {
+            ::close(error_pipe[0]);
+            ::close(error_pipe[1]);
+        }
         return false;
     }
     if (child == 0) {
-        const int null_device = ::open("/dev/null", O_RDWR | O_CLOEXEC);
-        if (null_device >= 0) {
-            (void)::dup2(null_device, STDOUT_FILENO);
-            (void)::dup2(null_device, STDERR_FILENO);
-            if (null_device > STDERR_FILENO) {
-                ::close(null_device);
+        if (allow_missing) {
+            ::close(error_pipe[0]);
+            (void)::dup2(error_pipe[1], STDERR_FILENO);
+            if (error_pipe[1] > STDERR_FILENO) {
+                ::close(error_pipe[1]);
+            }
+        } else {
+            const int null_device = ::open("/dev/null", O_RDWR | O_CLOEXEC);
+            if (null_device >= 0) {
+                (void)::dup2(null_device, STDOUT_FILENO);
+                (void)::dup2(null_device, STDERR_FILENO);
+                if (null_device > STDERR_FILENO) {
+                    ::close(null_device);
+                }
             }
         }
         ::execv(kIpCommand, argv.data());
         _exit(127);
+    }
+
+    if (allow_missing) {
+        ::close(error_pipe[1]);
+    }
+    std::string error_output;
+    if (allow_missing) {
+        char buffer[256];
+        ssize_t bytes_read = 0;
+        while ((bytes_read = ::read(error_pipe[0], buffer, sizeof(buffer))) > 0) {
+            error_output.append(buffer, static_cast<std::size_t>(bytes_read));
+            if (error_output.size() > 4096U) {
+                error_output.resize(4096U);
+                break;
+            }
+        }
+        ::close(error_pipe[0]);
     }
 
     int status = 0;
@@ -141,7 +193,18 @@ bool ExecCommandRunner::run(const std::vector<std::string>& arguments) {
             return false;
         }
     }
-    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        return true;
+    }
+    return allow_missing && is_missing_network_object(error_output);
+}
+
+bool ExecCommandRunner::run(const std::vector<std::string>& arguments) {
+    return execute_ip_command(arguments, false);
+}
+
+bool ExecCommandRunner::run_allow_missing(const std::vector<std::string>& arguments) {
+    return execute_ip_command(arguments, true);
 }
 
 LinuxNetworkBackend::LinuxNetworkBackend(
@@ -512,13 +575,13 @@ bool LinuxNetworkBackend::remove_candidate_state(
         const std::string old_address = effective_address(*old_configs[index], previous_leases[index]);
         const std::string new_address = effective_address(*new_configs[index], candidate_leases[index]);
         if (old_address != new_address) {
-            success = run_ip(command_runner_, {
+            success = run_ip_allow_missing(command_runner_, {
                 "address", "del", new_address, "dev", new_configs[index]->name}) && success;
         }
         const std::string old_gateway = effective_gateway(*old_configs[index], previous_leases[index]);
         const std::string new_gateway = effective_gateway(*new_configs[index], candidate_leases[index]);
         if (old_gateway != new_gateway && !new_gateway.empty()) {
-            success = run_ip(command_runner_, {
+            success = run_ip_allow_missing(command_runner_, {
                 "route", "del", "default", "via", new_gateway, "dev", new_configs[index]->name,
                 "metric", std::string(kCandidateRouteMetric)}) && success;
         }
@@ -540,11 +603,11 @@ bool LinuxNetworkBackend::remove_previous_state(
         const std::string old_gateway = effective_gateway(*old_configs[index], previous_leases[index]);
         const std::string new_gateway = effective_gateway(*new_configs[index], candidate_leases[index]);
         if (old_gateway != new_gateway && !old_gateway.empty()) {
-            success = run_ip(command_runner_, {
+            success = run_ip_allow_missing(command_runner_, {
                 "route", "del", "default", "via", old_gateway, "dev", old_configs[index]->name}) && success;
         }
         if (old_address != new_address) {
-            success = run_ip(command_runner_, {
+            success = run_ip_allow_missing(command_runner_, {
                 "address", "del", old_address, "dev", old_configs[index]->name}) && success;
         }
     }

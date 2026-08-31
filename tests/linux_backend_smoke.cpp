@@ -16,7 +16,13 @@ public:
         return run_ok;
     }
 
+    bool run_allow_missing(const std::vector<std::string>& arguments) override {
+        commands.push_back(arguments);
+        return run_ok || allow_missing;
+    }
+
     bool run_ok{true};
+    bool allow_missing{false};
     std::vector<std::vector<std::string>> commands;
 };
 
@@ -199,6 +205,23 @@ int main() {
     assert(dhcp_backend.read_current(dhcp_loaded));
     assert(dhcp_loaded.eth0.mode == uhf::network::Mode::static_address);
 
+    const std::filesystem::path idempotent_path =
+        std::filesystem::temp_directory_path() / "uhf-linux-backend-idempotent" / "network.json";
+    std::filesystem::remove_all(idempotent_path.parent_path(), ignored);
+    FakeRunner missing_runner;
+    missing_runner.run_ok = false;
+    missing_runner.allow_missing = true;
+    uhf::network::LinuxNetworkBackend idempotent_backend(idempotent_path, missing_runner);
+    uhf::network::NetworkConfig idempotent_previous;
+    assert(idempotent_backend.read_current(idempotent_previous));
+    uhf::network::NetworkConfig idempotent_candidate = idempotent_previous;
+    idempotent_candidate.eth0.address = "192.168.3.235";
+    idempotent_candidate.eth0.gateway = "192.168.3.4";
+    assert(idempotent_backend.rollback(idempotent_previous, idempotent_candidate));
+    assert(missing_runner.commands.size() == 2U);
+    assert(missing_runner.commands[0U][2U] == "del");
+    assert(missing_runner.commands[1U][2U] == "del");
+
     dhcp.acquire_ok = false;
     assert(!dhcp_backend.apply_stage(dhcp_loaded, dhcp_candidate));
 
@@ -225,6 +248,7 @@ int main() {
 
     std::filesystem::remove_all(path.parent_path(), ignored);
     std::filesystem::remove_all(dhcp_path.parent_path(), ignored);
+    std::filesystem::remove_all(idempotent_path.parent_path(), ignored);
     std::filesystem::remove_all(corrupt_path.parent_path(), ignored);
     return 0;
 }

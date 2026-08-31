@@ -18,11 +18,16 @@ public:
     virtual ~CommandRunner() = default;
 
     virtual bool run(const std::vector<std::string>& arguments) = 0;
+
+    virtual bool run_allow_missing(const std::vector<std::string>& arguments) {
+        return run(arguments);
+    }
 };
 
 class ExecCommandRunner final : public CommandRunner {
 public:
     bool run(const std::vector<std::string>& arguments) override;
+    bool run_allow_missing(const std::vector<std::string>& arguments) override;
 };
 
 class LinuxNetworkBackend final : public Backend {
