@@ -26,7 +26,7 @@ bool LoopbackPd1000Port::write_all(const std::uint8_t* data, std::size_t size) {
     if (data == nullptr || size != 8U) {
         return false;
     }
-    const auto plan = domain::pd1000_request_plan();
+    const auto plan = domain::pd1000_request_plan(data[0]);
     const domain::ModbusReadRequest& request = plan[next_request_index_];
     if (!std::equal(request.wire_frame.begin(), request.wire_frame.end(), data)) {
         return false;

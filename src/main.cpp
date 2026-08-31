@@ -248,6 +248,7 @@ int main(int argc, char* argv[]) {
             if (options.start_acquisition) {
                 uhf::app::GatewayRuntimeOptions runtime_options;
                 runtime_options.simulate = options.simulate;
+                runtime_options.config_store = config_store.get();
                 runtime_options.acquisition_device = options.acquisition_device;
                 runtime_options.acquisition_options.slave_id = configured.values.acquisition_slave_id;
                 runtime_options.acquisition_options.response_timeout = std::chrono::milliseconds(

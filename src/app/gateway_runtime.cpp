@@ -146,8 +146,10 @@ health::Input GatewayRuntime::health_input() const {
 
 void GatewayRuntime::run() {
     bool previous_cycle_failed = false;
+    std::uint64_t applied_config_version = 0U;
     std::chrono::steady_clock::time_point next_poll = std::chrono::steady_clock::now();
     while (!stop_requested_.load()) {
+        apply_runtime_configuration(applied_config_version);
         const bool success = acquisition_engine_->poll_once();
         if (success) {
             if (previous_cycle_failed) {
@@ -182,6 +184,30 @@ void GatewayRuntime::run() {
                     std::chrono::milliseconds(100))));
         }
     }
+}
+
+void GatewayRuntime::apply_runtime_configuration(std::uint64_t& applied_version) {
+    if (options_.config_store == nullptr) {
+        return;
+    }
+    const config::Snapshot configured = options_.config_store->snapshot();
+    if (configured.version == applied_version) {
+        return;
+    }
+
+    options_.acquisition_options.slave_id = configured.values.acquisition_slave_id;
+    options_.acquisition_options.response_timeout = std::chrono::milliseconds(
+        configured.values.acquisition_response_timeout_ms);
+    options_.acquisition_options.max_retries = configured.values.acquisition_max_retries;
+    options_.poll_interval = std::chrono::milliseconds(configured.values.acquisition_period_ms);
+    acquisition_engine_->update_options(options_.acquisition_options);
+    applied_version = configured.version;
+    logger_.log(
+        logging::Level::info,
+        logging::Component::config,
+        "configuration.reloaded",
+        "hot-reloadable acquisition settings applied",
+        {logging::Field{"version", std::to_string(applied_version)}});
 }
 
 }  // namespace uhf::app

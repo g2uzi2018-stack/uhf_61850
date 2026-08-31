@@ -23,6 +23,7 @@ struct ModbusReadRequest {
 
 std::uint16_t modbus_crc16(const std::uint8_t* data, std::size_t size) noexcept;
 
-std::array<ModbusReadRequest, kPd1000RequestCount> pd1000_request_plan() noexcept;
+std::array<ModbusReadRequest, kPd1000RequestCount> pd1000_request_plan(
+    std::uint8_t slave_id = kPd1000SlaveId) noexcept;
 
 }  // namespace uhf::domain

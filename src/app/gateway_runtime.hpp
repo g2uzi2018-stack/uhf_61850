@@ -2,6 +2,7 @@
 #pragma once
 
 #include "acquisition/acquisition.hpp"
+#include "config/config_store.hpp"
 #include "health/health.hpp"
 #include "iec61850/server.hpp"
 #include "logging/logger.hpp"
@@ -19,6 +20,7 @@ namespace uhf::app {
 
 struct GatewayRuntimeOptions {
     bool simulate{false};
+    config::ConfigStore* config_store{nullptr};
     std::string acquisition_device{"/dev/ttyS1"};
     acquisition::AcquisitionOptions acquisition_options{};
     std::chrono::milliseconds poll_interval{std::chrono::seconds(6)};
@@ -52,6 +54,7 @@ public:
     health::Input health_input() const;
 
 private:
+    void apply_runtime_configuration(std::uint64_t& applied_version);
     void run();
 
     GatewayRuntimeOptions options_;

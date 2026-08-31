@@ -110,6 +110,8 @@ public:
         ISerialPort& serial_port, SnapshotStore& snapshot_store, AcquisitionOptions options = {});
 
     bool poll_once();
+    void update_options(AcquisitionOptions options);
+    AcquisitionOptions options() const;
     const std::string& last_error() const noexcept;
 
 private:
@@ -125,17 +127,19 @@ private:
         std::chrono::steady_clock::time_point deadline);
     ResponseResult read_response(
         const domain::ModbusReadRequest& request,
+        const AcquisitionOptions& options,
         std::array<std::uint8_t, 3U + 240U + 2U>& response,
         std::size_t& response_size,
         std::chrono::steady_clock::time_point deadline);
     bool sleep_until(
         std::chrono::steady_clock::time_point deadline, std::chrono::microseconds duration);
-    void quarantine();
-    bool fail_and_quarantine(std::string message);
+    void quarantine(std::chrono::milliseconds duration);
+    bool fail_and_quarantine(std::string message, std::chrono::milliseconds duration);
     bool fail(std::string message);
 
     ISerialPort& serial_port_;
     SnapshotStore& snapshot_store_;
+    mutable std::mutex options_mutex_;
     AcquisitionOptions options_;
     std::string last_error_;
 };

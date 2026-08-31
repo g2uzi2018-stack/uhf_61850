@@ -18,7 +18,8 @@ std::uint16_t modbus_crc16(const std::uint8_t* data, std::size_t size) noexcept 
     return crc;
 }
 
-std::array<ModbusReadRequest, kPd1000RequestCount> pd1000_request_plan() noexcept {
+std::array<ModbusReadRequest, kPd1000RequestCount> pd1000_request_plan(
+    std::uint8_t slave_id) noexcept {
     std::array<ModbusReadRequest, kPd1000RequestCount> plan{};
     for (std::size_t index = 0; index < plan.size(); ++index) {
         ModbusReadRequest& request = plan[index];
@@ -26,7 +27,7 @@ std::array<ModbusReadRequest, kPd1000RequestCount> pd1000_request_plan() noexcep
             ? static_cast<std::uint32_t>(kPd1000FirstAddress)
             : 10016U + static_cast<std::uint32_t>((index - 1U) * 120U);
         const std::uint16_t register_count = index == 0U ? 15U : 120U;
-        request.slave_id = kPd1000SlaveId;
+        request.slave_id = slave_id;
         request.function = kReadInputRegistersFunction;
         request.start_address = static_cast<std::uint16_t>(start_address);
         request.register_count = register_count;

@@ -220,6 +220,7 @@ bool AcquisitionEngine::read_exact(
 
 AcquisitionEngine::ResponseResult AcquisitionEngine::read_response(
     const domain::ModbusReadRequest& request,
+    const AcquisitionOptions& options,
     std::array<std::uint8_t, 3U + 240U + 2U>& response,
     std::size_t& response_size,
     std::chrono::steady_clock::time_point deadline) {
@@ -233,7 +234,7 @@ AcquisitionEngine::ResponseResult AcquisitionEngine::read_response(
 
     const std::size_t expected_data_bytes =
         static_cast<std::size_t>(request.register_count) * 2U;
-    if (response_header[0] != options_.slave_id) {
+    if (response_header[0] != options.slave_id) {
         return ResponseResult::fatal_error;
     }
     if (response_header[1] == static_cast<std::uint8_t>(
@@ -284,8 +285,8 @@ bool AcquisitionEngine::sleep_until(
     return std::chrono::steady_clock::now() < deadline;
 }
 
-void AcquisitionEngine::quarantine() {
-    auto quiet_deadline = std::chrono::steady_clock::now() + options_.quarantine_duration;
+void AcquisitionEngine::quarantine(std::chrono::milliseconds duration) {
+    auto quiet_deadline = std::chrono::steady_clock::now() + duration;
     std::array<std::uint8_t, 256U> discarded{};
     while (std::chrono::steady_clock::now() < quiet_deadline) {
         const auto now = std::chrono::steady_clock::now();
@@ -296,17 +297,18 @@ void AcquisitionEngine::quarantine() {
         std::size_t received = 0;
         if (serial_port_.read_some(discarded.data(), discarded.size(), remaining, received) &&
             received > 0U) {
-            quiet_deadline = std::chrono::steady_clock::now() + options_.quarantine_duration;
+            quiet_deadline = std::chrono::steady_clock::now() + duration;
         } else if (received == 0U) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
 }
 
-bool AcquisitionEngine::fail_and_quarantine(std::string message) {
+bool AcquisitionEngine::fail_and_quarantine(
+    std::string message, std::chrono::milliseconds duration) {
     last_error_ = std::move(message);
     snapshot_store_.record_failure(std::chrono::steady_clock::now(), last_error_);
-    quarantine();
+    quarantine(duration);
     return false;
 }
 
@@ -318,46 +320,59 @@ bool AcquisitionEngine::fail(std::string message) {
 
 bool AcquisitionEngine::poll_once() {
     last_error_.clear();
+    AcquisitionOptions options;
+    {
+        std::lock_guard<std::mutex> lock(options_mutex_);
+        options = options_;
+    }
     const auto started_at = std::chrono::steady_clock::now();
-    const auto deadline = started_at + options_.cycle_deadline;
-    const auto plan = domain::pd1000_request_plan();
+    const auto deadline = started_at + options.cycle_deadline;
+    const auto plan = domain::pd1000_request_plan(options.slave_id);
     std::array<std::uint16_t, domain::kPd1000RegisterCount> raw_registers{};
 
     for (std::size_t plan_index = 0; plan_index < plan.size(); ++plan_index) {
         const domain::ModbusReadRequest& request = plan[plan_index];
-        if (request.slave_id != options_.slave_id) {
-            return fail_and_quarantine("request plan slave ID does not match acquisition configuration");
+        if (request.slave_id != options.slave_id) {
+            return fail_and_quarantine(
+                "request plan slave ID does not match acquisition configuration",
+                options.quarantine_duration);
         }
 
         bool complete = false;
         std::string retry_error;
         for (std::uint16_t attempt = 0;
-             attempt <= static_cast<std::uint16_t>(options_.max_retries);
+             attempt <= static_cast<std::uint16_t>(options.max_retries);
              ++attempt) {
             if (attempt > 0U) {
                 if (!sleep_until(
                         deadline,
                         std::chrono::duration_cast<std::chrono::microseconds>(
-                            options_.retry_delay))) {
-                    return fail_and_quarantine("poll cycle deadline reached during retry delay");
+                        options.retry_delay))) {
+                    return fail_and_quarantine(
+                        "poll cycle deadline reached during retry delay",
+                        options.quarantine_duration);
                 }
             } else if (plan_index != 0U &&
-                       !sleep_until(deadline, options_.inter_frame_silence)) {
-                return fail_and_quarantine("poll cycle deadline reached during frame silence");
+                       !sleep_until(deadline, options.inter_frame_silence)) {
+                return fail_and_quarantine(
+                    "poll cycle deadline reached during frame silence",
+                    options.quarantine_duration);
             }
             if (std::chrono::steady_clock::now() >= deadline) {
-                return fail_and_quarantine("poll cycle deadline reached before request");
+                return fail_and_quarantine(
+                    "poll cycle deadline reached before request", options.quarantine_duration);
             }
             if (!serial_port_.write_all(request.wire_frame.data(), kRequestFrameBytes)) {
-                return fail_and_quarantine("unable to write Modbus request");
+                return fail_and_quarantine(
+                    "unable to write Modbus request", options.quarantine_duration);
             }
 
             const auto response_deadline = std::min(
-                deadline, std::chrono::steady_clock::now() + options_.response_timeout);
+                deadline, std::chrono::steady_clock::now() + options.response_timeout);
             std::array<std::uint8_t, 3U + 240U + 2U> response{};
             std::size_t response_size = 0;
             const ResponseResult result =
-                read_response(request, response, response_size, response_deadline);
+                read_response(request, options, response, response_size, response_deadline);
             if (result == ResponseResult::complete) {
                 const std::size_t start_index = static_cast<std::size_t>(
                     request.start_address - domain::kPd1000FirstAddress);
@@ -372,22 +387,36 @@ bool AcquisitionEngine::poll_once() {
                 break;
             }
             if (result == ResponseResult::fatal_error) {
-                return fail_and_quarantine("Modbus response boundary or timeout error");
+                return fail_and_quarantine(
+                    "Modbus response boundary or timeout error", options.quarantine_duration);
             }
             retry_error = "Modbus response CRC or exception error";
         }
         if (!complete) {
-            return fail_and_quarantine(retry_error.empty() ? "Modbus retry budget exhausted" : retry_error);
+            return fail_and_quarantine(
+                retry_error.empty() ? "Modbus retry budget exhausted" : retry_error,
+                options.quarantine_duration);
         }
     }
 
     const auto completed_at = std::chrono::steady_clock::now();
     if (completed_at > deadline) {
-        return fail_and_quarantine("poll cycle deadline reached after response");
+        return fail_and_quarantine(
+            "poll cycle deadline reached after response", options.quarantine_duration);
     }
     snapshot_store_.publish(
         domain::parse_pd1000_registers(raw_registers), started_at, completed_at);
     return true;
+}
+
+void AcquisitionEngine::update_options(AcquisitionOptions options) {
+    std::lock_guard<std::mutex> lock(options_mutex_);
+    options_ = options;
+}
+
+AcquisitionOptions AcquisitionEngine::options() const {
+    std::lock_guard<std::mutex> lock(options_mutex_);
+    return options_;
 }
 
 const std::string& AcquisitionEngine::last_error() const noexcept {

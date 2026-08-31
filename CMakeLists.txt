@@ -206,6 +206,27 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+add_executable(uhf_acquisition_reload_smoke ${UHF_TEST_TARGET_OPTIONS}
+    tests/acquisition_reload_smoke.cpp
+    src/acquisition/loopback_pd1000.cpp
+    src/acquisition/acquisition.cpp
+    src/domain/modbus.cpp
+    src/domain/snapshot.cpp
+)
+target_compile_features(uhf_acquisition_reload_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_acquisition_reload_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_acquisition_reload_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
 add_executable(uhf_loopback_acquisition_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/loopback_acquisition_smoke.cpp
     src/acquisition/loopback_pd1000.cpp
@@ -968,6 +989,7 @@ if(BUILD_TESTING)
         )
     endif()
     add_test(NAME uhf_acquisition_fault_smoke COMMAND uhf_acquisition_fault_smoke)
+    add_test(NAME uhf_acquisition_reload_smoke COMMAND uhf_acquisition_reload_smoke)
     add_test(NAME uhf_loopback_acquisition_smoke COMMAND uhf_loopback_acquisition_smoke)
     add_test(NAME uhf_serial_port_smoke COMMAND uhf_serial_port_smoke)
     add_test(NAME uhf_network_config_smoke COMMAND uhf_network_config_smoke)
