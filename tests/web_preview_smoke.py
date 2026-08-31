@@ -22,6 +22,7 @@ def main() -> int:
             fail(f"missing {filename}")
 
     html = (web_dir / "index.html").read_text(encoding="utf-8")
+    maintenance_javascript = (web_dir / "maintenance.js").read_text(encoding="utf-8")
     login_html = (web_dir / "login.html").read_text(encoding="utf-8")
     javascript = (web_dir / "app.js").read_text(encoding="utf-8")
     overview_html = (web_dir / "overview.html").read_text(encoding="utf-8")
@@ -32,6 +33,9 @@ def main() -> int:
     for marker in ("用户管理", "本地开发模式", "HTTPS", "transport-badge", "checklist-progress", "admin", 'id="password-modal"', 'id="password-form"'):
         if marker not in html:
             fail(f"index.html is missing {marker!r}")
+    for marker in ("certificate-replacement", "tls-certificate", "tls-private-key", "replace-tls", "certificate_pem", "private_key_pem"):
+        if marker not in maintenance_javascript:
+            fail(f"maintenance.js is missing {marker!r}")
     for marker in ("登录控制台", "首次登录", 'id="login-form"'):
         if marker not in login_html:
             fail(f"login.html is missing {marker!r}")

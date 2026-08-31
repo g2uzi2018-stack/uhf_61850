@@ -171,7 +171,10 @@ noscript { position: fixed; z-index: 30; inset: 0; padding: 35vh 20px; backgroun
 .settings-grid { display: grid; padding: 0 23px 22px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px 22px; }
 .settings-grid label { display: flex; flex-direction: column; gap: 6px; color: #5e6e85; font-size: 11px; }
 .settings-grid input { width: 100%; box-sizing: border-box; padding: 10px 11px; border: 1px solid #cbd8e9; border-radius: 6px; outline: none; background: #f8fafd; color: var(--text); font: inherit; font-size: 12px; }
+.settings-grid textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 10px 11px; border: 1px solid #cbd8e9; border-radius: 6px; outline: none; background: #f8fafd; color: var(--text); font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; }
 .settings-grid input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb(79 140 255 / 10%); }
+.settings-grid textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb(79 140 255 / 10%); }
+.settings-grid .wide { grid-column: 1 / -1; }
 .settings-grid input[type="checkbox"] { width: 18px; height: 18px; margin: 10px 0 2px; accent-color: var(--blue); }
 .settings-grid small { color: var(--muted); font-size: 10px; }
 .settings-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
