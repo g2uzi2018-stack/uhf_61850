@@ -46,6 +46,9 @@ def main() -> int:
     configured_tcp_port = free_port()
     while configured_tcp_port == configured_web_port:
         configured_tcp_port = free_port()
+    reloaded_tcp_port = free_port()
+    while reloaded_tcp_port in (configured_web_port, configured_tcp_port):
+        reloaded_tcp_port = free_port()
     configuration = {
         "version": 7,
         "acquisition_device": "/dev/ttyS1",
@@ -138,6 +141,7 @@ def main() -> int:
             update["acquisition_slave_id"] = 3
             update["acquisition_response_timeout_ms"] = 120
             update["acquisition_max_retries"] = 1
+            update["modbus_tcp_port"] = reloaded_tcp_port
             update["storage_period_seconds"] = 60
             update["storage_retention_days"] = 3
             update_status, update_body, _ = request(
@@ -157,6 +161,7 @@ def main() -> int:
             if json.loads(update_body).get("version") != 8:
                 fail(f"hot reload configuration version mismatch: {update_body!r}")
 
+            reload_seen = False
             deadline = time.monotonic() + 9
             while time.monotonic() < deadline:
                 logs_status, logs_body, _ = request(
@@ -164,7 +169,7 @@ def main() -> int:
                 )
                 if logs_status == 200:
                     entries = json.loads(logs_body).get("entries", [])
-                    if any(
+                    reload_seen = any(
                         entry.get("event") == "configuration.reloaded" and
                         entry.get("fields", {}).get("version") == "8"
                         for entry in entries
@@ -172,11 +177,19 @@ def main() -> int:
                         entry.get("event") == "storage.configuration.reloaded" and
                         entry.get("fields", {}).get("version") == "8"
                         for entry in entries
-                    ):
-                        break
+                    )
+                    if reload_seen:
+                        try:
+                            with socket.create_connection(("127.0.0.1", reloaded_tcp_port), timeout=0.2):
+                                pass
+                            break
+                        except OSError:
+                            pass
                 time.sleep(0.1)
             else:
-                fail("hot reload configuration was not applied by the acquisition runtime")
+                fail("hot reload configuration was not applied by the runtime")
+            if not reload_seen:
+                fail("hot reload configuration logs were not emitted")
             print("config runtime smoke: OK")
             return 0
         finally:

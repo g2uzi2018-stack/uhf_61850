@@ -43,6 +43,27 @@ std::vector<std::uint8_t> request(
     };
 }
 
+std::uint16_t unused_port() {
+    const int descriptor = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (descriptor < 0) {
+        return 0U;
+    }
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    address.sin_port = 0U;
+    if (::bind(descriptor, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) < 0) {
+        ::close(descriptor);
+        return 0U;
+    }
+    socklen_t length = sizeof(address);
+    const bool available =
+        ::getsockname(descriptor, reinterpret_cast<sockaddr*>(&address), &length) == 0;
+    const std::uint16_t port = available ? ntohs(address.sin_port) : 0U;
+    ::close(descriptor);
+    return port;
+}
+
 }  // namespace
 
 int main() {
@@ -153,6 +174,64 @@ int main() {
         return 1;
     }
     ::close(client_fd);
+
+    const std::uint16_t reloaded_port = unused_port();
+    uhf::modbus::ModbusTcpOptions reloaded_options = options;
+    reloaded_options.port = reloaded_port;
+    reloaded_options.unit_id = 8U;
+    if (!expect(reloaded_port != 0U, "unable to reserve reload port") ||
+        !expect(server.update_options(reloaded_options), "valid TCP options reload")) {
+        server.stop();
+        server_thread.join();
+        return 1;
+    }
+    const auto reload_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (server.bound_port() != reloaded_port &&
+           std::chrono::steady_clock::now() < reload_deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    if (!expect(server.bound_port() == reloaded_port, "TCP endpoint was not rebound")) {
+        server.stop();
+        server_thread.join();
+        return 1;
+    }
+    const int reloaded_client_fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (!expect(reloaded_client_fd >= 0, "unable to create reloaded client socket")) {
+        server.stop();
+        server_thread.join();
+        return 1;
+    }
+    address.sin_port = htons(reloaded_port);
+    if (!expect(
+            ::connect(
+                reloaded_client_fd,
+                reinterpret_cast<const sockaddr*>(&address),
+                sizeof(address)) == 0,
+            "unable to connect reloaded TCP endpoint")) {
+        ::close(reloaded_client_fd);
+        server.stop();
+        server_thread.join();
+        return 1;
+    }
+    const std::vector<std::uint8_t> reloaded_request =
+        request(5U, 8U, 0x04U, 10001U, 1U);
+    if (!expect(
+            ::send(
+                reloaded_client_fd,
+                reloaded_request.data(),
+                reloaded_request.size(),
+                0) == static_cast<ssize_t>(reloaded_request.size()),
+            "reloaded TCP request") ||
+        !expect(
+            ::recv(reloaded_client_fd, response.data(), response.size(), 0) == 11,
+            "reloaded TCP response") ||
+        !expect(response[6] == 8U && response[7] == 0x04U, "reloaded TCP response unit")) {
+        ::close(reloaded_client_fd);
+        server.stop();
+        server_thread.join();
+        return 1;
+    }
+    ::close(reloaded_client_fd);
 
     uhf::acquisition::SnapshotStore empty_store;
     uhf::modbus::ModbusTcpServer empty_server(empty_store, options);

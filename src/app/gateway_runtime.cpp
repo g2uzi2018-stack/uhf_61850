@@ -201,6 +201,24 @@ void GatewayRuntime::apply_runtime_configuration(std::uint64_t& applied_version)
     options_.acquisition_options.max_retries = configured.values.acquisition_max_retries;
     options_.poll_interval = std::chrono::milliseconds(configured.values.acquisition_period_ms);
     acquisition_engine_->update_options(options_.acquisition_options);
+    if (modbus_tcp_server_) {
+        modbus::ModbusTcpOptions modbus_options;
+        modbus_options.bind_address = options_.reload_modbus_tcp_endpoint
+            ? configured.values.modbus_tcp_bind
+            : options_.modbus_tcp_bind;
+        modbus_options.port = options_.reload_modbus_tcp_endpoint
+            ? configured.values.modbus_tcp_port
+            : options_.modbus_tcp_port;
+        modbus_options.unit_id = configured.values.modbus_tcp_unit_id;
+        modbus_options.max_connections = 16U;
+        if (!modbus_tcp_server_->update_options(std::move(modbus_options))) {
+            logger_.log(
+                logging::Level::error,
+                logging::Component::modbus_tcp,
+                "configuration.reload_failed",
+                "invalid Modbus TCP settings were rejected");
+        }
+    }
     applied_version = configured.version;
     logger_.log(
         logging::Level::info,

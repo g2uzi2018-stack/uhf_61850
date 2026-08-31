@@ -257,6 +257,9 @@ int main(int argc, char* argv[]) {
                 runtime_options.poll_interval = std::chrono::milliseconds(
                     configured.values.acquisition_period_ms);
                 runtime_options.start_modbus_tcp = true;
+                runtime_options.reload_modbus_tcp_endpoint =
+                    options.modbus_tcp_bind == configured.values.modbus_tcp_bind &&
+                    options.modbus_tcp_port == configured.values.modbus_tcp_port;
                 runtime_options.modbus_tcp_bind = options.modbus_tcp_bind;
                 runtime_options.modbus_tcp_port = options.modbus_tcp_port;
                 runtime_options.modbus_tcp_unit_id = configured.values.modbus_tcp_unit_id;

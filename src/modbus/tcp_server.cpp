@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <limits>
 #include <netinet/in.h>
+#include <optional>
 #include <poll.h>
 #include <stdexcept>
 #include <sys/socket.h>
@@ -67,6 +68,45 @@ struct Client {
     std::vector<std::uint8_t> output;
 };
 
+struct Listener {
+    int file_descriptor{-1};
+    std::uint16_t port{0U};
+};
+
+std::optional<Listener> open_listener(const uhf::modbus::ModbusTcpOptions& options) {
+    const int server_fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) {
+        return std::nullopt;
+    }
+    if (!set_nonblocking(server_fd)) {
+        ::close(server_fd);
+        return std::nullopt;
+    }
+    const int reuse = 1;
+    if (::setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+        ::close(server_fd);
+        return std::nullopt;
+    }
+
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(options.port);
+    if (::inet_pton(AF_INET, options.bind_address.c_str(), &address.sin_addr) != 1 ||
+        ::bind(server_fd, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) < 0 ||
+        ::listen(server_fd, 16) < 0) {
+        ::close(server_fd);
+        return std::nullopt;
+    }
+    sockaddr_in bound_address{};
+    socklen_t bound_length = sizeof(bound_address);
+    if (::getsockname(
+            server_fd, reinterpret_cast<sockaddr*>(&bound_address), &bound_length) < 0) {
+        ::close(server_fd);
+        return std::nullopt;
+    }
+    return Listener{server_fd, ntohs(bound_address.sin_port)};
+}
+
 }  // namespace
 
 namespace uhf::modbus {
@@ -81,6 +121,7 @@ ModbusTcpServer::ModbusTcpServer(
 
 std::vector<std::uint8_t> ModbusTcpServer::handle_request(
     const std::vector<std::uint8_t>& request) const {
+    const ModbusTcpOptions current_options = configuration().first;
     if (request.size() < kMbapHeaderBytes + 6U || request.size() > kMaximumAduBytes ||
         read_u16(request.data() + 2U) != 0U ||
         static_cast<std::size_t>(read_u16(request.data() + 4U)) + kMbapHeaderBytes !=
@@ -90,7 +131,7 @@ std::vector<std::uint8_t> ModbusTcpServer::handle_request(
 
     const std::uint8_t unit_id = request[6];
     const std::uint8_t function = request[7];
-    if (unit_id != options_.unit_id) {
+    if (unit_id != current_options.unit_id) {
         return exception_response(request, function, kGatewayTargetFailed);
     }
     if (function != kReadInputRegisters) {
@@ -136,41 +177,51 @@ std::vector<std::uint8_t> ModbusTcpServer::handle_request(
     return response;
 }
 
-int ModbusTcpServer::run() {
-    const int server_fd = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) {
-        return 1;
-    }
-    if (!set_nonblocking(server_fd)) {
-        ::close(server_fd);
-        return 1;
-    }
-    const int reuse = 1;
-    if (::setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
-        ::close(server_fd);
-        return 1;
-    }
+std::pair<ModbusTcpOptions, std::uint64_t> ModbusTcpServer::configuration() const {
+    std::lock_guard<std::mutex> lock(options_mutex_);
+    return {options_, options_generation_};
+}
 
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_port = htons(options_.port);
-    if (::inet_pton(AF_INET, options_.bind_address.c_str(), &address.sin_addr) != 1 ||
-        ::bind(server_fd, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) < 0 ||
-        ::listen(server_fd, 16) < 0) {
-        ::close(server_fd);
+int ModbusTcpServer::run() {
+    const auto initial_configuration = configuration();
+    const std::optional<Listener> initial_listener =
+        open_listener(initial_configuration.first);
+    if (!initial_listener) {
         return 1;
     }
-    sockaddr_in bound_address{};
-    socklen_t bound_length = sizeof(bound_address);
-    if (::getsockname(
-            server_fd, reinterpret_cast<sockaddr*>(&bound_address), &bound_length) < 0) {
-        ::close(server_fd);
-        return 1;
-    }
-    bound_port_.store(ntohs(bound_address.sin_port));
+    int server_fd = initial_listener->file_descriptor;
+    bound_port_.store(initial_listener->port);
+    ModbusTcpOptions active_options = initial_configuration.first;
+    std::uint64_t applied_generation = initial_configuration.second;
 
     std::vector<Client> clients;
     while (!stop_requested_.load()) {
+        const auto current_configuration = configuration();
+        if (current_configuration.second != applied_generation) {
+            const ModbusTcpOptions& requested_options = current_configuration.first;
+            const bool endpoint_changed =
+                requested_options.bind_address != active_options.bind_address ||
+                requested_options.port != active_options.port;
+            if (!endpoint_changed) {
+                active_options = requested_options;
+                applied_generation = current_configuration.second;
+            } else {
+                const std::optional<Listener> replacement =
+                    open_listener(requested_options);
+                if (replacement) {
+                    for (const Client& client : clients) {
+                        ::close(client.file_descriptor);
+                    }
+                    clients.clear();
+                    ::close(server_fd);
+                    server_fd = replacement->file_descriptor;
+                    bound_port_.store(replacement->port);
+                    active_options = requested_options;
+                    applied_generation = current_configuration.second;
+                }
+            }
+        }
+
         std::vector<pollfd> descriptors;
         descriptors.reserve(clients.size() + 1U);
         descriptors.push_back(pollfd{server_fd, POLLIN, 0});
@@ -250,7 +301,7 @@ int ModbusTcpServer::run() {
         }
 
         if ((descriptors[0].revents & POLLIN) != 0) {
-            while (clients.size() < options_.max_connections) {
+            while (clients.size() < active_options.max_connections) {
                 const int client_fd = ::accept(server_fd, nullptr, nullptr);
                 if (client_fd < 0) {
                     if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
@@ -264,7 +315,7 @@ int ModbusTcpServer::run() {
                 }
                 clients.push_back(Client{client_fd, {}, {}});
             }
-            if (clients.size() >= options_.max_connections) {
+            if (clients.size() >= active_options.max_connections) {
                 const int extra_fd = ::accept(server_fd, nullptr, nullptr);
                 if (extra_fd >= 0) {
                     ::close(extra_fd);
@@ -279,6 +330,17 @@ int ModbusTcpServer::run() {
     ::close(server_fd);
     bound_port_.store(0);
     return 0;
+}
+
+bool ModbusTcpServer::update_options(ModbusTcpOptions options) {
+    if (options.unit_id == 0U || options.unit_id > 247U ||
+        options.max_connections == 0U) {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(options_mutex_);
+    options_ = std::move(options);
+    ++options_generation_;
+    return true;
 }
 
 void ModbusTcpServer::stop() noexcept {
