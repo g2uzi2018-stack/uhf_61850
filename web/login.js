@@ -4,6 +4,11 @@
     var form = document.getElementById("login-form");
     var error = document.getElementById("login-error");
     var button = form.querySelector("button[type=submit]");
+    var transportFootnote = document.getElementById("transport-footnote");
+
+    if (window.location.protocol === "https:") {
+        transportFootnote.textContent = "当前使用 HTTPS，登录请求通过加密链路传输；首次接入请核对设备证书。";
+    }
 
     function responseMessage(response, fallback) {
         return response.json().then(function (payload) {

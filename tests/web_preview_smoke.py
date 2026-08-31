@@ -29,7 +29,7 @@ def main() -> int:
     login_javascript = (web_dir / "login.js").read_text(encoding="utf-8")
     stylesheet = (web_dir / "styles.css").read_text(encoding="utf-8")
 
-    for marker in ("用户管理", "本地开发模式", "admin", 'id="password-modal"', 'id="password-form"'):
+    for marker in ("用户管理", "本地开发模式", "HTTPS", "transport-badge", "admin", 'id="password-modal"', 'id="password-form"'):
         if marker not in html:
             fail(f"index.html is missing {marker!r}")
     for marker in ("登录控制台", "首次登录", 'id="login-form"'):
@@ -44,7 +44,7 @@ def main() -> int:
     for marker in ("drawPrpd", "drawPrps", "3600", "api/v1/snapshot/latest", "api/v1/health", "WebSocket"):
         if marker not in overview_javascript:
             fail(f"overview.js is missing {marker!r}")
-    for marker in ("api/v1/session", "same-origin", "登录尝试过于频繁"):
+    for marker in ("api/v1/session", "same-origin", "登录尝试过于频繁", "location.protocol"):
         if marker not in login_javascript:
             fail(f"login.js is missing {marker!r}")
     for marker in (".sidebar", ".panel", "@media", ".modal"):

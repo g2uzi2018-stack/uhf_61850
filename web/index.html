@@ -14,7 +14,7 @@
                 <div class="brand-mark">U</div>
                 <div class="brand-copy"><strong>UHF 61850</strong><span>局放监测管理机</span></div>
             </div>
-            <div class="preview-chip"><span class="chip-dot"></span>本地开发模式</div>
+            <div class="preview-chip"><span class="chip-dot"></span><span id="environment-label">本地开发模式</span></div>
             <nav class="primary-nav" aria-label="主导航">
                 <a class="nav-item" href="/overview.html"><span class="nav-icon">⌂</span><span>总览</span></a>
                 <a class="nav-item" href="/settings.html"><span class="nav-icon">◈</span><span>采集与转发</span></a>
@@ -25,7 +25,7 @@
                 <a class="nav-item active" href="/" aria-current="page"><span class="nav-icon">♙</span><span>用户管理</span></a>
                 <a class="nav-item" href="/maintenance.html"><span class="nav-icon">⚙</span><span>系统维护</span></a>
             </nav>
-            <div class="sidebar-footer"><span>版本 0.1.0</span><span>开发机预览</span></div>
+            <div class="sidebar-footer"><span>版本 0.1.0</span><span id="environment-footer">开发机预览</span></div>
         </aside>
 
         <main class="main-content">
@@ -46,13 +46,13 @@
                 <div class="breadcrumb"><span>安全与维护</span><b>/</b><strong>用户管理</strong></div>
                 <div class="page-heading">
                     <div><div class="heading-kicker">SECURITY &amp; ACCESS</div><h1>用户管理</h1><p>管理访问设备 Web 控制台的账号、密码策略与登录会话。</p></div>
-                    <span class="heading-badge dev-badge"><i></i>开发模式</span>
+                    <span class="heading-badge dev-badge" id="transport-badge"><i></i>开发模式</span>
                 </div>
 
                 <div class="preview-notice">
                     <div class="notice-icon">!</div>
-                    <div><strong>这是开发环境界面</strong><p>登录、服务端会话和密码接口已经接入；当前使用 HTTP 开发模式，请只在可信局域网中访问。</p></div>
-                    <span>DEV SERVER</span>
+                    <div><strong id="transport-notice-title">这是开发环境界面</strong><p id="transport-notice">登录、服务端会话和密码接口已经接入；当前使用 HTTP 开发模式，请只在可信局域网中访问。</p></div>
+                    <span id="transport-notice-label">DEV SERVER</span>
                 </div>
 
                 <div class="dashboard-grid">
@@ -73,7 +73,7 @@
                         <div class="security-list">
                             <div class="security-item"><i class="purple">⌁</i><div><strong>密码存储</strong><span>PBKDF2-HMAC-SHA256 · 随机盐</span></div><b>✓</b></div>
                             <div class="security-item"><i class="blue">◷</i><div><strong>会话有效期</strong><span>服务端会话 · 30 分钟滑动有效期</span></div><b>✓</b></div>
-                            <div class="security-item"><i class="teal">⌁</i><div><strong>传输方式</strong><span>HTTP 开发模式 · 明文链路，仅限可信局域网</span></div><b>!</b></div>
+                            <div class="security-item"><i class="teal">⌁</i><div><strong>传输方式</strong><span id="transport-description">HTTP 开发模式 · 明文链路，仅限可信局域网</span></div><b id="transport-status">!</b></div>
                         </div>
                     </section>
                 </div>
@@ -93,12 +93,12 @@
                 <section class="panel checklist-panel">
                     <div class="panel-header"><div><h2>首次接入检查</h2><p>部署到设备后建议完成以下安全操作</p></div><span class="progress-label">1 / 3 已完成</span></div>
                     <div class="checklist">
-                        <div class="checklist-item"><i></i><div><strong>使用 HTTPS 访问</strong><span>正式 HTTPS 服务将在证书与部署增量中接入</span></div><em class="pending">待完成</em></div>
+                        <div class="checklist-item" id="https-check"><i id="https-check-icon"></i><div><strong>使用 HTTPS 访问</strong><span id="https-check-description">正式产品模式默认启用 HTTPS；本地预览使用显式 HTTP 恢复模式</span></div><em class="pending" id="https-check-status">待完成</em></div>
                         <div class="checklist-item"><i id="password-check-icon"></i><div><strong>修改初始管理员密码</strong><span>首次登录后必须设置新的强密码</span></div><button class="small-text-button" id="password-check-status" type="button" data-action="change-password">去设置</button></div>
                         <div class="checklist-item"><i></i><div><strong>确认设备证书</strong><span>替换自签名证书并核对设备名称与 SAN</span></div><em class="pending">待完成</em></div>
                     </div>
                 </section>
-                <footer class="page-footer"><span>UHF 61850 局放监测管理机</span><span>本地开发服务 · v0.1.0</span></footer>
+                <footer class="page-footer"><span>UHF 61850 局放监测管理机</span><span id="environment-footer-main">本地开发服务 · v0.1.0</span></footer>
             </div>
         </main>
     </div>

@@ -7,6 +7,30 @@
     var toast = document.getElementById("toast");
     var csrfToken = "";
     var toastTimer;
+    var secureTransport = window.location.protocol === "https:";
+    var transportPrefix = secureTransport ? "产品模式" : "开发模式";
+
+    function configureTransportPresentation() {
+        if (!secureTransport) {
+            return;
+        }
+        document.getElementById("environment-label").textContent = "HTTPS 产品模式";
+        document.getElementById("environment-footer").textContent = "设备管理服务";
+        document.getElementById("environment-footer-main").textContent = "HTTPS 管理服务 · v0.1.0";
+        document.getElementById("runtime-status").textContent = "产品模式 · 读取状态中";
+        document.getElementById("transport-badge").classList.remove("dev-badge");
+        document.getElementById("transport-badge").lastChild.textContent = "HTTPS 已启用";
+        document.getElementById("transport-notice-title").textContent = "这是产品管理界面";
+        document.getElementById("transport-notice").textContent = "当前使用 HTTPS，登录会话和密码通过加密链路传输；首次部署请核对设备证书与 SAN。";
+        document.getElementById("transport-notice-label").textContent = "PRODUCT SERVER";
+        document.getElementById("transport-description").textContent = "HTTPS 产品模式 · 加密链路";
+        document.getElementById("transport-status").textContent = "✓";
+        document.getElementById("https-check").classList.add("completed");
+        document.getElementById("https-check-icon").textContent = "✓";
+        document.getElementById("https-check-status").classList.remove("pending");
+        document.getElementById("https-check-status").textContent = "已完成";
+        document.getElementById("https-check-description").textContent = "产品入口已启用 HTTPS；仍需核对设备证书与 SAN";
+    }
 
     function showToast(message) {
         toast.textContent = message;
@@ -99,10 +123,10 @@
             }
             var acquisition = health.acquisition || {};
             var status = acquisition.status === "up" ? "采集正常" : acquisition.status === "degraded" ? "采集降级" : "采集离线";
-            document.getElementById("runtime-status").textContent = "开发模式 · " + status;
+            document.getElementById("runtime-status").textContent = transportPrefix + " · " + status;
             document.getElementById("runtime-status-dot").className = "status-dot " + (acquisition.status || "down");
         }).catch(function () {
-            document.getElementById("runtime-status").textContent = "开发模式 · 状态不可用";
+            document.getElementById("runtime-status").textContent = transportPrefix + " · 状态不可用";
         });
     }
 
@@ -201,6 +225,7 @@
         });
     });
 
+    configureTransportPresentation();
     loadSession();
     loadRuntimeStatus();
     window.setInterval(loadRuntimeStatus, 6000);
