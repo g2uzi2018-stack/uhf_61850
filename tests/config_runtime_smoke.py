@@ -57,7 +57,7 @@ def main() -> int:
         "modbus_tcp_unit_id": 4,
         "modbus_tcp_port": configured_tcp_port,
         "web_port": configured_web_port,
-        "tls_enabled": False,
+        "tls_enabled": True,
         "iec_enabled": False,
         "iec_port": free_port(),
         "iec_ied_name": "UHFPD2",

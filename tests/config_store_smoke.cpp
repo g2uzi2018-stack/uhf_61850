@@ -31,7 +31,7 @@ const char* valid_object() {
         "modbus_tcp_unit_id":4,
         "modbus_tcp_port":15021,
         "web_port":8081,
-        "tls_enabled":false,
+        "tls_enabled":true,
         "iec_enabled":false,
         "iec_port":15102,
         "iec_ied_name":"UHFPD2",
@@ -66,13 +66,26 @@ int main() {
         if (!expect(invalid == uhf::config::UpdateResult::invalid, "invalid value rejected")) {
             return 1;
         }
+        const std::string insecure_object = [] {
+            std::string value = valid_object();
+            const std::string enabled = "\"tls_enabled\":true";
+            const std::size_t position = value.find(enabled);
+            if (position != std::string::npos) {
+                value.replace(position, enabled.size(), "\"tls_enabled\":false");
+            }
+            return value;
+        }();
+        const uhf::config::UpdateResult insecure = store.update(1U, insecure_object);
+        if (!expect(insecure == uhf::config::UpdateResult::invalid, "HTTP-only config rejected")) {
+            return 1;
+        }
         const uhf::config::UpdateResult updated = store.update(1U, valid_object());
         const uhf::config::Snapshot changed = store.snapshot();
         if (!expect(updated == uhf::config::UpdateResult::updated, "valid update") ||
             !expect(changed.version == 2U, "version increment") ||
             !expect(changed.values.rtu_unit_id == 3U, "updated RTU unit") ||
             !expect(changed.values.modbus_tcp_unit_id == 4U, "updated TCP unit") ||
-            !expect(changed.values.tls_enabled == false, "updated TLS flag") ||
+            !expect(changed.values.tls_enabled, "TLS remains enabled") ||
             !expect(changed.values.iec_enabled == false, "updated IEC flag") ||
             !expect(changed.values.iec_port == 15102U, "updated IEC port") ||
             !expect(std::filesystem::file_size(path) < 16U * 1024U, "updated file bound")) {
