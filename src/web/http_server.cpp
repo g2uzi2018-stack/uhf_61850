@@ -890,6 +890,35 @@ std::string json_escape(std::string_view value) {
     return result;
 }
 
+constexpr std::string_view kConfigSchemaJson = R"json({
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "title":"UHF 61850 gateway configuration",
+  "type":"object",
+  "additionalProperties":false,
+  "properties":{
+    "version":{"type":"integer","minimum":1,"readOnly":true},
+    "acquisition_device":{"type":"string","const":"/dev/ttyS1"},
+    "acquisition_slave_id":{"type":"integer","minimum":1,"maximum":247},
+    "acquisition_period_ms":{"type":"integer","minimum":6000,"maximum":60000},
+    "acquisition_response_timeout_ms":{"type":"integer","minimum":50,"maximum":180},
+    "acquisition_max_retries":{"type":"integer","minimum":0,"maximum":3},
+    "rtu_device":{"type":"string","const":"/dev/ttyS4"},
+    "rtu_unit_id":{"type":"integer","minimum":1,"maximum":247},
+    "modbus_tcp_bind":{"type":"string","format":"ipv4"},
+    "modbus_tcp_unit_id":{"type":"integer","minimum":1,"maximum":247},
+    "modbus_tcp_port":{"type":"integer","minimum":1,"maximum":65535},
+    "web_port":{"type":"integer","minimum":1024,"maximum":65535},
+    "tls_enabled":{"type":"boolean","const":true},
+    "iec_enabled":{"type":"boolean"},
+    "iec_port":{"type":"integer","minimum":1,"maximum":65535},
+    "iec_ied_name":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9_]{0,31}$"},
+    "storage_period_seconds":{"type":"integer","minimum":60,"maximum":86400},
+    "storage_retention_days":{"type":"integer","minimum":1,"maximum":30},
+    "storage_min_free_bytes":{"type":"integer","minimum":268435456}
+  },
+  "required":["acquisition_device","acquisition_slave_id","acquisition_period_ms","acquisition_response_timeout_ms","acquisition_max_retries","rtu_device","rtu_unit_id","modbus_tcp_bind","modbus_tcp_unit_id","modbus_tcp_port","web_port","tls_enabled","iec_enabled","iec_port","iec_ied_name","storage_period_seconds","storage_retention_days","storage_min_free_bytes"]
+})json";
+
 }  // namespace
 
 namespace uhf::web {
@@ -1623,6 +1652,25 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             std::string(event_export ? "latest-event.csv" : "latest-frame.csv") +
             "\r\nCache-Control: no-store\r\n";
         send_response(client_fd, tls, 200, "text/csv; charset=utf-8", *body, headers);
+        return false;
+    }
+
+    if (request_path == "/api/v1/config/schema") {
+        if (parsed.method != "GET") {
+            send_method_not_allowed(client_fd, tls, "GET");
+            return false;
+        }
+        const std::string token = session_cookie(parsed);
+        const auto iterator = sessions_.find(token);
+        if (token.empty() || iterator == sessions_.end() || iterator->second.expires_at <= now) {
+            if (iterator != sessions_.end()) {
+                sessions_.erase(iterator);
+            }
+            send_error(client_fd, tls, 401, "authentication required");
+            return false;
+        }
+        iterator->second.expires_at = now + kSessionLifetime;
+        send_json(client_fd, tls, 200, kConfigSchemaJson, "Cache-Control: no-store\r\n");
         return false;
     }
 

@@ -189,6 +189,12 @@ def main() -> int:
             )
             assert_status(config_status, 200, "config lookup")
             config_payload = json.loads(config_body)
+            schema_status, schema_body, _ = request(
+                port, "GET", "/api/v1/config/schema", headers={"Cookie": cookie}
+            )
+            assert_status(schema_status, 200, "config schema lookup")
+            if json.loads(schema_body).get("properties", {}).get("iec_port", {}).get("maximum") != 65535:
+                fail("configuration schema is incomplete")
             logs_status, logs_body, _ = request(
                 port, "GET", "/api/v1/logs", headers={"Cookie": cookie}
             )
