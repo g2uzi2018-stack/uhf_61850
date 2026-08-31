@@ -64,6 +64,41 @@ struct ParsedRequest {
     std::string body;
 };
 
+struct WebListener {
+    int file_descriptor{-1};
+    std::uint16_t port{0U};
+};
+
+std::optional<WebListener> open_web_listener(
+    std::string_view bind_address, std::uint16_t port) {
+    const int server_fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) {
+        return std::nullopt;
+    }
+    const int reuse = 1;
+    if (::setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+        ::close(server_fd);
+        return std::nullopt;
+    }
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+    if (::inet_pton(AF_INET, std::string(bind_address).c_str(), &address.sin_addr) != 1 ||
+        ::bind(server_fd, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) < 0 ||
+        ::listen(server_fd, kListenBacklog) < 0) {
+        ::close(server_fd);
+        return std::nullopt;
+    }
+    sockaddr_in bound_address{};
+    socklen_t bound_length = sizeof(bound_address);
+    if (::getsockname(
+            server_fd, reinterpret_cast<sockaddr*>(&bound_address), &bound_length) < 0) {
+        ::close(server_fd);
+        return std::nullopt;
+    }
+    return WebListener{server_fd, ntohs(bound_address.sin_port)};
+}
+
 int hex_value(char value) {
     if (value >= '0' && value <= '9') {
         return value - '0';
@@ -1035,7 +1070,8 @@ HttpServer::HttpServer(
     TlsFiles tls_files,
     logging::Logger* logger,
     std::filesystem::path data_root,
-    privileged::UnixSocketClient* network_client)
+    privileged::UnixSocketClient* network_client,
+    bool reload_web_endpoint)
     : document_root_(std::move(document_root)),
       bind_address_(std::move(bind_address)),
       port_(port),
@@ -1046,7 +1082,8 @@ HttpServer::HttpServer(
       tls_enabled_(tls_enabled),
       logger_(logger),
       data_root_(std::move(data_root)),
-      network_client_(network_client) {
+      network_client_(network_client),
+      reload_web_endpoint_(reload_web_endpoint) {
     std::error_code error;
     document_root_ = std::filesystem::weakly_canonical(document_root_, error);
     if (error || !std::filesystem::is_directory(document_root_, error) || error) {
@@ -1297,50 +1334,22 @@ std::optional<std::string> HttpServer::latest_event_csv() const {
 }
 
 int HttpServer::run() {
-    const int server_fd = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) {
-        std::perror("socket");
+    const std::optional<WebListener> initial_listener =
+        open_web_listener(bind_address_, port_);
+    if (!initial_listener) {
+        std::perror("unable to open web listener");
         return 1;
     }
-
-    const int reuse = 1;
-    if (::setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
-        std::perror("setsockopt");
-        ::close(server_fd);
-        return 1;
-    }
-
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_port = htons(port_);
-    if (::inet_pton(AF_INET, bind_address_.c_str(), &address.sin_addr) != 1) {
-        std::fprintf(stderr, "bind address is not a valid IPv4 address: %s\n", bind_address_.c_str());
-        ::close(server_fd);
-        return 2;
-    }
-    if (::bind(server_fd, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) < 0) {
-        std::perror("bind");
-        ::close(server_fd);
-        return 1;
-    }
-    if (::listen(server_fd, kListenBacklog) < 0) {
-        std::perror("listen");
-        ::close(server_fd);
-        return 1;
-    }
-
-    sockaddr_in bound_address{};
-    socklen_t bound_length = sizeof(bound_address);
-    if (::getsockname(
-            server_fd, reinterpret_cast<sockaddr*>(&bound_address), &bound_length) < 0) {
-        std::perror("getsockname");
-        ::close(server_fd);
-        return 1;
+    int server_fd = initial_listener->file_descriptor;
+    port_ = initial_listener->port;
+    std::uint64_t applied_config_version = 0U;
+    if (reload_web_endpoint_ && config_store_ != nullptr) {
+        applied_config_version = config_store_->snapshot().version;
     }
 
     std::cout << uhf::app::kProductName << " web listening on "
               << (tls_enabled_ ? "https://" : "http://") << bind_address_ << ":"
-              << ntohs(bound_address.sin_port) << "/\n";
+              << port_ << "/\n";
     std::error_code error;
     if (std::filesystem::exists(auth_store_.bootstrap_password_path(), error) && !error) {
         std::cout << "bootstrap password file: " << auth_store_.bootstrap_password_path() << "\n";
@@ -1350,6 +1359,39 @@ int HttpServer::run() {
     auto next_watchdog = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 
     while (true) {
+        if (reload_web_endpoint_ && config_store_ != nullptr) {
+            const config::Snapshot configured = config_store_->snapshot();
+            if (configured.version != applied_config_version) {
+                if (configured.values.web_port == port_) {
+                    applied_config_version = configured.version;
+                } else {
+                    const std::optional<WebListener> replacement =
+                        open_web_listener(bind_address_, configured.values.web_port);
+                    if (replacement) {
+                        ::close(server_fd);
+                        server_fd = replacement->file_descriptor;
+                        port_ = replacement->port;
+                        applied_config_version = configured.version;
+                        if (logger_ != nullptr) {
+                            logger_->log(
+                                logging::Level::info,
+                                logging::Component::config,
+                                "web.endpoint_reloaded",
+                                "Web endpoint reloaded",
+                                {logging::Field{"port", std::to_string(port_)}});
+                        }
+                    } else if (logger_ != nullptr) {
+                        logger_->log(
+                            logging::Level::error,
+                            logging::Component::config,
+                            "web.endpoint_reload_failed",
+                            "Web endpoint reload failed; previous endpoint retained",
+                            {logging::Field{
+                                "port", std::to_string(configured.values.web_port)}});
+                    }
+                }
+            }
+        }
         pollfd listener{server_fd, POLLIN, 0};
         const int poll_result = ::poll(&listener, 1, 1000);
         const auto now = std::chrono::steady_clock::now();

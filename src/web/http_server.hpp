@@ -42,7 +42,8 @@ public:
         TlsFiles tls_files = {},
         logging::Logger* logger = nullptr,
         std::filesystem::path data_root = {},
-        privileged::UnixSocketClient* network_client = nullptr);
+        privileged::UnixSocketClient* network_client = nullptr,
+        bool reload_web_endpoint = false);
 
     int run();
 
@@ -84,6 +85,7 @@ private:
     logging::Logger* logger_{nullptr};
     std::filesystem::path data_root_;
     privileged::UnixSocketClient* network_client_{nullptr};
+    bool reload_web_endpoint_{false};
     health::Aggregator health_aggregator_;
     std::unordered_map<std::string, Session> sessions_;
     std::unordered_map<std::string, LoginFailures> login_failures_;

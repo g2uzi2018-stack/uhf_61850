@@ -49,6 +49,9 @@ def main() -> int:
     reloaded_tcp_port = free_port()
     while reloaded_tcp_port in (configured_web_port, configured_tcp_port):
         reloaded_tcp_port = free_port()
+    reloaded_web_port = free_port()
+    while reloaded_web_port in (configured_web_port, configured_tcp_port, reloaded_tcp_port):
+        reloaded_web_port = free_port()
     configuration = {
         "version": 7,
         "acquisition_device": "/dev/ttyS1",
@@ -142,6 +145,7 @@ def main() -> int:
             update["acquisition_response_timeout_ms"] = 120
             update["acquisition_max_retries"] = 1
             update["modbus_tcp_port"] = reloaded_tcp_port
+            update["web_port"] = reloaded_web_port
             update["storage_period_seconds"] = 60
             update["storage_retention_days"] = 3
             update_status, update_body, _ = request(
@@ -161,11 +165,25 @@ def main() -> int:
             if json.loads(update_body).get("version") != 8:
                 fail(f"hot reload configuration version mismatch: {update_body!r}")
 
+            web_reloaded = False
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline:
+                try:
+                    status, _, _ = request(reloaded_web_port, "GET", "/healthz")
+                    if status == 200:
+                        web_reloaded = True
+                        break
+                except OSError:
+                    pass
+                time.sleep(0.1)
+            if not web_reloaded:
+                fail("Web endpoint was not rebound after configuration update")
+
             reload_seen = False
             deadline = time.monotonic() + 9
             while time.monotonic() < deadline:
                 logs_status, logs_body, _ = request(
-                    configured_web_port, "GET", "/api/v1/logs", headers={"Cookie": cookie}
+                    reloaded_web_port, "GET", "/api/v1/logs", headers={"Cookie": cookie}
                 )
                 if logs_status == 200:
                     entries = json.loads(logs_body).get("entries", [])

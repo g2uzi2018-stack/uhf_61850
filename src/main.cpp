@@ -302,7 +302,8 @@ int main(int argc, char* argv[]) {
                 uhf::web::TlsFiles{options.tls_certificate, options.tls_private_key},
                 &logger,
                 options.data_directory,
-                &network_client);
+                &network_client,
+                options.port == configured.values.web_port);
             const int result = server.run();
             if (runtime) {
                 runtime->stop();
