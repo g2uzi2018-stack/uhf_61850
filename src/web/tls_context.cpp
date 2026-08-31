@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <fcntl.h>
 #include <filesystem>
+#include <fstream>
 #include <openssl/bio.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
@@ -12,6 +13,7 @@
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <sys/stat.h>
@@ -137,6 +139,116 @@ private:
     BIO* value_;
 };
 
+SSL_CTX* create_context() {
+    SSL_CTX* context = SSL_CTX_new(TLS_server_method());
+    if (context == nullptr || SSL_CTX_set_min_proto_version(context, TLS1_2_VERSION) != 1 ||
+        SSL_CTX_set_options(context, SSL_OP_NO_COMPRESSION) == 0 ||
+        SSL_CTX_set_cipher_list(context, "HIGH:!aNULL:!eNULL:!MD5:!RC4:!3DES") != 1) {
+        SSL_CTX_free(context);
+        return nullptr;
+    }
+    SSL_CTX_set_verify(context, SSL_VERIFY_NONE, nullptr);
+    SSL_CTX_set_session_cache_mode(context, SSL_SESS_CACHE_OFF);
+    return context;
+}
+
+bool valid_certificate(X509* certificate, EVP_PKEY* key) {
+    if (certificate == nullptr || key == nullptr || X509_check_private_key(certificate, key) != 1 ||
+        X509_cmp_current_time(X509_get_notBefore(certificate)) > 0 ||
+        X509_cmp_current_time(X509_get_notAfter(certificate)) < 0 ||
+        X509_get_ext_by_NID(certificate, NID_subject_alt_name, -1) < 0) {
+        return false;
+    }
+    return true;
+}
+
+SSL_CTX* context_from_pem(std::string_view certificate_pem, std::string_view private_key_pem) {
+    if (certificate_pem.empty() || private_key_pem.empty() ||
+        certificate_pem.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()) ||
+        private_key_pem.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+        return nullptr;
+    }
+    BioPointerGuard certificate_bio(BIO_new_mem_buf(
+        certificate_pem.data(), static_cast<int>(certificate_pem.size())));
+    BioPointerGuard key_bio(BIO_new_mem_buf(
+        private_key_pem.data(), static_cast<int>(private_key_pem.size())));
+    if (certificate_bio.get() == nullptr || key_bio.get() == nullptr) {
+        return nullptr;
+    }
+    X509PointerGuard certificate(PEM_read_bio_X509(certificate_bio.get(), nullptr, nullptr, nullptr));
+    OpenSslPointerGuard key(PEM_read_bio_PrivateKey(key_bio.get(), nullptr, nullptr, nullptr));
+    if (!valid_certificate(certificate.get(), key.get())) {
+        return nullptr;
+    }
+    SSL_CTX* context = create_context();
+    if (context == nullptr || SSL_CTX_use_certificate(context, certificate.get()) != 1 ||
+        SSL_CTX_use_PrivateKey(context, key.get()) != 1 || SSL_CTX_check_private_key(context) != 1) {
+        SSL_CTX_free(context);
+        return nullptr;
+    }
+    return context;
+}
+
+SSL_CTX* context_from_files(const uhf::web::TlsFiles& files) {
+    SSL_CTX* context = create_context();
+    if (context == nullptr ||
+        SSL_CTX_use_certificate_chain_file(context, files.certificate.c_str()) != 1 ||
+        SSL_CTX_use_PrivateKey_file(context, files.private_key.c_str(), SSL_FILETYPE_PEM) != 1 ||
+        SSL_CTX_check_private_key(context) != 1) {
+        SSL_CTX_free(context);
+        return nullptr;
+    }
+    return context;
+}
+
+std::string read_bounded_file(const std::filesystem::path& path) {
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(path, error) || error ||
+        std::filesystem::file_size(path, error) > 128U * 1024U || error) {
+        throw std::runtime_error("unable to read TLS backup");
+    }
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        throw std::runtime_error("unable to read TLS backup");
+    }
+    std::string contents{
+        std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    if (input.bad() || contents.size() > 128U * 1024U) {
+        throw std::runtime_error("unable to read TLS backup");
+    }
+    return contents;
+}
+
+void backup_file(const std::filesystem::path& path) {
+    const std::string contents = read_bounded_file(path);
+    write_atomic(
+        path.string() + ".previous",
+        reinterpret_cast<const unsigned char*>(contents.data()), contents.size());
+}
+
+void remove_file(const std::filesystem::path& path) noexcept {
+    if (::unlink(path.c_str()) == 0 || errno == ENOENT) {
+        try {
+            sync_parent(path);
+        } catch (...) {
+        }
+    }
+}
+
+void restore_backup(const uhf::web::TlsFiles& files) noexcept {
+    try {
+        const std::string certificate = read_bounded_file(files.certificate.string() + ".previous");
+        const std::string private_key = read_bounded_file(files.private_key.string() + ".previous");
+        write_atomic(
+            files.certificate,
+            reinterpret_cast<const unsigned char*>(certificate.data()), certificate.size());
+        write_atomic(
+            files.private_key,
+            reinterpret_cast<const unsigned char*>(private_key.data()), private_key.size());
+    } catch (...) {
+    }
+}
+
 void add_extension(X509* certificate, int nid, const char* value) {
     X509V3_CTX context;
     X509V3_set_ctx_nodb(&context);
@@ -255,23 +367,11 @@ TlsContext::TlsContext(TlsFiles files) : files_(std::move(files)) {
                                                    files_.certificate.parent_path());
     ensure_certificate(files_);
 
-    context_ = SSL_CTX_new(TLS_server_method());
+    context_ = context_from_files(files_);
     if (context_ == nullptr) {
-        throw std::runtime_error(openssl_error("unable to create TLS context"));
-    }
-    if (SSL_CTX_set_min_proto_version(context_, TLS1_2_VERSION) != 1 ||
-        SSL_CTX_set_options(context_, SSL_OP_NO_COMPRESSION) == 0 ||
-        SSL_CTX_use_certificate_chain_file(context_, files_.certificate.c_str()) != 1 ||
-        SSL_CTX_use_PrivateKey_file(context_, files_.private_key.c_str(), SSL_FILETYPE_PEM) != 1 ||
-        SSL_CTX_check_private_key(context_) != 1 ||
-        SSL_CTX_set_cipher_list(context_, "HIGH:!aNULL:!eNULL:!MD5:!RC4:!3DES") != 1) {
         const std::string message = openssl_error("unable to load TLS certificate");
-        SSL_CTX_free(context_);
-        context_ = nullptr;
         throw std::runtime_error(message);
     }
-    SSL_CTX_set_verify(context_, SSL_VERIFY_NONE, nullptr);
-    SSL_CTX_set_session_cache_mode(context_, SSL_SESS_CACHE_OFF);
 }
 
 TlsContext::~TlsContext() {
@@ -299,6 +399,36 @@ SSL_CTX* TlsContext::native() const noexcept {
 
 const TlsFiles& TlsContext::files() const noexcept {
     return files_;
+}
+
+TlsReplaceResult TlsContext::replace(
+    std::string_view certificate_pem, std::string_view private_key_pem) {
+    SSL_CTX* replacement = context_from_pem(certificate_pem, private_key_pem);
+    if (replacement == nullptr) {
+        ERR_clear_error();
+        return TlsReplaceResult::invalid;
+    }
+    try {
+        backup_file(files_.certificate);
+        backup_file(files_.private_key);
+        write_atomic(
+            files_.private_key,
+            reinterpret_cast<const unsigned char*>(private_key_pem.data()), private_key_pem.size());
+        write_atomic(
+            files_.certificate,
+            reinterpret_cast<const unsigned char*>(certificate_pem.data()), certificate_pem.size());
+        SSL_CTX* previous = context_;
+        context_ = replacement;
+        replacement = nullptr;
+        SSL_CTX_free(previous);
+        remove_file(files_.certificate.string() + ".previous");
+        remove_file(files_.private_key.string() + ".previous");
+        return TlsReplaceResult::replaced;
+    } catch (...) {
+        restore_backup(files_);
+        SSL_CTX_free(replacement);
+        return TlsReplaceResult::storage_error;
+    }
 }
 
 }  // namespace uhf::web

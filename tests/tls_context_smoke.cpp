@@ -2,7 +2,9 @@
 #include "web/tls_context.hpp"
 
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <string>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -44,6 +46,24 @@ int main() {
         uhf::web::TlsContext reopened(files);
         if (!expect(reopened.native() != nullptr, "existing TLS files load") ||
             !expect(reopened.files().certificate == files.certificate, "certificate path retained")) {
+            return 1;
+        }
+        std::ifstream certificate_input(files.certificate);
+        std::ifstream key_input(files.private_key);
+        const std::string certificate_pem{
+            std::istreambuf_iterator<char>(certificate_input), std::istreambuf_iterator<char>()};
+        const std::string private_key_pem{
+            std::istreambuf_iterator<char>(key_input), std::istreambuf_iterator<char>()};
+        if (!expect(
+                reopened.replace("not a certificate", private_key_pem) ==
+                    uhf::web::TlsReplaceResult::invalid,
+                "invalid replacement rejected") ||
+            !expect(
+                reopened.replace(certificate_pem, private_key_pem) ==
+                    uhf::web::TlsReplaceResult::replaced,
+                "valid replacement applied") ||
+            !expect(!std::filesystem::exists(files.certificate.string() + ".previous"),
+                "certificate backup cleaned")) {
             return 1;
         }
         std::filesystem::remove_all(root, cleanup_error);
