@@ -104,6 +104,26 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+add_executable(uhf_acquisition_fault_smoke
+    tests/acquisition_fault_smoke.cpp
+    src/acquisition/acquisition.cpp
+    src/domain/modbus.cpp
+    src/domain/snapshot.cpp
+)
+target_compile_features(uhf_acquisition_fault_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_acquisition_fault_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_acquisition_fault_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
 if(UHF_ENABLE_ASAN OR UHF_ENABLE_UBSAN)
     if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         message(FATAL_ERROR "Sanitizers require a GNU or Clang compiler")
@@ -171,6 +191,7 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}/tools/pd1000-sim/pd1000_sim.py"
                 "${PROJECT_SOURCE_DIR}/tests/fixtures/pd1000_request_plan.txt"
         )
+        add_test(NAME uhf_acquisition_fault_smoke COMMAND uhf_acquisition_fault_smoke)
     endif()
 endif()
 

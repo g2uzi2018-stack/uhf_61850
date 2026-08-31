@@ -182,6 +182,97 @@ bool AcquisitionEngine::read_exact(
     return true;
 }
 
+AcquisitionEngine::ResponseResult AcquisitionEngine::read_response(
+    const domain::ModbusReadRequest& request,
+    std::array<std::uint8_t, 3U + 240U + 2U>& response,
+    std::size_t& response_size,
+    std::chrono::steady_clock::time_point deadline) {
+    response_size = 0;
+    std::array<std::uint8_t, kResponseHeaderBytes> response_header{};
+    if (!read_exact(response_header.data(), response_header.size(), deadline)) {
+        return ResponseResult::fatal_error;
+    }
+    std::copy(response_header.begin(), response_header.end(), response.begin());
+    response_size = response_header.size();
+
+    const std::size_t expected_data_bytes =
+        static_cast<std::size_t>(request.register_count) * 2U;
+    if (response_header[0] != options_.slave_id) {
+        return ResponseResult::fatal_error;
+    }
+    if (response_header[1] == static_cast<std::uint8_t>(
+                                domain::kReadInputRegistersFunction | 0x80U)) {
+        response_size = 5U;
+        if (!read_exact(response.data() + 3U, 2U, deadline)) {
+            return ResponseResult::fatal_error;
+        }
+        const std::uint16_t expected_crc =
+            domain::modbus_crc16(response.data(), response_size - 2U);
+        const std::uint16_t received_crc = static_cast<std::uint16_t>(
+            response[response_size - 2U] |
+            static_cast<std::uint16_t>(response[response_size - 1U]) << 8U);
+        if (expected_crc != received_crc) {
+            return ResponseResult::retryable_error;
+        }
+        return ResponseResult::retryable_error;
+    }
+    if (response_header[1] != domain::kReadInputRegistersFunction ||
+        response_header[2] != expected_data_bytes) {
+        return ResponseResult::fatal_error;
+    }
+
+    response_size = kResponseHeaderBytes + expected_data_bytes + kResponseCrcBytes;
+    if (!read_exact(
+            response.data() + kResponseHeaderBytes,
+            expected_data_bytes + kResponseCrcBytes,
+            deadline)) {
+        return ResponseResult::fatal_error;
+    }
+    const std::uint16_t expected_crc =
+        domain::modbus_crc16(response.data(), response_size - 2U);
+    const std::uint16_t received_crc = static_cast<std::uint16_t>(
+        response[response_size - 2U] |
+        static_cast<std::uint16_t>(response[response_size - 1U]) << 8U);
+    return expected_crc == received_crc ? ResponseResult::complete
+                                         : ResponseResult::retryable_error;
+}
+
+bool AcquisitionEngine::sleep_until(
+    std::chrono::steady_clock::time_point deadline, std::chrono::microseconds duration) {
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= deadline) {
+        return false;
+    }
+    const auto remaining = std::chrono::duration_cast<std::chrono::microseconds>(deadline - now);
+    std::this_thread::sleep_for(std::min(duration, remaining));
+    return std::chrono::steady_clock::now() < deadline;
+}
+
+void AcquisitionEngine::quarantine() {
+    auto quiet_deadline = std::chrono::steady_clock::now() + options_.quarantine_duration;
+    std::array<std::uint8_t, 256U> discarded{};
+    while (std::chrono::steady_clock::now() < quiet_deadline) {
+        const auto now = std::chrono::steady_clock::now();
+        auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(quiet_deadline - now);
+        if (remaining.count() <= 0) {
+            remaining = std::chrono::milliseconds(1);
+        }
+        std::size_t received = 0;
+        if (serial_port_.read_some(discarded.data(), discarded.size(), remaining, received) &&
+            received > 0U) {
+            quiet_deadline = std::chrono::steady_clock::now() + options_.quarantine_duration;
+        } else if (received == 0U) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+}
+
+bool AcquisitionEngine::fail_and_quarantine(std::string message) {
+    last_error_ = std::move(message);
+    quarantine();
+    return false;
+}
+
 bool AcquisitionEngine::fail(std::string message) {
     last_error_ = std::move(message);
     return false;
@@ -195,75 +286,66 @@ bool AcquisitionEngine::poll_once() {
     std::array<std::uint16_t, domain::kPd1000RegisterCount> raw_registers{};
 
     for (std::size_t plan_index = 0; plan_index < plan.size(); ++plan_index) {
-        if (plan_index != 0U) {
-            const auto now = std::chrono::steady_clock::now();
-            if (now >= deadline) {
-                return fail("poll cycle deadline reached before request");
-            }
-            const auto remaining = deadline - now;
-            const auto silence = std::min(
-                options_.inter_frame_silence,
-                std::chrono::duration_cast<std::chrono::microseconds>(remaining));
-            std::this_thread::sleep_for(silence);
-            if (std::chrono::steady_clock::now() >= deadline) {
-                return fail("poll cycle deadline reached during frame silence");
-            }
-        }
-
         const domain::ModbusReadRequest& request = plan[plan_index];
         if (request.slave_id != options_.slave_id) {
-            return fail("request plan slave ID does not match acquisition configuration");
-        }
-        if (!serial_port_.write_all(request.wire_frame.data(), kRequestFrameBytes)) {
-            return fail("unable to write Modbus request");
+            return fail_and_quarantine("request plan slave ID does not match acquisition configuration");
         }
 
-        const auto response_deadline = std::min(
-            deadline, std::chrono::steady_clock::now() + options_.response_timeout);
-        std::array<std::uint8_t, kResponseHeaderBytes> response_header{};
-        if (!read_exact(response_header.data(), response_header.size(), response_deadline)) {
-            return fail("Modbus response header timeout");
-        }
-        const std::size_t expected_data_bytes =
-            static_cast<std::size_t>(request.register_count) * 2U;
-        if (response_header[0] != options_.slave_id ||
-            response_header[1] != domain::kReadInputRegistersFunction ||
-            response_header[2] != expected_data_bytes) {
-            return fail("Modbus response header mismatch");
-        }
+        bool complete = false;
+        std::string retry_error;
+        for (std::uint16_t attempt = 0;
+             attempt <= static_cast<std::uint16_t>(options_.max_retries);
+             ++attempt) {
+            if (attempt > 0U) {
+                if (!sleep_until(
+                        deadline,
+                        std::chrono::duration_cast<std::chrono::microseconds>(
+                            options_.retry_delay))) {
+                    return fail_and_quarantine("poll cycle deadline reached during retry delay");
+                }
+            } else if (plan_index != 0U &&
+                       !sleep_until(deadline, options_.inter_frame_silence)) {
+                return fail_and_quarantine("poll cycle deadline reached during frame silence");
+            }
+            if (std::chrono::steady_clock::now() >= deadline) {
+                return fail_and_quarantine("poll cycle deadline reached before request");
+            }
+            if (!serial_port_.write_all(request.wire_frame.data(), kRequestFrameBytes)) {
+                return fail_and_quarantine("unable to write Modbus request");
+            }
 
-        const std::size_t response_size =
-            kResponseHeaderBytes + expected_data_bytes + kResponseCrcBytes;
-        std::array<std::uint8_t, 3U + 240U + 2U> response{};
-        std::copy(response_header.begin(), response_header.end(), response.begin());
-        if (!read_exact(
-                response.data() + kResponseHeaderBytes,
-                expected_data_bytes + kResponseCrcBytes,
-                response_deadline)) {
-            return fail("Modbus response body timeout");
+            const auto response_deadline = std::min(
+                deadline, std::chrono::steady_clock::now() + options_.response_timeout);
+            std::array<std::uint8_t, 3U + 240U + 2U> response{};
+            std::size_t response_size = 0;
+            const ResponseResult result =
+                read_response(request, response, response_size, response_deadline);
+            if (result == ResponseResult::complete) {
+                const std::size_t start_index = static_cast<std::size_t>(
+                    request.start_address - domain::kPd1000FirstAddress);
+                for (std::size_t register_index = 0; register_index < request.register_count;
+                     ++register_index) {
+                    const std::size_t byte_index = kResponseHeaderBytes + register_index * 2U;
+                    raw_registers[start_index + register_index] = static_cast<std::uint16_t>(
+                        static_cast<std::uint16_t>(response[byte_index]) << 8U |
+                        static_cast<std::uint16_t>(response[byte_index + 1U]));
+                }
+                complete = true;
+                break;
+            }
+            if (result == ResponseResult::fatal_error) {
+                return fail_and_quarantine("Modbus response boundary or timeout error");
+            }
+            retry_error = "Modbus response CRC or exception error";
         }
-        const std::uint16_t expected_crc = domain::modbus_crc16(response.data(), response_size - 2U);
-        const std::uint16_t received_crc = static_cast<std::uint16_t>(
-            response[response_size - 2U] |
-            static_cast<std::uint16_t>(response[response_size - 1U]) << 8U);
-        if (expected_crc != received_crc) {
-            return fail("Modbus response CRC mismatch");
-        }
-
-        const std::size_t start_index =
-            static_cast<std::size_t>(request.start_address - domain::kPd1000FirstAddress);
-        for (std::size_t register_index = 0; register_index < request.register_count;
-             ++register_index) {
-            const std::size_t byte_index = kResponseHeaderBytes + register_index * 2U;
-            raw_registers[start_index + register_index] = static_cast<std::uint16_t>(
-                static_cast<std::uint16_t>(response[byte_index]) << 8U |
-                static_cast<std::uint16_t>(response[byte_index + 1U]));
+        if (!complete) {
+            return fail_and_quarantine(retry_error.empty() ? "Modbus retry budget exhausted" : retry_error);
         }
     }
 
     const auto completed_at = std::chrono::steady_clock::now();
     if (completed_at > deadline) {
-        return fail("poll cycle deadline reached after response");
+        return fail_and_quarantine("poll cycle deadline reached after response");
     }
     snapshot_store_.publish(
         domain::parse_pd1000_registers(raw_registers), started_at, completed_at);

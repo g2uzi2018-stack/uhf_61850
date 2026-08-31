@@ -2,6 +2,7 @@
 #pragma once
 
 #include "domain/snapshot.hpp"
+#include "domain/modbus.hpp"
 
 #include <array>
 #include <chrono>
@@ -50,6 +51,9 @@ struct AcquisitionOptions {
     std::chrono::milliseconds response_timeout{150};
     std::chrono::milliseconds cycle_deadline{6000};
     std::chrono::microseconds inter_frame_silence{1750};
+    std::uint8_t max_retries{3U};
+    std::chrono::milliseconds retry_delay{100};
+    std::chrono::milliseconds quarantine_duration{6000};
 };
 
 struct PublishedSnapshot {
@@ -84,10 +88,25 @@ public:
     const std::string& last_error() const noexcept;
 
 private:
+    enum class ResponseResult {
+        complete,
+        retryable_error,
+        fatal_error,
+    };
+
     bool read_exact(
         std::uint8_t* data,
         std::size_t size,
         std::chrono::steady_clock::time_point deadline);
+    ResponseResult read_response(
+        const domain::ModbusReadRequest& request,
+        std::array<std::uint8_t, 3U + 240U + 2U>& response,
+        std::size_t& response_size,
+        std::chrono::steady_clock::time_point deadline);
+    bool sleep_until(
+        std::chrono::steady_clock::time_point deadline, std::chrono::microseconds duration);
+    void quarantine();
+    bool fail_and_quarantine(std::string message);
     bool fail(std::string message);
 
     ISerialPort& serial_port_;
