@@ -219,12 +219,25 @@ void GatewayRuntime::apply_runtime_configuration(std::uint64_t& applied_version)
                 "invalid Modbus TCP settings were rejected");
         }
     }
+    if (iec61850_server_) {
+        if (!configured.values.iec_enabled && iec61850_server_->running()) {
+            iec61850_server_->stop();
+        } else if (configured.values.iec_enabled && iec61850_server_->running() &&
+                   !iec61850_server_->update_endpoint(
+                       configured.values.modbus_tcp_bind, configured.values.iec_port)) {
+            logger_.log(
+                logging::Level::error,
+                logging::Component::iec61850,
+                "configuration.reload_failed",
+                "IEC 61850 endpoint reload failed; previous endpoint was restored");
+        }
+    }
     applied_version = configured.version;
     logger_.log(
         logging::Level::info,
         logging::Component::config,
         "configuration.reloaded",
-        "hot-reloadable acquisition settings applied",
+        "hot-reloadable runtime settings applied",
         {logging::Field{"version", std::to_string(applied_version)}});
 }
 

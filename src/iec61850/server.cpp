@@ -54,6 +54,11 @@ Server::~Server() {
 }
 
 void Server::start() {
+    std::lock_guard<std::mutex> lock(lifecycle_mutex_);
+    start_locked();
+}
+
+void Server::start_locked() {
     if (running_.load()) {
         return;
     }
@@ -68,6 +73,11 @@ void Server::start() {
 }
 
 void Server::stop() noexcept {
+    std::lock_guard<std::mutex> lock(lifecycle_mutex_);
+    stop_locked();
+}
+
+void Server::stop_locked() noexcept {
     stop_requested_.store(true);
     if (update_worker_.joinable()) {
         update_worker_.join();
@@ -76,6 +86,36 @@ void Server::stop() noexcept {
         IedServer_stop(server_);
     }
     running_.store(false);
+}
+
+bool Server::update_endpoint(std::string bind_address, std::uint16_t port) {
+    std::lock_guard<std::mutex> lock(lifecycle_mutex_);
+    if (options_.bind_address == bind_address && options_.port == port) {
+        return true;
+    }
+    const ServerOptions previous_options = options_;
+    const bool was_running = running_.load();
+    if (was_running) {
+        stop_locked();
+    }
+    options_.bind_address = std::move(bind_address);
+    options_.port = port;
+    IedServer_setLocalIpAddress(server_, options_.bind_address.c_str());
+    if (!was_running) {
+        return true;
+    }
+    try {
+        start_locked();
+        return true;
+    } catch (...) {
+        options_ = previous_options;
+        IedServer_setLocalIpAddress(server_, options_.bind_address.c_str());
+        try {
+            start_locked();
+        } catch (...) {
+        }
+        return false;
+    }
 }
 
 bool Server::running() const noexcept {

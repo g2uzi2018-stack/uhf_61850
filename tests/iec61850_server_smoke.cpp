@@ -210,6 +210,16 @@ int main() {
     }
 
     IedConnection_destroy(connection);
+    ok = expect(
+        server.update_endpoint("127.0.0.1", 15103U),
+        "MMS endpoint reload") && ok;
+    IedConnection reloaded_connection = IedConnection_create();
+    IedConnection_setConnectTimeout(reloaded_connection, 1000U);
+    error = IED_ERROR_OK;
+    IedConnection_connect(reloaded_connection, &error, "127.0.0.1", 15103);
+    ok = expect(error == IED_ERROR_OK, "MMS client connects after endpoint reload") && ok;
+    IedConnection_close(reloaded_connection);
+    IedConnection_destroy(reloaded_connection);
     server.stop();
     ok = expect(!server.running(), "MMS server stops") && ok;
     if (ok) {

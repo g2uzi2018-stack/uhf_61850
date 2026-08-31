@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -29,10 +30,13 @@ public:
     Server& operator=(const Server&) = delete;
 
     void start();
+    bool update_endpoint(std::string bind_address, std::uint16_t port);
     void stop() noexcept;
     bool running() const noexcept;
 
 private:
+    void start_locked();
+    void stop_locked() noexcept;
     void update_loop();
     void publish_invalid_values();
     void publish_snapshot(const acquisition::ServingView& serving_view);
@@ -46,6 +50,7 @@ private:
     std::atomic<bool> running_{false};
     std::thread update_worker_;
     std::function<bool()> alarm_provider_;
+    mutable std::mutex lifecycle_mutex_;
 };
 
 }  // namespace uhf::iec61850
