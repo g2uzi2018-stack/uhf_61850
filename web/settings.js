@@ -60,7 +60,7 @@
         fetch("/api/v1/config", {method: "PUT", credentials: "same-origin", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrfToken, "If-Match": '"' + version + '"'}, body: JSON.stringify(payload)}).then(function (response) {
             if (response.status === 401) { redirectToLogin(); return null; }
             if (!response.ok) { return responseMessage(response, "配置保存失败").then(showError); }
-            return response.json().then(function (result) { version = Number(result.version); document.getElementById("config-version").innerHTML = "<i></i>配置版本 " + version; showSaved("已原子保存；需要重启的项目将在下次服务重启时应用。"); });
+            return response.json().then(function (result) { version = Number(result.version); document.getElementById("config-version").innerHTML = "<i></i>配置版本 " + version; showSaved("已原子保存；采集参数将在下一轮生效，其余需要重启的项目将在下次服务重启时应用。"); });
         }).catch(function () { showError("无法连接服务，配置未确认保存。"); });
     });
     document.getElementById("reload-settings").addEventListener("click", load);
