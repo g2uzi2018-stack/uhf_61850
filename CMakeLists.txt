@@ -856,6 +856,12 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}/tests/network_recovery_smoke.py"
                 "$<TARGET_FILE:uhf-network-recovery>"
         )
+        add_test(
+            NAME uhf_systemd_policy_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/systemd_policy_smoke.py"
+                "${PROJECT_SOURCE_DIR}"
+        )
     endif()
     add_test(NAME uhf_acquisition_fault_smoke COMMAND uhf_acquisition_fault_smoke)
     add_test(NAME uhf_loopback_acquisition_smoke COMMAND uhf_loopback_acquisition_smoke)
@@ -925,3 +931,4 @@ install(FILES
     DESTINATION config
 )
 install(PROGRAMS packaging/dhclient/uhf-gateway-hook DESTINATION libexec/uhf-gateway)
+install(DIRECTORY packaging/systemd/ DESTINATION share/uhf-gateway/systemd)

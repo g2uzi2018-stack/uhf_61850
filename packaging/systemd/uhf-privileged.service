@@ -1,0 +1,36 @@
+[Unit]
+Description=UHF gateway privileged network helper
+Before=uhf-gateway.service
+Wants=uhf-network-recovery.service
+After=local-fs.target uhf-network-recovery.service
+ConditionPathIsExecutable=/opt/uhf-gateway/current/bin/uhf-privilegedd
+
+[Service]
+Type=simple
+User=root
+Group=uhfgateway
+ExecStart=/opt/uhf-gateway/current/bin/uhf-privilegedd --socket /run/uhf-gateway/privileged.sock --network-config /etc/uhf-gateway/network.json --transaction /var/lib/uhf-privileged/network-transaction.json
+Restart=on-failure
+RestartSec=2s
+StartLimitIntervalSec=120s
+StartLimitBurst=5
+RuntimeDirectory=uhf-gateway
+RuntimeDirectoryMode=0750
+UMask=0007
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+ReadWritePaths=/etc/uhf-gateway /var/lib/uhf-privileged /run/uhf-gateway
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

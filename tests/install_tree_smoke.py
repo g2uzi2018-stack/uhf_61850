@@ -40,6 +40,11 @@ def main() -> int:
             prefix / "config/UHFPD1.icd",
             prefix / "config/manifest.json",
             prefix / "libexec/uhf-gateway/uhf-gateway-hook",
+            prefix / "share/uhf-gateway/systemd/uhf-gateway.service",
+            prefix / "share/uhf-gateway/systemd/uhf-privileged.service",
+            prefix / "share/uhf-gateway/systemd/uhf-network-rollback.service",
+            prefix / "share/uhf-gateway/systemd/uhf-network-rollback.timer",
+            prefix / "share/uhf-gateway/systemd/uhf-network-recovery.service",
             prefix / "share/doc/uhf_61850/LICENSE",
         )
         for path in required:

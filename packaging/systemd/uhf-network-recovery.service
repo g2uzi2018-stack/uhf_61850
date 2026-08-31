@@ -1,0 +1,24 @@
+[Unit]
+Description=Early UHF gateway network transaction recovery
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target uhf-privileged.service uhf-gateway.service
+Conflicts=shutdown.target
+Before=shutdown.target
+ConditionPathIsExecutable=/opt/uhf-gateway/current/bin/uhf-network-recovery
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/opt/uhf-gateway/current/bin/uhf-network-recovery --network-config /etc/uhf-gateway/network.json --transaction /var/lib/uhf-privileged/network-transaction.json
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/uhf-gateway /var/lib/uhf-privileged /run/uhf-gateway
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=network-pre.target

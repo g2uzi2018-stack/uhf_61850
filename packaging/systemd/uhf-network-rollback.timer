@@ -1,0 +1,12 @@
+[Unit]
+Description=Repeat UHF gateway network rollback checks
+
+[Timer]
+OnBootSec=5s
+OnUnitActiveSec=5s
+AccuracySec=1s
+Persistent=true
+Unit=uhf-network-rollback.service
+
+[Install]
+WantedBy=timers.target
