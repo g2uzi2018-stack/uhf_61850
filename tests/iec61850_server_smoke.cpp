@@ -3,6 +3,7 @@
 #include "domain/snapshot.hpp"
 #include "iec61850_client.h"
 #include "iec61850/server.hpp"
+#include "linked_list.h"
 
 #include <array>
 #include <atomic>
@@ -162,6 +163,23 @@ int main() {
                 std::fabs(static_cast<double>(MmsValue_toFloat(peak)) + 50.0) < 0.01,
                 "standard peak value") && ok;
             MmsValue_delete(peak);
+        }
+
+        char data_set_element[] = "TESTIEDPDMON/GGIO1.AnIn1.mag.f";
+        LinkedList data_set_elements = LinkedList_create();
+        LinkedList_add(data_set_elements, data_set_element);
+        error = IED_ERROR_OK;
+        IedConnection_createDataSet(connection, &error, "@blocked", data_set_elements);
+        ok = expect(error != IED_ERROR_OK, "dynamic data set service is disabled") && ok;
+        LinkedList_destroyStatic(data_set_elements);
+
+        error = IED_ERROR_OK;
+        LinkedList file_directory = IedConnection_getFileDirectory(connection, &error, nullptr);
+        ok = expect(error != IED_ERROR_OK && file_directory == nullptr, "file service is disabled") && ok;
+        if (file_directory != nullptr) {
+            LinkedList_destroyDeep(
+                file_directory,
+                reinterpret_cast<LinkedListValueDeleteFunction>(FileDirectoryEntry_destroy));
         }
 
         MmsValue* alarm = IedConnection_readObject(
