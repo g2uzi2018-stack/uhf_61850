@@ -123,6 +123,15 @@ int main() {
     uhf::network::NetworkConfig loaded;
     assert(backend.read_current(loaded));
     assert(loaded.eth0.address == "192.168.3.231");
+    runner.commands.clear();
+    assert(backend.start_runtime());
+    assert(runner.commands.size() == 3U);
+    assert(runner.commands[0U][1U] == "address");
+    assert(runner.commands[0U][2U] == "replace");
+    assert(runner.commands[1U][1U] == "route");
+    assert(runner.commands[1U][2U] == "replace");
+    assert(runner.commands[2U][1U] == "address");
+    assert(runner.commands[2U][2U] == "replace");
 
     candidate.eth0.address = "192.168.3.232";
     candidate.eth0.gateway = "192.168.3.3";

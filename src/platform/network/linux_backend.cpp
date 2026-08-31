@@ -415,6 +415,9 @@ bool LinuxNetworkBackend::start_runtime() {
     if (!read_current(current)) {
         return false;
     }
+    if (!apply_static_runtime_state(current)) {
+        return false;
+    }
     std::array<std::optional<DhcpLease>, 2U> leases;
     if (!load_leases(lease_store_, leases)) {
         return false;
@@ -426,6 +429,25 @@ bool LinuxNetworkBackend::start_runtime() {
         }
         if (dhcp_client_ == nullptr || !leases[index] ||
             !validate_lease(*leases[index]) || !dhcp_client_->start(config, *leases[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool LinuxNetworkBackend::apply_static_runtime_state(const NetworkConfig& current) {
+    for (const InterfaceConfig* config : {&current.eth0, &current.eth1}) {
+        if (config->mode != Mode::static_address) {
+            continue;
+        }
+        if (!run_ip(command_runner_, {
+                "address", "replace", config->address + "/" + std::to_string(config->prefix),
+                "dev", config->name})) {
+            return false;
+        }
+        if (!config->gateway.empty() &&
+            !run_ip(command_runner_, {
+                "route", "replace", "default", "via", config->gateway, "dev", config->name})) {
             return false;
         }
     }

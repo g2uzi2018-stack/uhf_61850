@@ -56,6 +56,7 @@ private:
         const NetworkConfig& candidate,
         const std::array<std::optional<DhcpLease>, 2U>& previous_leases,
         const std::array<std::optional<DhcpLease>, 2U>& candidate_leases);
+    bool apply_static_runtime_state(const NetworkConfig& current);
     bool remove_candidate_state(
         const NetworkConfig& previous,
         const NetworkConfig& candidate,
