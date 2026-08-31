@@ -26,7 +26,7 @@ namespace {
 struct WebOptions {
     std::filesystem::path document_root{"web"};
     std::filesystem::path state_directory{"/var/lib/uhf-gateway"};
-    std::string bind_address{"127.0.0.1"};
+    std::string bind_address{"0.0.0.0"};
     std::uint16_t port{8080};
     bool listen_explicit{false};
     bool http_recovery{false};
