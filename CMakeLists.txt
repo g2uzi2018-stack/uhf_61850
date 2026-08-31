@@ -361,6 +361,12 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}/tools/pd1000-sim/pd1000_sim.py"
                 "${PROJECT_SOURCE_DIR}/tests/fixtures/pd1000_request_plan.txt"
         )
+        add_test(
+            NAME uhf_packaging_policy_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/packaging_policy_smoke.py"
+                "${PROJECT_SOURCE_DIR}"
+        )
     endif()
     add_test(NAME uhf_acquisition_fault_smoke COMMAND uhf_acquisition_fault_smoke)
     add_test(NAME uhf_modbus_tcp_smoke COMMAND uhf_modbus_tcp_smoke)
