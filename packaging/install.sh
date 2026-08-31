@@ -171,6 +171,7 @@ if [[ "$no_systemd" == false ]]; then
     chown uhfgateway:uhfgateway "$state_dir"
 fi
 install -m 0644 "$release_dir/config/schema.json" "${root_prefix}/etc/uhf-gateway/schema.json"
+install -m 0644 "$release_dir/config/defaults.json" "${root_prefix}/etc/uhf-gateway/defaults.json"
 install -m 0644 "$release_dir/config/UHFPD1.icd" "${root_prefix}/etc/uhf-gateway/UHFPD1.icd"
 install -m 0755 "$release_dir/libexec/uhf-gateway/uhf-gateway-hook" \
     "${root_prefix}/usr/lib/uhf-gateway/dhclient-hook"

@@ -51,6 +51,7 @@ required_files=(
     "bin/uhf-network-recovery"
     "web/index.html"
     "web/login.html"
+    "config/defaults.json"
     "config/schema.json"
     "config/UHFPD1.icd"
     "config/manifest.json"

@@ -54,6 +54,16 @@ def main() -> int:
                 fail("release with missing ICD was accepted")
         finally:
             shutil.move(backup, missing)
+
+        missing = release / "config/defaults.json"
+        backup = release / "config/defaults.json.bak"
+        shutil.move(missing, backup)
+        try:
+            result = run(script, release, "--skip-hardware", "--skip-arch")
+            if result.returncode == 0:
+                fail("release with missing defaults was accepted")
+        finally:
+            shutil.move(backup, missing)
     print("preflight smoke: OK")
     return 0
 

@@ -952,9 +952,13 @@ endif()
 install(TARGETS uhf-gatewayd uhf-privilegedd uhf-network-recovery
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(FILES LICENSE DESTINATION "${CMAKE_INSTALL_DOCDIR}")
-install(FILES config/schema.json DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/uhf-gateway")
+install(FILES
+    config/defaults.json
+    config/schema.json
+    DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/uhf-gateway")
 install(DIRECTORY web/ DESTINATION web)
 install(FILES
+    config/defaults.json
     config/schema.json
     config/UHFPD1.icd
     third_party/manifest.json
