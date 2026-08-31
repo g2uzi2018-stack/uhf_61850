@@ -47,6 +47,7 @@ def main() -> int:
             release / "bin/uhf-gatewayd",
             release / "bin/uhf-privilegedd",
             release / "bin/uhf-network-recovery",
+            release / "bin/uhf-auth-init",
             release / "web/index.html",
             release / "config/defaults.json",
             release / "config/UHFPD1.icd",

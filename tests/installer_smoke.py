@@ -84,6 +84,14 @@ def main() -> int:
             fail("DHCP hook was not installed")
         if not (target / "etc/uhf-gateway/defaults.json").is_file():
             fail("default configuration was not installed")
+        bootstrap = target / "var/lib/uhf-gateway/initial-password"
+        auth = target / "var/lib/uhf-gateway/auth.json"
+        if not bootstrap.is_file() or not auth.is_file():
+            fail("authentication state was not provisioned")
+        if bootstrap.stat().st_mode & 0o777 != 0o600 or auth.stat().st_mode & 0o777 != 0o600:
+            fail("authentication state is not private")
+        if bootstrap.read_text(encoding="utf-8").strip() in auth.read_text(encoding="utf-8"):
+            fail("plaintext bootstrap password was written to auth.json")
         if (target / "var/lib/uhf-gateway").stat().st_mode & 0o777 != 0o700:
             fail("gateway state directory is not private")
         for path in (

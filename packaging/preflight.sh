@@ -49,6 +49,7 @@ required_files=(
     "bin/uhf-gatewayd"
     "bin/uhf-privilegedd"
     "bin/uhf-network-recovery"
+    "bin/uhf-auth-init"
     "web/index.html"
     "web/login.html"
     "config/defaults.json"
@@ -76,7 +77,7 @@ for relative in "${required_files[@]}"; do
         exit 1
     fi
 done
-for executable in uhf-gatewayd uhf-privilegedd uhf-network-recovery; do
+for executable in uhf-gatewayd uhf-privilegedd uhf-network-recovery uhf-auth-init; do
     if [[ ! -x "${release_dir}/bin/${executable}" ]]; then
         printf 'preflight: not executable: %s\n' "$executable" >&2
         exit 1

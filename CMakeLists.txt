@@ -404,6 +404,26 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+add_executable(uhf-auth-init
+    src/auth_init_main.cpp
+    src/web/auth_store.cpp
+    src/web/crypto.cpp
+)
+target_compile_features(uhf-auth-init PRIVATE cxx_std_17)
+target_include_directories(uhf-auth-init PRIVATE "${PROJECT_SOURCE_DIR}/src")
+target_link_libraries(uhf-auth-init PRIVATE OpenSSL::Crypto)
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf-auth-init PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
 add_executable(uhf_systemd_notify_smoke
     tests/systemd_notify_smoke.cpp
     src/platform/systemd/notify.cpp
@@ -949,7 +969,7 @@ if(UHF_BUILD_FORMAT_TARGET)
     endif()
 endif()
 
-install(TARGETS uhf-gatewayd uhf-privilegedd uhf-network-recovery
+install(TARGETS uhf-gatewayd uhf-privilegedd uhf-network-recovery uhf-auth-init
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(FILES LICENSE DESTINATION "${CMAKE_INSTALL_DOCDIR}")
 install(FILES
