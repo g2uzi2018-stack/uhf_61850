@@ -62,6 +62,17 @@ format-check 是可选的 CMake 目标；安装 clang-format 后执行：
 `tools/preview-web.sh` 现在只是上述 C++ 开发服务的兼容入口，不再启动无认证的
 Python 静态服务器。
 
+## PD1000 主机模拟器
+
+没有 485 接线时，可以用 Linux PTY 验证后续采集代码的正常 Modbus 路径：
+
+    python3 tools/pd1000-sim/pd1000_sim.py \
+        --device /dev/pts/XX \
+        --fixture tests/fixtures/pd1000_request_plan.txt
+
+通常直接运行 `ctest --test-dir build/host --output-on-failure` 即可执行自动 PTY
+测试；模拟器只用于研发机，不安装到目标板。
+
 ## 发布材料
 
 源码发布必须保留与版本对应的 Git commit/tag、LICENSE 和 third_party/manifest.json。新增第三方依赖前，先记录固定版本、来源、SHA-256、许可证和启用特性，再进入产品构建。

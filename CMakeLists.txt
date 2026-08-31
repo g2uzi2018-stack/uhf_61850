@@ -135,6 +135,13 @@ if(BUILD_TESTING)
                 "$<TARGET_FILE:uhf-gatewayd>"
                 "${PROJECT_SOURCE_DIR}/web"
         )
+        add_test(
+            NAME uhf_pd1000_sim_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/pd1000_sim_smoke.py"
+                "${PROJECT_SOURCE_DIR}/tools/pd1000-sim/pd1000_sim.py"
+                "${PROJECT_SOURCE_DIR}/tests/fixtures/pd1000_request_plan.txt"
+        )
     endif()
 endif()
 
