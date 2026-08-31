@@ -62,6 +62,15 @@ bool wait_for_file_count(
     return false;
 }
 
+bool replace_once(std::string& value, const std::string& from, const std::string& to) {
+    const std::size_t position = value.find(from);
+    if (position == std::string::npos) {
+        return false;
+    }
+    value.replace(position, from.size(), to);
+    return true;
+}
+
 bool run_stale_event_case(uhf::logging::Logger& logger) {
     const std::filesystem::path root = std::filesystem::temp_directory_path() /
         ("uhf-persistence-stale-" + std::to_string(static_cast<long long>(::getpid())));
@@ -92,6 +101,64 @@ bool run_stale_event_case(uhf::logging::Logger& logger) {
     return expect(stats.saved_event_count == 0U, "stale snapshot triggered an event");
 }
 
+bool run_event_configuration_reload_case(uhf::logging::Logger& logger) {
+    const std::filesystem::path root = std::filesystem::temp_directory_path() /
+        ("uhf-persistence-config-reload-" + std::to_string(static_cast<long long>(::getpid())));
+    std::error_code cleanup_error;
+    std::filesystem::remove_all(root, cleanup_error);
+    uhf::config::ConfigStore config(root / "config.json");
+    std::string initial = config.to_json();
+    if (!replace_once(initial, "\"storage_event_threshold_dbm\": -45",
+            "\"storage_event_threshold_dbm\": -40") ||
+        !replace_once(initial, "\"storage_event_delta_db\": 10",
+            "\"storage_event_delta_db\": 85") ||
+        !replace_once(initial, "\"storage_event_merge_seconds\": 60",
+            "\"storage_event_merge_seconds\": 1") ||
+        !expect(
+            config.update(1U, initial) == uhf::config::UpdateResult::updated,
+            "initial event configuration update")) {
+        std::filesystem::remove_all(root, cleanup_error);
+        return false;
+    }
+
+    uhf::acquisition::SnapshotStore snapshot_store;
+    uhf::storage::PersistenceOptions options;
+    options.config_store = &config;
+    options.data_root = root / "data";
+    options.cleanup_period = std::chrono::hours(1);
+    options.cleaner_options.min_free_bytes = 0U;
+    options.cleaner_options.low_watermark_percent = 0U;
+    options.cleaner_options.recovery_percent = 0U;
+    options.cleaner_options.recovery_extra_bytes = 0U;
+    options.event_options.post_collection_timeout = std::chrono::seconds(1);
+    uhf::storage::PersistenceWorker worker(snapshot_store, logger, options);
+    worker.start();
+    publish(snapshot_store, -60, std::chrono::steady_clock::now());
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    publish(snapshot_store, -42, std::chrono::steady_clock::now());
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+    std::string reloaded = config.to_json();
+    if (!replace_once(reloaded, "\"storage_event_threshold_dbm\": -40",
+            "\"storage_event_threshold_dbm\": -45") ||
+        !expect(
+            config.update(2U, reloaded) == uhf::config::UpdateResult::updated,
+            "runtime event configuration update")) {
+        worker.stop();
+        std::filesystem::remove_all(root, cleanup_error);
+        return false;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    publish(snapshot_store, -42, std::chrono::steady_clock::now());
+    const bool saved = wait_for_file_count(root / "data" / "events", 1U,
+        std::chrono::seconds(3));
+    worker.stop();
+    const uhf::storage::PersistenceStats stats = worker.stats();
+    std::filesystem::remove_all(root, cleanup_error);
+    return expect(saved, "event threshold hot reload produced an event") &&
+        expect(stats.saved_event_count == 1U, "one reloaded event saved");
+}
+
 }  // namespace
 
 int main() {
@@ -104,6 +171,9 @@ int main() {
         logger_options.use_syslog = false;
         uhf::logging::Logger logger(logger_options);
         if (!run_stale_event_case(logger)) {
+            return 1;
+        }
+        if (!run_event_configuration_reload_case(logger)) {
             return 1;
         }
         uhf::acquisition::SnapshotStore snapshot_store;

@@ -93,7 +93,14 @@ void PersistenceWorker::apply_runtime_configuration(std::uint64_t& applied_versi
     options_.cleaner_options.retention = std::chrono::hours(
         24U * configured.values.storage_retention_days);
     options_.cleaner_options.min_free_bytes = configured.values.storage_min_free_bytes;
+    options_.event_options.strong_trigger_dbm = configured.values.storage_event_threshold_dbm;
+    options_.event_options.strong_rearm_dbm = configured.values.storage_event_rearm_dbm;
+    options_.event_options.sudden_delta_db = static_cast<std::int32_t>(
+        configured.values.storage_event_delta_db);
+    options_.event_options.merge_window = std::chrono::seconds(
+        configured.values.storage_event_merge_seconds);
     cleaner_.update_options(options_.cleaner_options);
+    event_detector_.update_options(options_.event_options);
     applied_version = configured.version;
     logger_.log(
         logging::Level::info,

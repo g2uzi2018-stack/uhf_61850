@@ -50,6 +50,8 @@ class EventDetector {
 public:
     explicit EventDetector(EventOptions options = {});
 
+    void update_options(EventOptions options);
+
     void observe(
         const acquisition::PublishedSnapshot& snapshot,
         std::chrono::steady_clock::time_point observed_at,

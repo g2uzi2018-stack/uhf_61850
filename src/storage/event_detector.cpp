@@ -14,6 +14,10 @@ bool EventBundle::has_reason(EventType type) const noexcept {
 
 EventDetector::EventDetector(EventOptions options) : options_(std::move(options)) {}
 
+void EventDetector::update_options(EventOptions options) {
+    options_ = std::move(options);
+}
+
 std::uint8_t EventDetector::reason_bit(EventType type) noexcept {
     return type == EventType::strong_discharge ? kStrongReason : kSuddenReason;
 }

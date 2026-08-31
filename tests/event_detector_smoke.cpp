@@ -158,11 +158,34 @@ bool test_partial_post_collection() {
         check_generations(bundles.front(), expected, 4U);
 }
 
+bool test_update_options() {
+    uhf::storage::EventOptions options;
+    options.strong_trigger_dbm = -40;
+    options.strong_rearm_dbm = -50;
+    options.sudden_delta_db = 85;
+    options.merge_window = std::chrono::seconds(1);
+    uhf::storage::EventDetector detector(options);
+    observe(detector, 1U, -60, 0);
+    observe(detector, 2U, -42, 1);
+    if (!expect(detector.strong_armed(), "initial event threshold was applied")) {
+        return false;
+    }
+
+    options.strong_trigger_dbm = -45;
+    detector.update_options(options);
+    observe(detector, 3U, -42, 2);
+    const std::vector<uhf::storage::EventBundle> bundles = detector.advance(at_seconds(4));
+    return expect(bundles.size() == 1U, "updated event threshold triggered") &&
+        expect(bundles.front().has_reason(uhf::storage::EventType::strong_discharge),
+            "updated strong event reason");
+}
+
 }  // namespace
 
 int main() {
     if (!test_combined_and_merge() || !test_strong_rearm() ||
-        !test_invalid_and_stale_do_not_update_baseline() || !test_partial_post_collection()) {
+        !test_invalid_and_stale_do_not_update_baseline() || !test_partial_post_collection() ||
+        !test_update_options()) {
         return 1;
     }
     std::cout << "event detector smoke: OK\n";
