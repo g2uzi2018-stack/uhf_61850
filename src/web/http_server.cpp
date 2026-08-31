@@ -4,6 +4,7 @@
 #include "app/build_info.hpp"
 #include "platform/systemd/notify.hpp"
 #include "web/crypto.hpp"
+#include "web/snapshot_json.hpp"
 
 #include <algorithm>
 #include <array>
@@ -1067,11 +1068,12 @@ health::Report HttpServer::health_report(std::chrono::steady_clock::time_point n
     } else {
         input.storage_writable = true;
         if (snapshot_store_) {
-            const std::optional<acquisition::PublishedSnapshot> latest = snapshot_store_->latest();
-            if (latest) {
-                input.last_acquisition_success = latest->completed_at;
-                input.acquisition_last_cycle_ok = true;
+            const acquisition::ServingView serving_view = snapshot_store_->serving_view();
+            if (serving_view.snapshot) {
+                input.last_acquisition_success = serving_view.snapshot->completed_at;
             }
+            input.acquisition_last_cycle_ok =
+                serving_view.status.availability == acquisition::Availability::fresh;
         }
     }
     return health_aggregator_.evaluate(input, now);
@@ -1139,54 +1141,7 @@ std::optional<std::string> HttpServer::snapshot_json() const {
     if (!snapshot_store_) {
         return std::nullopt;
     }
-    const std::optional<acquisition::PublishedSnapshot> latest = snapshot_store_->latest();
-    if (!latest) {
-        return std::nullopt;
-    }
-
-    const domain::ParsedSnapshot& payload = latest->payload;
-    constexpr std::array<std::string_view, 5U> measurement_names = {
-        "average", "frequency", "peak", "phase", "noise"};
-    std::string body = "{\"schema_version\":1,\"generation\":" +
-        std::to_string(latest->generation) + ",\"payload_status\":\"" +
-        std::string(payload_status_name(payload.payload_status)) +
-        "\",\"poll_duration_ms\":" + std::to_string(latest->poll_duration.count()) +
-        ",\"measurements\":[";
-    for (std::size_t index = 0; index < payload.measurements.size(); ++index) {
-        if (index > 0U) {
-            body.append(",");
-        }
-        const domain::Measurement& measurement = payload.measurements[index];
-        body.append("{\"name\":\"");
-        body.append(measurement_names[index]);
-        body.append("\",\"raw\":");
-        body.append(std::to_string(measurement.raw));
-        body.append(",\"value\":");
-        body.append(std::to_string(measurement.value));
-        body.append(",\"valid\":");
-        body.append(measurement.valid ? "true" : "false");
-        body.append("}");
-    }
-    body.append("],\"spectrum\":[");
-    for (std::size_t index = 0; index < payload.spectrum.size(); ++index) {
-        if (index > 0U) {
-            body.append(",");
-        }
-        if (payload.spectrum_valid.test(index)) {
-            body.append(std::to_string(payload.spectrum[index]));
-        } else {
-            body.append("null");
-        }
-    }
-    body.append("],\"spectrum_valid\":[");
-    for (std::size_t index = 0; index < payload.spectrum_valid.size(); ++index) {
-        if (index > 0U) {
-            body.append(",");
-        }
-        body.append(payload.spectrum_valid.test(index) ? "true" : "false");
-    }
-    body.append("]}\n");
-    return body;
+    return render_snapshot_json(snapshot_store_->serving_view());
 }
 
 std::string HttpServer::logs_json(std::size_t limit) const {
@@ -1512,6 +1467,7 @@ void HttpServer::run_websocket(int client_fd, SSL* tls) {
     std::vector<std::uint8_t> output;
     input.reserve(kMaxWebSocketInputBytes);
     std::uint64_t last_generation = 0U;
+    std::optional<acquisition::Availability> last_availability;
     bool sent_health = false;
     bool close_requested = false;
     while (true) {
@@ -1550,10 +1506,14 @@ void HttpServer::run_websocket(int client_fd, SSL* tls) {
 
         if (!close_requested) {
             const auto now = std::chrono::steady_clock::now();
-            const std::optional<acquisition::PublishedSnapshot> latest =
-                snapshot_store_ == nullptr ? std::nullopt : snapshot_store_->latest();
-            if (latest && latest->generation != 0U && latest->generation != last_generation) {
-                const std::optional<std::string> snapshot = snapshot_json();
+            const acquisition::ServingView serving_view = snapshot_store_ == nullptr
+                ? acquisition::ServingView{}
+                : snapshot_store_->serving_view();
+            const bool availability_changed =
+                !last_availability || *last_availability != serving_view.status.availability;
+            if (serving_view.snapshot && serving_view.snapshot->generation != 0U &&
+                (serving_view.snapshot->generation != last_generation || availability_changed)) {
+                const std::optional<std::string> snapshot = render_snapshot_json(serving_view);
                 if (snapshot) {
                     std::string message = "{\"type\":\"telemetry\",\"health\":";
                     message.append(health_report(now).to_json());
@@ -1565,10 +1525,10 @@ void HttpServer::run_websocket(int client_fd, SSL* tls) {
                         break;
                     }
                     output = frame;
-                    last_generation = latest->generation;
+                    last_generation = serving_view.snapshot->generation;
                     sent_health = true;
                 }
-            } else if (!sent_health) {
+            } else if (!sent_health || availability_changed) {
                 std::string message = "{\"type\":\"health\",\"data\":";
                 message.append(health_report(now).to_json());
                 message.append("}\n");
@@ -1578,6 +1538,7 @@ void HttpServer::run_websocket(int client_fd, SSL* tls) {
                 }
                 sent_health = true;
             }
+            last_availability = serving_view.status.availability;
         }
 
         if (!output.empty()) {

@@ -141,6 +141,8 @@ def main() -> int:
                 fail(f"simulator snapshot returned {snapshot_status}")
             if snapshot_payload.get("payload_status") != "good":
                 fail(f"unexpected payload status: {snapshot_payload!r}")
+            if snapshot_payload.get("availability") != "fresh":
+                fail(f"unexpected snapshot availability: {snapshot_payload!r}")
             measurements = snapshot_payload.get("measurements")
             if not isinstance(measurements, list) or len(measurements) != 5:
                 fail("expected five measurements")
