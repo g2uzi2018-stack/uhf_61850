@@ -82,6 +82,11 @@ int main() {
                 "event parsed value round trip")) {
             return 1;
         }
+        if (!expect(store.list().size() == 1U, "event listing") ||
+            !expect(uhf::storage::EventBundleStore::to_csv(*restored).find("13615") != std::string::npos,
+                "event CSV export")) {
+            return 1;
+        }
 
         const std::filesystem::path corrupt_path = root / "corrupt.bin";
         std::filesystem::copy_file(*path, corrupt_path);

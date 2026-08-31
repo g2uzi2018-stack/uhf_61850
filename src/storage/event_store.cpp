@@ -100,6 +100,18 @@ std::uint8_t status_code(uhf::domain::PayloadStatus status) noexcept {
     return 1U;
 }
 
+std::string status_name(uhf::domain::PayloadStatus status) {
+    switch (status) {
+    case uhf::domain::PayloadStatus::good:
+        return "good";
+    case uhf::domain::PayloadStatus::degraded:
+        return "degraded";
+    case uhf::domain::PayloadStatus::not_refreshed:
+        return "not_refreshed";
+    }
+    return "degraded";
+}
+
 std::optional<uhf::domain::PayloadStatus> decode_status(std::uint8_t code) noexcept {
     switch (code) {
     case 0U:
@@ -346,6 +358,66 @@ std::optional<EventBundle> EventBundleStore::read(const std::filesystem::path& p
         offset += kFrameBytes;
     }
     return bundle;
+}
+
+std::vector<std::filesystem::path> EventBundleStore::list(std::size_t limit) const {
+    std::vector<std::pair<std::filesystem::path, EventBundle>> records;
+    std::error_code error;
+    for (const std::filesystem::directory_entry& entry :
+         std::filesystem::directory_iterator(directory_, error)) {
+        if (error) {
+            return {};
+        }
+        if (entry.path().extension() != ".bin") {
+            continue;
+        }
+        const std::optional<EventBundle> bundle = read(entry.path());
+        if (bundle) {
+            records.emplace_back(entry.path(), *bundle);
+        }
+    }
+    std::sort(records.begin(), records.end(), [](const auto& first, const auto& second) {
+        if (first.second.first_triggered_at_utc != second.second.first_triggered_at_utc) {
+            return first.second.first_triggered_at_utc > second.second.first_triggered_at_utc;
+        }
+        return first.second.id > second.second.id;
+    });
+    const std::size_t count = std::min(limit, records.size());
+    std::vector<std::filesystem::path> result;
+    result.reserve(count);
+    for (std::size_t index = 0U; index < count; ++index) {
+        result.push_back(records[index].first);
+    }
+    return result;
+}
+
+std::string EventBundleStore::to_csv(const EventBundle& bundle) {
+    const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+        bundle.first_triggered_at_utc.time_since_epoch());
+    std::string result =
+        "event_id,timestamp_ms,partial,reason_mask,frame_generation,payload_status,register_address,raw_value\n";
+    result.reserve(64U + bundle.frames.size() * domain::kPd1000RegisterCount * 40U);
+    for (const acquisition::PublishedSnapshot& frame : bundle.frames) {
+        for (std::size_t index = 0U; index < frame.payload.raw_registers.size(); ++index) {
+            result.append(std::to_string(bundle.id));
+            result.push_back(',');
+            result.append(std::to_string(milliseconds.count()));
+            result.push_back(',');
+            result.append(bundle.partial ? "true" : "false");
+            result.push_back(',');
+            result.append(std::to_string(bundle.reason_mask));
+            result.push_back(',');
+            result.append(std::to_string(frame.generation));
+            result.push_back(',');
+            result.append(status_name(frame.payload.payload_status));
+            result.push_back(',');
+            result.append(std::to_string(10001U + static_cast<std::uint32_t>(index)));
+            result.push_back(',');
+            result.append(std::to_string(frame.payload.raw_registers[index]));
+            result.push_back('\n');
+        }
+    }
+    return result;
 }
 
 bool EventBundleStore::cleanup_incomplete() const {

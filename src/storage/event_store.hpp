@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace uhf::storage {
 
@@ -19,6 +21,8 @@ public:
 
     std::optional<std::filesystem::path> save(const EventBundle& bundle) const;
     std::optional<EventBundle> read(const std::filesystem::path& path) const;
+    std::vector<std::filesystem::path> list(std::size_t limit = 100U) const;
+    static std::string to_csv(const EventBundle& bundle);
     bool cleanup_incomplete() const;
 
 private:

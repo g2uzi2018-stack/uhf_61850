@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace uhf::storage {
 
@@ -29,6 +31,8 @@ public:
         const acquisition::PublishedSnapshot& snapshot,
         std::chrono::system_clock::time_point timestamp);
     std::optional<FrameRecord> read(const std::filesystem::path& path) const;
+    std::vector<std::filesystem::path> list(std::size_t limit = 100U) const;
+    static std::string to_csv(const FrameRecord& record);
     bool save_periodic(
         const acquisition::PublishedSnapshot& snapshot,
         std::chrono::system_clock::time_point now,

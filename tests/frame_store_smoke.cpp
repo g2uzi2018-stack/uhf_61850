@@ -58,6 +58,12 @@ int main() {
             !expect(first_record->raw_registers[0] == 0xFFCEU, "raw register round trip")) {
             return 1;
         }
+        const std::vector<std::filesystem::path> listed = store.list();
+        if (!expect(listed.size() == 1U, "frame listing") ||
+            !expect(uhf::storage::FrameStore::to_csv(*first_record).find("13615") != std::string::npos,
+                "frame CSV export")) {
+            return 1;
+        }
 
         const std::filesystem::path corrupt_path = root / "corrupt.bin";
         std::filesystem::copy_file(*first_path, corrupt_path);
