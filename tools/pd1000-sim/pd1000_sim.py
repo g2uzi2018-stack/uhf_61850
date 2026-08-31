@@ -82,12 +82,18 @@ def write_all(fd: int, data: bytes) -> None:
         position += written
 
 
-def run(device: Path, fixture: Path, response_delay_ms: float) -> int:
+def run(
+    device: Path | None,
+    file_descriptor: int | None,
+    fixture: Path,
+    response_delay_ms: float,
+) -> int:
     plan = parse_plan(fixture)
     registers = build_registers()
-    device_fd = os.open(device, os.O_RDWR | os.O_NOCTTY)
-    old_attributes = termios.tcgetattr(device_fd)
-    tty.setraw(device_fd)
+    device_fd = os.open(device, os.O_RDWR | os.O_NOCTTY) if device is not None else os.dup(file_descriptor)
+    old_attributes = termios.tcgetattr(device_fd) if device is not None else None
+    if old_attributes is not None:
+        tty.setraw(device_fd)
     stopping = False
 
     def stop(_signum: int, _frame: object) -> None:
@@ -121,21 +127,24 @@ def run(device: Path, fixture: Path, response_delay_ms: float) -> int:
                 write_all(device_fd, response_for(received, registers, start, count))
                 plan_index = (plan_index + 1) % len(plan)
     finally:
-        termios.tcsetattr(device_fd, termios.TCSANOW, old_attributes)
+        if old_attributes is not None:
+            termios.tcsetattr(device_fd, termios.TCSANOW, old_attributes)
         os.close(device_fd)
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--device", type=Path, required=True, help="PTY slave path")
+    device_group = parser.add_mutually_exclusive_group(required=True)
+    device_group.add_argument("--device", type=Path, help="PTY slave path")
+    device_group.add_argument("--fd", type=int, help="inherited PTY master file descriptor")
     parser.add_argument("--fixture", type=Path, required=True, help="request-plan fixture")
     parser.add_argument("--response-delay-ms", type=float, default=0.0)
     arguments = parser.parse_args()
     if arguments.response_delay_ms < 0:
         parser.error("--response-delay-ms must not be negative")
     try:
-        return run(arguments.device, arguments.fixture, arguments.response_delay_ms)
+        return run(arguments.device, arguments.fd, arguments.fixture, arguments.response_delay_ms)
     except (OSError, RuntimeError, ValueError) as error:
         print(f"pd1000 simulator failed: {error}", file=sys.stderr)
         return 1

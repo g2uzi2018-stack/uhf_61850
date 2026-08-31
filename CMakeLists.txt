@@ -19,6 +19,7 @@ configure_file(
 
 add_executable(uhf-gatewayd
     src/main.cpp
+    src/acquisition/acquisition.cpp
     src/domain/modbus.cpp
     src/domain/snapshot.cpp
     src/web/auth_store.cpp
@@ -73,6 +74,26 @@ target_compile_features(uhf_snapshot_smoke PRIVATE cxx_std_17)
 target_include_directories(uhf_snapshot_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
 if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(uhf_snapshot_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
+add_executable(uhf_acquisition_smoke
+    tests/acquisition_smoke.cpp
+    src/acquisition/acquisition.cpp
+    src/domain/modbus.cpp
+    src/domain/snapshot.cpp
+)
+target_compile_features(uhf_acquisition_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_acquisition_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_acquisition_smoke PRIVATE
         -Wall
         -Wextra
         -Wpedantic
@@ -139,6 +160,14 @@ if(BUILD_TESTING)
             NAME uhf_pd1000_sim_smoke
             COMMAND "${Python3_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/tests/pd1000_sim_smoke.py"
+                "${PROJECT_SOURCE_DIR}/tools/pd1000-sim/pd1000_sim.py"
+                "${PROJECT_SOURCE_DIR}/tests/fixtures/pd1000_request_plan.txt"
+        )
+        add_test(
+            NAME uhf_acquisition_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/acquisition_smoke.py"
+                "$<TARGET_FILE:uhf_acquisition_smoke>"
                 "${PROJECT_SOURCE_DIR}/tools/pd1000-sim/pd1000_sim.py"
                 "${PROJECT_SOURCE_DIR}/tests/fixtures/pd1000_request_plan.txt"
         )
