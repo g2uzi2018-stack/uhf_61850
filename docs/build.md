@@ -1,6 +1,6 @@
 # 本地构建
 
-当前仓库已经提供 host 和 AArch64 两个 CMake 配置。目标板不参与编译，也不需要在启动时下载依赖。
+当前仓库已经提供 host 和 AArch64 两个 CMake 配置。目标板不参与编译，也不需要在启动时下载依赖；主机上可以完整运行协议模拟器、认证 Web 服务和发布包冒烟测试。
 
 ## 依赖
 
@@ -40,7 +40,7 @@ format-check 是可选的 CMake 目标；安装 clang-format 后执行：
 
 ## 界面预览
 
-用户管理页面现在由 uhf-gatewayd 的 C++ 开发 HTTP 服务提供，登录、服务端会话、CSRF、首次改密和登出接口已经接入。启动开发服务：
+预览页面由 `uhf-gatewayd` 的 C++ 服务直接提供，不是静态页面截图或 Python 假服务。登录、服务端会话、CSRF、首次改密、登出、总览、实时 WebSocket、配置、网络事务、IEC 61850 状态、日志、存储和维护页面均走实际路由。启动开发服务：
 
     bash tools/run-web-local.sh
 
@@ -53,14 +53,29 @@ format-check 是可选的 CMake 目标；安装 clang-format 后执行：
 首次启动会在 `build/dev-state/initial-password` 生成一次性随机密码（文件权限
 0600），登录账号为 `admin`。浏览器打开登录页后，首次登录必须修改密码；改密成功
 会删除该一次性密码文件。运行时哈希保存在 `build/dev-state/auth.json`（权限
-0600），开发服务停止后可删除整个 `build/` 目录重新初始化。
+0600），开发服务停止后可删除整个 `build/` 目录重新初始化。正式发布安装由
+`uhf-auth-init` 预置认证状态，并将一次性密码保留为 root-only 文件。
 
-该开发服务不读取 485、不连接设备，也不会修改产品配置文件；当前健康接口会返回
-`degraded`（硬件采集尚未实现）和 `web_auth=ready`。HTTPS、证书替换、业务配置和
-硬件协议仍属于后续增量，不能把当前开发服务当作产品发布包。
+该开发服务使用 PD1000 PTY 模拟器，不读取本机 485，也不会修改产品 `/etc` 配置；
+`--http-recovery` 是仅供可信本地开发网络使用的明文恢复模式。产品服务默认启用
+HTTPS，启动时生成自签名证书，证书替换、业务配置、网络事务、Modbus、IEC 61850
+和持久化均可在 host 测试中验证；真实串口、电气收发、双网口链路和板级厂商网络
+文件格式仍需目标板阶段验收。
 
 `tools/preview-web.sh` 现在只是上述 C++ 开发服务的兼容入口，不再启动无认证的
 Python 静态服务器。
+
+## 发布包
+
+执行 `bash tools/build-local.sh` 会先运行完整 host CTest，再构建并检查 AArch64
+产物。配置完成的 host 构建也可以用以下命令生成离线发布包：
+
+    bash packaging/build-release.sh --build-dir build/host --version VERSION --output dist
+
+发布包包含二进制、离线 Web 资源、默认配置/schema、IEC 模型、许可证清单、systemd、
+rsyslog、logrotate、DHCP hook、认证初始化工具、预检脚本和原子安装脚本。安装到
+真实目标板前必须通过目标架构、端口、串口、磁盘、NTP 及受保护旧进程检查；当前远程
+机器关闭时只进行上述本地构建和模拟器验证。
 
 ## PD1000 主机模拟器
 
