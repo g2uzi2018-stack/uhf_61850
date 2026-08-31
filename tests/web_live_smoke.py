@@ -188,6 +188,10 @@ def main() -> int:
                 fail(f"Modbus TCP health is not up: {health_payload!r}")
             if health_payload.get("storage", {}).get("status") != "up":
                 fail(f"storage health is not up: {health_payload!r}")
+            if health_payload.get("iec61850", {}).get("status") != "up":
+                fail(f"IEC 61850 health is not up: {health_payload!r}")
+            with socket.create_connection(("127.0.0.1", 15102), timeout=2):
+                pass
             overview_status, overview_body, _ = request(
                 port, "GET", "/overview.html", headers={"Cookie": cookie}
             )

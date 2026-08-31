@@ -3,6 +3,7 @@
 
 #include "acquisition/acquisition.hpp"
 #include "health/health.hpp"
+#include "iec61850/server.hpp"
 #include "logging/logger.hpp"
 #include "modbus/rtu_server.hpp"
 #include "modbus/tcp_server.hpp"
@@ -30,6 +31,10 @@ struct GatewayRuntimeOptions {
     bool start_modbus_rtu{true};
     std::string modbus_rtu_device{"/dev/ttyS4"};
     modbus::ModbusRtuOptions modbus_rtu_options{};
+    bool start_iec61850{true};
+    std::string iec61850_bind{"127.0.0.1"};
+    std::uint16_t iec61850_port{102U};
+    std::string iec61850_ied_name{"UHFPD1"};
     bool start_persistence{true};
     storage::PersistenceOptions persistence_options{};
 };
@@ -58,6 +63,7 @@ private:
     std::unique_ptr<modbus::ModbusTcpServer> modbus_tcp_server_;
     std::unique_ptr<acquisition::ISerialPort> modbus_rtu_serial_port_;
     std::unique_ptr<modbus::ModbusRtuServer> modbus_rtu_server_;
+    std::unique_ptr<iec61850::Server> iec61850_server_;
     std::unique_ptr<storage::PersistenceWorker> persistence_worker_;
     acquisition::SnapshotStore snapshot_store_;
     std::atomic<bool> stop_requested_{false};

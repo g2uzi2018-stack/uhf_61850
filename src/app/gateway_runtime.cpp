@@ -34,6 +34,14 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
         modbus_rtu_server_ = std::make_unique<modbus::ModbusRtuServer>(
             *modbus_rtu_serial_port_, snapshot_store_, options_.modbus_rtu_options);
     }
+    if (options_.start_iec61850) {
+        iec61850_server_ = std::make_unique<iec61850::Server>(
+            snapshot_store_,
+            iec61850::ServerOptions{
+                options_.iec61850_bind,
+                options_.iec61850_port,
+                options_.iec61850_ied_name});
+    }
     if (options_.start_persistence) {
         persistence_worker_ = std::make_unique<storage::PersistenceWorker>(
             snapshot_store_, logger_, options_.persistence_options);
@@ -74,6 +82,9 @@ void GatewayRuntime::start() {
             }
         });
     }
+    if (iec61850_server_) {
+        iec61850_server_->start();
+    }
     if (persistence_worker_) {
         persistence_worker_->start();
     }
@@ -92,6 +103,9 @@ void GatewayRuntime::stop() noexcept {
     }
     if (modbus_rtu_worker_.joinable()) {
         modbus_rtu_worker_.join();
+    }
+    if (iec61850_server_) {
+        iec61850_server_->stop();
     }
     if (worker_.joinable()) {
         worker_.join();
@@ -116,6 +130,8 @@ health::Input GatewayRuntime::health_input() const {
     input.modbus_tcp_listening =
         modbus_tcp_server_ != nullptr && modbus_tcp_server_->bound_port() != 0U;
     input.modbus_rtu_ready = modbus_rtu_server_ != nullptr;
+    input.iec61850_enabled =
+        iec61850_server_ != nullptr && iec61850_server_->running();
     if (persistence_worker_) {
         const storage::PersistenceStats stats = persistence_worker_->stats();
         input.storage_writable = !stats.writes_paused && !stats.cleanup_failed;

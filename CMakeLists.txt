@@ -47,6 +47,8 @@ add_executable(uhf-gatewayd
     src/domain/snapshot.cpp
     src/modbus/tcp_server.cpp
     src/modbus/rtu_server.cpp
+    src/iec61850/model.cpp
+    src/iec61850/server.cpp
     src/storage/frame_store.cpp
     src/storage/event_detector.cpp
     src/storage/event_store.cpp
