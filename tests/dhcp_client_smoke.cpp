@@ -4,9 +4,12 @@
 #include <cassert>
 #include <chrono>
 #include <filesystem>
+#include <fcntl.h>
 #include <fstream>
 #include <signal.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
+#include <thread>
 #include <unistd.h>
 
 namespace {
@@ -95,6 +98,33 @@ int main() {
         assert(!std::filesystem::exists(directory / "eth0.pid"));
         assert(!std::filesystem::exists(directory / "eth0.result"));
     }
+
+    const std::filesystem::path matching_pid_path = directory / "eth0.pid";
+    const pid_t matching_pid = ::fork();
+    assert(matching_pid >= 0);
+    if (matching_pid == 0) {
+        const int null_device = ::open("/dev/null", O_RDWR);
+        if (null_device >= 0) {
+            (void)::dup2(null_device, STDOUT_FILENO);
+            (void)::dup2(null_device, STDERR_FILENO);
+            if (null_device > STDERR_FILENO) {
+                ::close(null_device);
+            }
+        }
+        ::execl(
+            "/usr/bin/yes", "yes",
+            fake_dhclient.c_str(), matching_pid_path.c_str(), "eth0", nullptr);
+        _exit(127);
+    }
+    {
+        std::ofstream matching_pid_file(matching_pid_path);
+        matching_pid_file << matching_pid << '\n';
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    assert(client.stop(dhcp_config(), lease));
+    int matching_status = 0;
+    assert(::waitpid(matching_pid, &matching_status, 0) == matching_pid);
+    assert(WIFSIGNALED(matching_status) || WIFEXITED(matching_status));
 
     write_executable(
         fake_dhclient,

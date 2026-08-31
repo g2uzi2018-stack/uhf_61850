@@ -2,6 +2,7 @@
 #include "platform/network/dhcp_client.hpp"
 
 #include <arpa/inet.h>
+#include <algorithm>
 #include <cerrno>
 #include <charconv>
 #include <chrono>
@@ -11,11 +12,13 @@
 #include <fcntl.h>
 #include <fstream>
 #include <limits>
+#include <poll.h>
 #include <csignal>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
@@ -274,6 +277,46 @@ bool has_cmdline_token(std::string_view cmdline, std::string_view token) {
             break;
         }
         begin = end + 1U;
+    }
+    return false;
+}
+
+int open_pidfd(pid_t pid) noexcept {
+#if defined(SYS_pidfd_open)
+    return static_cast<int>(::syscall(SYS_pidfd_open, pid, 0U));
+#else
+    static_cast<void>(pid);
+    return -1;
+#endif
+}
+
+bool send_pidfd_signal(int pidfd, int signal_number) noexcept {
+#if defined(SYS_pidfd_send_signal)
+    if (::syscall(SYS_pidfd_send_signal, pidfd, signal_number, nullptr, 0U) == 0) {
+        return true;
+    }
+    return errno == ESRCH;
+#else
+    static_cast<void>(pidfd);
+    static_cast<void>(signal_number);
+    return false;
+#endif
+}
+
+bool wait_pidfd_exit(int pidfd, std::chrono::steady_clock::time_point deadline) noexcept {
+    while (std::chrono::steady_clock::now() < deadline) {
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now());
+        const int timeout = static_cast<int>(std::max<std::int64_t>(
+            1, std::min<std::int64_t>(remaining.count(), 50)));
+        pollfd descriptor{pidfd, POLLIN, 0};
+        const int result = ::poll(&descriptor, 1, timeout);
+        if (result > 0 && (descriptor.revents & (POLLIN | POLLHUP | POLLERR | POLLNVAL)) != 0) {
+            return true;
+        }
+        if (result < 0 && errno != EINTR) {
+            return false;
+        }
     }
     return false;
 }
@@ -626,6 +669,32 @@ bool ExecDhcpClient::process_matches(const InterfaceConfig& config, pid_t pid) c
 bool ExecDhcpClient::terminate_pid(const InterfaceConfig& config, pid_t pid) const noexcept {
     if (pid <= 0) {
         return true;
+    }
+    const int pidfd = open_pidfd(pid);
+    if (pidfd >= 0) {
+        if (!process_matches(config, pid)) {
+            (void)::close(pidfd);
+            return true;
+        }
+        if (!send_pidfd_signal(pidfd, SIGTERM)) {
+            (void)::close(pidfd);
+            return false;
+        }
+        const auto deadline = std::chrono::steady_clock::now() +
+            std::chrono::milliseconds(250);
+        if (wait_pidfd_exit(pidfd, deadline)) {
+            (void)::close(pidfd);
+            return true;
+        }
+        if (!send_pidfd_signal(pidfd, SIGKILL)) {
+            (void)::close(pidfd);
+            return false;
+        }
+        const auto kill_deadline = std::chrono::steady_clock::now() +
+            std::chrono::milliseconds(250);
+        const bool exited = wait_pidfd_exit(pidfd, kill_deadline);
+        (void)::close(pidfd);
+        return exited;
     }
     if (!process_matches(config, pid)) {
         return true;
