@@ -141,16 +141,22 @@ Reply NetworkService::handle(std::string_view request, uid_t uid, gid_t gid) {
     return {false, "unknown_operation", {}};
 }
 
-network::TransactionResult NetworkService::recover_pending() {
+network::TransactionResult NetworkService::recover_pending(bool start_runtime) {
     std::lock_guard<std::mutex> lock(mutex_);
     const network::TransactionResult result = transaction_manager_.rollback_if_needed();
     if (result == network::TransactionResult::not_due) {
         return result;
     }
-    if (result == network::TransactionResult::no_transaction ||
-        result == network::TransactionResult::ok ||
+    if (!start_runtime && result == network::TransactionResult::no_transaction) {
+        network::NetworkConfig current;
+        if (!backend_.read_current(current)) {
+            return network::TransactionResult::backend_error;
+        }
+    }
+    if (start_runtime && (result == network::TransactionResult::no_transaction ||
+                          result == network::TransactionResult::ok ||
         result == network::TransactionResult::expired ||
-        result == network::TransactionResult::boot_changed) {
+        result == network::TransactionResult::boot_changed)) {
         if (!backend_.start_runtime()) {
             return network::TransactionResult::backend_error;
         }
@@ -179,8 +185,7 @@ void NetworkService::rollback_loop() {
             std::lock_guard<std::mutex> lock(mutex_);
             const network::TransactionResult result = transaction_manager_.rollback_if_needed();
             if (result != network::TransactionResult::not_due &&
-                (result == network::TransactionResult::no_transaction ||
-                 result == network::TransactionResult::ok ||
+                (result == network::TransactionResult::ok ||
                  result == network::TransactionResult::expired ||
                  result == network::TransactionResult::boot_changed)) {
                 (void)backend_.start_runtime();

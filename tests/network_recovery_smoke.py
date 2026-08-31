@@ -46,6 +46,41 @@ def main() -> int:
         if default_config.get("eth0_address") != "192.168.3.230":
             fail("recovery initialized an unexpected network config")
 
+        network.write_text(
+            json.dumps(
+                {
+                    "eth0_mode": "dhcp",
+                    "eth0_address": "",
+                    "eth0_prefix": 24,
+                    "eth0_gateway": "",
+                    "eth0_dns1": "",
+                    "eth0_dns2": "",
+                    "eth0_hostname": "gateway",
+                    "eth0_dhcp_timeout_seconds": 15,
+                    "eth1_mode": "static",
+                    "eth1_address": "192.168.0.230",
+                    "eth1_prefix": 24,
+                    "eth1_gateway": "",
+                    "eth1_dns1": "",
+                    "eth1_dns2": "",
+                    "eth1_hostname": "",
+                    "eth1_dhcp_timeout_seconds": 15,
+                }
+            ),
+            encoding="utf-8",
+        )
+        network.with_name(network.name + ".leases").write_text(
+            "version=1\n"
+            "eth0 192.168.3.240 24 192.168.3.2 192.168.3.1 -\n"
+            "eth1 -\n",
+            encoding="utf-8",
+        )
+        result = run(binary, network, transaction)
+        if result.returncode != 0:
+            fail(f"DHCP no-transaction recovery failed: {result.stderr.strip()}")
+        if (root / "etc" / "dhcp").exists():
+            fail("early recovery started the DHCP runtime")
+
         transaction.parent.mkdir(parents=True, exist_ok=True)
         transaction.write_text("{\"version\":1,\"state\":\"staged\"}", encoding="utf-8")
         result = run(binary, network, transaction)

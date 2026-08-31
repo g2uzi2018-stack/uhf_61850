@@ -66,7 +66,7 @@ int main(int argc, char* argv[]) {
 
     try {
         uhf::privileged::NetworkService service(options.network_file, options.transaction_file);
-        const uhf::network::TransactionResult recovery = service.recover_pending();
+        const uhf::network::TransactionResult recovery = service.recover_pending(true);
         if (recovery == uhf::network::TransactionResult::corrupt ||
             recovery == uhf::network::TransactionResult::backend_error ||
             recovery == uhf::network::TransactionResult::storage_error) {

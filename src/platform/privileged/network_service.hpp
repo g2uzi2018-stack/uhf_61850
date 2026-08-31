@@ -27,7 +27,7 @@ public:
     NetworkService& operator=(const NetworkService&) = delete;
 
     Reply handle(std::string_view request, uid_t uid, gid_t gid);
-    network::TransactionResult recover_pending();
+    network::TransactionResult recover_pending(bool start_runtime);
     void start_rollback_monitor();
     void stop_rollback_monitor() noexcept;
 

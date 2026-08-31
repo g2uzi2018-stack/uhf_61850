@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
     try {
         uhf::privileged::NetworkService service(
             std::string(options.network_file), std::string(options.transaction_file));
-        const uhf::network::TransactionResult result = service.recover_pending();
+        const uhf::network::TransactionResult result = service.recover_pending(false);
         if (result == uhf::network::TransactionResult::no_transaction ||
             result == uhf::network::TransactionResult::not_due ||
             result == uhf::network::TransactionResult::ok ||
