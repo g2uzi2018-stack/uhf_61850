@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Verify the gateway consumes a persisted configuration before binding Web."""
+"""Verify the product web listener defaults to HTTPS with a generated certificate."""
 
-from http.client import HTTPConnection
+from http.client import HTTPSConnection, HTTPConnection, RemoteDisconnected
 import json
 from pathlib import Path
 import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -12,7 +13,7 @@ import time
 
 
 def fail(message: str) -> None:
-    raise SystemExit(f"config runtime smoke failed: {message}")
+    raise SystemExit(f"web TLS smoke failed: {message}")
 
 
 def free_port() -> int:
@@ -21,14 +22,15 @@ def free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def request(
+def https_request(
     port: int,
     method: str,
     path: str,
     body: bytes | None = None,
     headers: dict[str, str] | None = None,
 ) -> tuple[int, bytes, dict[str, str]]:
-    connection = HTTPConnection("127.0.0.1", port, timeout=2)
+    context = ssl._create_unverified_context()
+    connection = HTTPSConnection("127.0.0.1", port, timeout=2, context=context)
     try:
         connection.request(method, path, body=body, headers=headers or {})
         response = connection.getresponse()
@@ -42,45 +44,20 @@ def main() -> int:
         fail("expected server binary and web directory")
     binary = Path(sys.argv[1])
     web_dir = Path(sys.argv[2])
-    configured_web_port = free_port()
-    configured_tcp_port = free_port()
-    configuration = {
-        "version": 7,
-        "acquisition_device": "/dev/ttyS1",
-        "acquisition_slave_id": 2,
-        "acquisition_period_ms": 6000,
-        "acquisition_response_timeout_ms": 150,
-        "acquisition_max_retries": 2,
-        "rtu_device": "/dev/ttyS4",
-        "rtu_unit_id": 3,
-        "modbus_tcp_bind": "127.0.0.1",
-        "modbus_tcp_unit_id": 4,
-        "modbus_tcp_port": configured_tcp_port,
-        "web_port": configured_web_port,
-        "tls_enabled": False,
-        "iec_enabled": False,
-        "iec_port": free_port(),
-        "iec_ied_name": "UHFPD2",
-        "storage_period_seconds": 600,
-        "storage_retention_days": 2,
-        "storage_min_free_bytes": 268435456,
-    }
-    with tempfile.TemporaryDirectory(prefix="uhf-config-runtime-") as state_text:
+    port = free_port()
+    with tempfile.TemporaryDirectory(prefix="uhf-web-tls-") as state_text:
         state_dir = Path(state_text)
-        config_path = state_dir / "config.json"
-        config_path.write_text(json.dumps(configuration), encoding="utf-8")
         process = subprocess.Popen(
             [
                 str(binary),
                 "--web",
-                "--http-recovery",
                 "--web-root",
                 str(web_dir),
                 "--state-dir",
                 str(state_dir),
-                "--config",
-                str(config_path),
                 "--no-acquisition",
+                "--listen",
+                f"127.0.0.1:{port}",
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -93,18 +70,35 @@ def main() -> int:
                     stderr = process.stderr.read() if process.stderr else ""
                     fail(f"server exited early: {stderr.strip()}")
                 try:
-                    status, _, _ = request(configured_web_port, "GET", "/healthz")
-                    if status == 200:
-                        break
-                except OSError:
+                    status, body, _ = https_request(port, "GET", "/healthz")
+                    if status != 200:
+                        fail(f"HTTPS health returned {status}: {body!r}")
+                    break
+                except (OSError, ssl.SSLError):
                     time.sleep(0.05)
             else:
-                fail("server did not bind configured web port")
+                fail("HTTPS server did not start")
+
+            certificate = state_dir / "tls" / "server.crt"
+            private_key = state_dir / "tls" / "server.key"
+            if not certificate.is_file() or not private_key.is_file():
+                fail("generated TLS files are missing")
+
+            plaintext = HTTPConnection("127.0.0.1", port, timeout=2)
+            try:
+                try:
+                    plaintext.request("GET", "/healthz")
+                    plaintext.getresponse()
+                    fail("plaintext HTTP was accepted on the HTTPS listener")
+                except (ConnectionResetError, RemoteDisconnected, OSError):
+                    pass
+            finally:
+                plaintext.close()
 
             initial_password = (state_dir / "initial-password").read_text(encoding="utf-8").strip()
-            origin = f"http://127.0.0.1:{configured_web_port}"
-            status, body, headers = request(
-                configured_web_port,
+            origin = f"https://127.0.0.1:{port}"
+            status, body, headers = https_request(
+                port,
                 "POST",
                 "/api/v1/session",
                 json.dumps(
@@ -114,17 +108,11 @@ def main() -> int:
                 {"Content-Type": "application/json", "Origin": origin},
             )
             if status != 200:
-                fail(f"login returned {status}: {body!r}")
-            cookie = headers["Set-Cookie"].split(";", 1)[0]
-            config_status, config_body, _ = request(
-                configured_web_port, "GET", "/api/v1/config", headers={"Cookie": cookie}
-            )
-            if config_status != 200:
-                fail(f"config lookup returned {config_status}")
-            loaded = json.loads(config_body)
-            if loaded.get("version") != 7 or loaded.get("rtu_unit_id") != 3 or loaded.get("modbus_tcp_unit_id") != 4 or loaded.get("iec_enabled") is not False:
-                fail(f"persisted configuration was not loaded: {loaded!r}")
-            print("config runtime smoke: OK")
+                fail(f"HTTPS login returned {status}: {body!r}")
+            cookie = headers.get("Set-Cookie", "")
+            if "Secure" not in cookie or "HttpOnly" not in cookie or "SameSite=Strict" not in cookie:
+                fail(f"secure session cookie attributes are missing: {cookie!r}")
+            print("web TLS smoke: OK")
             return 0
         finally:
             process.terminate()

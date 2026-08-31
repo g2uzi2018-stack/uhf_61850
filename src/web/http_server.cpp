@@ -20,6 +20,7 @@
 #include <netinet/in.h>
 #include <optional>
 #include <openssl/evp.h>
+#include <openssl/ssl.h>
 #include <poll.h>
 #include <sstream>
 #include <stdexcept>
@@ -181,11 +182,40 @@ bool parse_header_block(
     return true;
 }
 
-bool send_all(int client_fd, std::string_view data) {
+ssize_t receive_bytes(int client_fd, SSL* tls, void* buffer, std::size_t size) {
+    if (tls == nullptr) {
+        return ::recv(client_fd, buffer, size, 0);
+    }
+    const int result = SSL_read(tls, buffer, static_cast<int>(size));
+    if (result > 0) {
+        return result;
+    }
+    const int error = SSL_get_error(tls, result);
+    errno = (error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE)
+        ? EAGAIN
+        : ECONNRESET;
+    return -1;
+}
+
+ssize_t send_bytes(int client_fd, SSL* tls, const void* buffer, std::size_t size) {
+    if (tls == nullptr) {
+        return ::send(client_fd, buffer, size, MSG_NOSIGNAL);
+    }
+    const int result = SSL_write(tls, buffer, static_cast<int>(size));
+    if (result > 0) {
+        return result;
+    }
+    const int error = SSL_get_error(tls, result);
+    errno = (error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE)
+        ? EAGAIN
+        : ECONNRESET;
+    return -1;
+}
+
+bool send_all(int client_fd, SSL* tls, std::string_view data) {
     std::size_t sent = 0;
     while (sent < data.size()) {
-        const ssize_t result =
-            ::send(client_fd, data.data() + sent, data.size() - sent, MSG_NOSIGNAL);
+        const ssize_t result = send_bytes(client_fd, tls, data.data() + sent, data.size() - sent);
         if (result <= 0) {
             return false;
         }
@@ -395,11 +425,11 @@ bool consume_websocket_input(
     return true;
 }
 
-bool read_request(int client_fd, std::string& request) {
+bool read_request(int client_fd, SSL* tls, std::string& request) {
     char buffer[1024];
     std::size_t header_end = std::string::npos;
     while ((header_end = request.find("\r\n\r\n")) == std::string::npos) {
-        const ssize_t received = ::recv(client_fd, buffer, sizeof(buffer), 0);
+        const ssize_t received = receive_bytes(client_fd, tls, buffer, sizeof(buffer));
         if (received <= 0) {
             return false;
         }
@@ -426,7 +456,7 @@ bool read_request(int client_fd, std::string& request) {
     }
     const std::size_t required_size = body_start + content_length;
     while (request.size() < required_size) {
-        const ssize_t received = ::recv(client_fd, buffer, sizeof(buffer), 0);
+        const ssize_t received = receive_bytes(client_fd, tls, buffer, sizeof(buffer));
         if (received <= 0) {
             return false;
         }
@@ -616,6 +646,7 @@ std::string_view status_text(int status) {
 
 void send_response(
     int client_fd,
+    SSL* tls,
     int status,
     std::string_view type,
     std::string_view body,
@@ -627,35 +658,37 @@ void send_response(
         "Referrer-Policy: no-referrer\r\nX-Frame-Options: DENY\r\n";
     headers.append(extra_headers);
     headers.append("\r\n");
-    send_all(client_fd, headers);
-    send_all(client_fd, body);
+    send_all(client_fd, tls, headers);
+    send_all(client_fd, tls, body);
 }
 
 void send_json(
     int client_fd,
+    SSL* tls,
     int status,
     std::string_view body,
     std::string_view extra_headers = {}) {
-    send_response(client_fd, status, "application/json; charset=utf-8", body, extra_headers);
+    send_response(client_fd, tls, status, "application/json; charset=utf-8", body, extra_headers);
 }
 
 void send_error(
     int client_fd,
+    SSL* tls,
     int status,
     std::string_view message,
     std::string_view extra_headers = {}) {
     const std::string body = "{\"error\":\"" + std::string(message) + "\"}\n";
-    send_json(client_fd, status, body, extra_headers);
+    send_json(client_fd, tls, status, body, extra_headers);
 }
 
-void send_method_not_allowed(int client_fd, std::string_view allowed_methods) {
+void send_method_not_allowed(int client_fd, SSL* tls, std::string_view allowed_methods) {
     const std::string headers = "Allow: " + std::string(allowed_methods) + "\r\n";
-    send_error(client_fd, 405, "method not allowed", headers);
+    send_error(client_fd, tls, 405, "method not allowed", headers);
 }
 
-void send_redirect(int client_fd, std::string_view location) {
+void send_redirect(int client_fd, SSL* tls, std::string_view location) {
     const std::string headers = "Location: " + std::string(location) + "\r\n";
-    send_response(client_fd, 302, "text/plain; charset=utf-8", "redirecting\n", headers);
+    send_response(client_fd, tls, 302, "text/plain; charset=utf-8", "redirecting\n", headers);
 }
 
 void append_utf8(std::string& value, unsigned int code_point) {
@@ -802,13 +835,15 @@ std::string session_json(std::string_view csrf_token, bool must_change) {
         std::string(csrf_token) + "\"}\n";
 }
 
-std::string session_cookie_header(std::string_view token) {
+std::string session_cookie_header(std::string_view token, bool secure) {
     return "Set-Cookie: uhf_session=" + std::string(token) +
-        "; Max-Age=1800; Path=/; HttpOnly; SameSite=Strict\r\n";
+        "; Max-Age=1800; Path=/; HttpOnly; SameSite=Strict" +
+        std::string(secure ? "; Secure" : "") + "\r\n";
 }
 
-std::string expired_session_cookie_header() {
-    return "Set-Cookie: uhf_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict\r\n";
+std::string expired_session_cookie_header(bool secure) {
+    return "Set-Cookie: uhf_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict" +
+        std::string(secure ? "; Secure" : "") + "\r\n";
 }
 
 std::string_view payload_status_name(uhf::domain::PayloadStatus status) {
@@ -834,18 +869,24 @@ HttpServer::HttpServer(
     std::filesystem::path state_directory,
     const acquisition::SnapshotStore* snapshot_store,
     HealthInputProvider health_input_provider,
-    config::ConfigStore* config_store)
+    config::ConfigStore* config_store,
+    bool tls_enabled,
+    TlsFiles tls_files)
     : document_root_(std::move(document_root)),
       bind_address_(std::move(bind_address)),
       port_(port),
       auth_store_(std::move(state_directory)),
       snapshot_store_(snapshot_store),
       health_input_provider_(std::move(health_input_provider)),
-      config_store_(config_store) {
+      config_store_(config_store),
+      tls_enabled_(tls_enabled) {
     std::error_code error;
     document_root_ = std::filesystem::weakly_canonical(document_root_, error);
     if (error || !std::filesystem::is_directory(document_root_, error) || error) {
         throw std::invalid_argument("web root is not a directory");
+    }
+    if (tls_enabled_) {
+        tls_context_ = std::make_unique<TlsContext>(std::move(tls_files));
     }
 }
 
@@ -966,7 +1007,8 @@ int HttpServer::run() {
         return 1;
     }
 
-    std::cout << uhf::app::kProductName << " web listening on http://" << bind_address_ << ":"
+    std::cout << uhf::app::kProductName << " web listening on "
+              << (tls_enabled_ ? "https://" : "http://") << bind_address_ << ":"
               << ntohs(bound_address.sin_port) << "/\n";
     std::error_code error;
     if (std::filesystem::exists(auth_store_.bootstrap_password_path(), error) && !error) {
@@ -988,11 +1030,31 @@ int HttpServer::run() {
             return 1;
         }
 
+        SSL* tls = nullptr;
+        if (tls_enabled_) {
+            tls = SSL_new(tls_context_->native());
+            if (tls == nullptr || SSL_set_fd(tls, client_fd) != 1) {
+                SSL_free(tls);
+                ::close(client_fd);
+                continue;
+            }
+            SSL_set_accept_state(tls);
+            if (SSL_accept(tls) != 1) {
+                SSL_free(tls);
+                ::close(client_fd);
+                continue;
+            }
+        }
+
         char remote_address[INET_ADDRSTRLEN]{};
         const char* converted = ::inet_ntop(
             AF_INET, &client_address.sin_addr, remote_address, sizeof(remote_address));
-        handle_client(client_fd, converted == nullptr ? "unknown" : std::string(converted));
-        ::close(client_fd);
+        const bool handed_off = handle_client(
+            client_fd, tls, converted == nullptr ? "unknown" : std::string(converted));
+        if (!handed_off) {
+            SSL_free(tls);
+            ::close(client_fd);
+        }
     }
 }
 
@@ -1006,8 +1068,9 @@ void HttpServer::cleanup_sessions(std::chrono::steady_clock::time_point now) {
     }
 }
 
-void HttpServer::run_websocket(int client_fd) {
+void HttpServer::run_websocket(int client_fd, SSL* tls) {
     if (!set_nonblocking(client_fd)) {
+        SSL_free(tls);
         ::close(client_fd);
         active_websocket_count_.fetch_sub(1U);
         return;
@@ -1036,8 +1099,11 @@ void HttpServer::run_websocket(int client_fd) {
         }
         if ((descriptor.revents & POLLIN) != 0) {
             std::uint8_t buffer[2048];
-            const ssize_t received = ::recv(client_fd, buffer, sizeof(buffer), 0);
+            const ssize_t received = receive_bytes(client_fd, tls, buffer, sizeof(buffer));
             if (received <= 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+                    continue;
+                }
                 break;
             }
             const std::size_t count = static_cast<std::size_t>(received);
@@ -1083,8 +1149,7 @@ void HttpServer::run_websocket(int client_fd) {
         }
 
         if (!output.empty()) {
-            const ssize_t sent = ::send(
-                client_fd, output.data(), output.size(), MSG_NOSIGNAL);
+            const ssize_t sent = send_bytes(client_fd, tls, output.data(), output.size());
             if (sent > 0) {
                 output.erase(output.begin(), output.begin() + static_cast<std::ptrdiff_t>(sent));
             } else if (sent < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
@@ -1095,28 +1160,29 @@ void HttpServer::run_websocket(int client_fd) {
             break;
         }
     }
+    SSL_free(tls);
     ::close(client_fd);
     active_websocket_count_.fetch_sub(1U);
 }
 
-void HttpServer::handle_client(int client_fd, std::string remote_address) {
+bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_address) {
     std::string request;
-    if (!read_request(client_fd, request)) {
-        send_error(client_fd, 400, "bad request");
-        return;
+    if (!read_request(client_fd, tls, request)) {
+        send_error(client_fd, tls, 400, "bad request");
+        return false;
     }
 
     ParsedRequest parsed;
     if (!parse_request(request, parsed) ||
         (parsed.version != "HTTP/1.0" && parsed.version != "HTTP/1.1")) {
-        send_error(client_fd, 400, "bad request");
-        return;
+        send_error(client_fd, tls, 400, "bad request");
+        return false;
     }
 
     std::string request_path;
     if (!decode_path(parsed.target, request_path)) {
-        send_error(client_fd, 400, "bad path");
-        return;
+        send_error(client_fd, tls, 400, "bad path");
+        return false;
     }
 
     const auto now = std::chrono::steady_clock::now();
@@ -1126,8 +1192,8 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
         if (parsed.method != "GET" ||
             !header_has_token(header_value(parsed, "connection"), "upgrade") ||
             lower_ascii(header_value(parsed, "upgrade")) != "websocket") {
-            send_error(client_fd, 400, "websocket upgrade required");
-            return;
+            send_error(client_fd, tls, 400, "websocket upgrade required");
+            return false;
         }
         const std::string token = session_cookie(parsed);
         const auto iterator = sessions_.find(token);
@@ -1135,37 +1201,39 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
             if (iterator != sessions_.end()) {
                 sessions_.erase(iterator);
             }
-            send_error(client_fd, 401, "authentication required");
-            return;
+            send_error(client_fd, tls, 401, "authentication required");
+            return false;
         }
         const std::string_view origin = header_value(parsed, "origin");
         const std::string_view host = header_value(parsed, "host");
-        if (origin.empty() || host.empty() || origin != "http://" + std::string(host)) {
-            send_error(client_fd, 403, "same-origin request required");
-            return;
+        const std::string expected_origin =
+            (tls == nullptr ? "http://" : "https://") + std::string(host);
+        if (origin.empty() || host.empty() || origin != expected_origin) {
+            send_error(client_fd, tls, 403, "same-origin request required");
+            return false;
         }
         if (header_value(parsed, "sec-websocket-version") != "13") {
-            send_error(client_fd, 400, "unsupported websocket version");
-            return;
+            send_error(client_fd, tls, 400, "unsupported websocket version");
+            return false;
         }
         const std::string_view key = header_value(parsed, "sec-websocket-key");
         if (!valid_websocket_key(key)) {
-            send_error(client_fd, 400, "invalid websocket key");
-            return;
+            send_error(client_fd, tls, 400, "invalid websocket key");
+            return false;
         }
         std::size_t active = active_websocket_count_.load();
         while (active < kMaxWebSocketConnections &&
                !active_websocket_count_.compare_exchange_weak(active, active + 1U)) {
         }
         if (active >= kMaxWebSocketConnections) {
-            send_error(client_fd, 503, "websocket connection limit reached", "Retry-After: 1\r\n");
-            return;
+            send_error(client_fd, tls, 503, "websocket connection limit reached", "Retry-After: 1\r\n");
+            return false;
         }
-        const int websocket_fd = ::dup(client_fd);
+        const int websocket_fd = client_fd;
         if (websocket_fd < 0) {
             active_websocket_count_.fetch_sub(1U);
-            send_error(client_fd, 503, "unable to open websocket");
-            return;
+            send_error(client_fd, tls, 503, "unable to open websocket");
+            return false;
         }
         const std::string handshake =
             "HTTP/1.1 101 Switching Protocols\r\n"
@@ -1173,24 +1241,24 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
             "Connection: Upgrade\r\n"
             "Sec-WebSocket-Accept: " + websocket_accept(key) + "\r\n"
             "X-Content-Type-Options: nosniff\r\n\r\n";
-        if (!send_all(client_fd, handshake)) {
-            ::close(websocket_fd);
+        if (!send_all(client_fd, tls, handshake)) {
             active_websocket_count_.fetch_sub(1U);
-            return;
+            return false;
         }
         try {
-            std::thread(&HttpServer::run_websocket, this, websocket_fd).detach();
+            std::thread(&HttpServer::run_websocket, this, websocket_fd, tls).detach();
         } catch (...) {
+            SSL_free(tls);
             ::close(websocket_fd);
             active_websocket_count_.fetch_sub(1U);
         }
-        return;
+        return true;
     }
 
     if (request_path == "/healthz") {
         if (parsed.method != "GET") {
-            send_method_not_allowed(client_fd, "GET");
-            return;
+            send_method_not_allowed(client_fd, tls, "GET");
+            return false;
         }
         const health::Report report = health_report(now);
         std::string body{"{\"status\":\""};
@@ -1198,14 +1266,14 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
         body.append("\",\"version\":\"");
         body.append(uhf::app::kVersion.data(), uhf::app::kVersion.size());
         body.append("\",\"web_auth\":\"ready\"}\n");
-        send_json(client_fd, 200, body);
-        return;
+        send_json(client_fd, tls, 200, body);
+        return false;
     }
 
     if (request_path == "/api/v1/health" || request_path == "/api/v1/snapshot/latest") {
         if (parsed.method != "GET") {
-            send_method_not_allowed(client_fd, "GET");
-            return;
+            send_method_not_allowed(client_fd, tls, "GET");
+            return false;
         }
         const std::string token = session_cookie(parsed);
         const auto iterator = sessions_.find(token);
@@ -1213,31 +1281,31 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
             if (iterator != sessions_.end()) {
                 sessions_.erase(iterator);
             }
-            send_error(client_fd, 401, "authentication required");
-            return;
+            send_error(client_fd, tls, 401, "authentication required");
+            return false;
         }
         iterator->second.expires_at = now + kSessionLifetime;
         if (request_path == "/api/v1/health") {
-            send_json(client_fd, 200, health_report(now).to_json());
-            return;
+            send_json(client_fd, tls, 200, health_report(now).to_json());
+            return false;
         }
         const std::optional<std::string> body = snapshot_json();
         if (!body) {
-            send_error(client_fd, 503, "no snapshot available");
-            return;
+            send_error(client_fd, tls, 503, "no snapshot available");
+            return false;
         }
         if (body->size() > kMaxBodyBytes) {
-            send_error(client_fd, 500, "snapshot response too large");
-            return;
+            send_error(client_fd, tls, 500, "snapshot response too large");
+            return false;
         }
-        send_json(client_fd, 200, *body);
-        return;
+        send_json(client_fd, tls, 200, *body);
+        return false;
     }
 
     if (request_path == "/api/v1/config") {
         if (parsed.method != "GET" && parsed.method != "PUT") {
-            send_method_not_allowed(client_fd, "GET, PUT");
-            return;
+            send_method_not_allowed(client_fd, tls, "GET, PUT");
+            return false;
         }
         const std::string token = session_cookie(parsed);
         const auto iterator = sessions_.find(token);
@@ -1245,47 +1313,48 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
             if (iterator != sessions_.end()) {
                 sessions_.erase(iterator);
             }
-            send_error(client_fd, 401, "authentication required");
-            return;
+            send_error(client_fd, tls, 401, "authentication required");
+            return false;
         }
         iterator->second.expires_at = now + kSessionLifetime;
         if (config_store_ == nullptr) {
-            send_error(client_fd, 404, "not found");
-            return;
+            send_error(client_fd, tls, 404, "not found");
+            return false;
         }
         if (parsed.method == "GET") {
-            send_json(client_fd, 200, config_store_->to_json());
-            return;
+            send_json(client_fd, tls, 200, config_store_->to_json());
+            return false;
         }
         const std::string_view csrf = header_value(parsed, "x-csrf-token");
         if (!constant_time_equal(csrf, iterator->second.csrf_token)) {
-            send_error(client_fd, 403, "CSRF token required");
-            return;
+            send_error(client_fd, tls, 403, "CSRF token required");
+            return false;
         }
         std::uint64_t expected_version = 0U;
         if (!parse_if_match(header_value(parsed, "if-match"), expected_version)) {
-            send_error(client_fd, 409, "configuration version required");
-            return;
+            send_error(client_fd, tls, 409, "configuration version required");
+            return false;
         }
         const config::UpdateResult result = config_store_->update(expected_version, parsed.body);
         if (result == config::UpdateResult::conflict) {
-            send_error(client_fd, 409, "configuration version conflict");
-            return;
+            send_error(client_fd, tls, 409, "configuration version conflict");
+            return false;
         }
         if (result == config::UpdateResult::invalid) {
-            send_error(client_fd, 400, "invalid configuration");
-            return;
+            send_error(client_fd, tls, 400, "invalid configuration");
+            return false;
         }
         if (result == config::UpdateResult::storage_error) {
-            send_error(client_fd, 500, "unable to save configuration");
-            return;
+            send_error(client_fd, tls, 500, "unable to save configuration");
+            return false;
         }
         send_json(
             client_fd,
+            tls,
             200,
             "{\"updated\":true,\"version\":" +
                 std::to_string(config_store_->snapshot().version) + "}\n");
-        return;
+        return false;
     }
 
     if (request_path == "/api/v1/session" || request_path == "/api/v1/password" ||
@@ -1293,9 +1362,11 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
         if (request_path == "/api/v1/session" && parsed.method == "POST") {
             const std::string_view origin = header_value(parsed, "origin");
             const std::string_view host = header_value(parsed, "host");
-            if (origin.empty() || host.empty() || origin != "http://" + std::string(host)) {
-                send_error(client_fd, 403, "same-origin request required");
-                return;
+            const std::string expected_origin =
+                (tls == nullptr ? "http://" : "https://") + std::string(host);
+            if (origin.empty() || host.empty() || origin != expected_origin) {
+                send_error(client_fd, tls, 403, "same-origin request required");
+                return false;
             }
 
             const auto failure_iterator = login_failures_.find(remote_address);
@@ -1303,10 +1374,11 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
                 failure_iterator->second.blocked_until > now) {
                 send_error(
                     client_fd,
+                    tls,
                     429,
                     "too many login attempts",
                     "Retry-After: 30\r\nCache-Control: no-store\r\n");
-                return;
+                return false;
             }
 
             std::string username;
@@ -1318,8 +1390,8 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
                                             kMaxPasswordJsonBytes) ||
                 !json_string_field(
                     parsed.body, "password", password, kMaxPasswordJsonBytes)) {
-                send_error(client_fd, 400, "invalid login request");
-                return;
+                send_error(client_fd, tls, 400, "invalid login request");
+                return false;
             }
             if (!auth_store_.verify_password(username, password)) {
                 if (login_failures_.find(remote_address) == login_failures_.end() &&
@@ -1338,8 +1410,8 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
                     failures.blocked_until = now + kLoginBlockTime;
                     failures.count = 0;
                 }
-                send_error(client_fd, 401, "invalid username or password");
-                return;
+                send_error(client_fd, tls, 401, "invalid username or password");
+                return false;
             }
 
             login_failures_.erase(remote_address);
@@ -1351,10 +1423,10 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
             sessions_.emplace(
                 session_token,
                 Session{csrf_token, std::move(remote_address), now + kSessionLifetime});
-            const std::string headers = session_cookie_header(session_token) +
+            const std::string headers = session_cookie_header(session_token, tls != nullptr) +
                 "Cache-Control: no-store\r\n";
-            send_json(client_fd, 200, session_json(csrf_token, auth_store_.must_change()), headers);
-            return;
+            send_json(client_fd, tls, 200, session_json(csrf_token, auth_store_.must_change()), headers);
+            return false;
         }
 
         if (request_path == "/api/v1/session" && parsed.method == "GET") {
@@ -1364,12 +1436,12 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
                 if (iterator != sessions_.end()) {
                     sessions_.erase(iterator);
                 }
-                send_error(client_fd, 401, "authentication required");
-                return;
+                send_error(client_fd, tls, 401, "authentication required");
+                return false;
             }
             iterator->second.expires_at = now + kSessionLifetime;
-            send_json(client_fd, 200, session_json(iterator->second.csrf_token, auth_store_.must_change()));
-            return;
+            send_json(client_fd, tls, 200, session_json(iterator->second.csrf_token, auth_store_.must_change()));
+            return false;
         }
 
         if (request_path == "/api/v1/session" && parsed.method == "DELETE") {
@@ -1379,22 +1451,23 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
                 if (iterator != sessions_.end()) {
                     sessions_.erase(iterator);
                 }
-                send_error(client_fd, 401, "authentication required");
-                return;
+                send_error(client_fd, tls, 401, "authentication required");
+                return false;
             }
             const std::string_view csrf = header_value(parsed, "x-csrf-token");
             if (!constant_time_equal(csrf, iterator->second.csrf_token)) {
-                send_error(client_fd, 403, "CSRF token required");
-                return;
+                send_error(client_fd, tls, 403, "CSRF token required");
+                return false;
             }
             sessions_.erase(iterator);
             send_response(
                 client_fd,
+                tls,
                 204,
                 "application/json; charset=utf-8",
                 {},
-                expired_session_cookie_header());
-            return;
+                expired_session_cookie_header(tls != nullptr));
+            return false;
         }
 
         if (request_path == "/api/v1/password" && parsed.method == "PUT") {
@@ -1404,13 +1477,13 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
                 if (iterator != sessions_.end()) {
                     sessions_.erase(iterator);
                 }
-                send_error(client_fd, 401, "authentication required");
-                return;
+                send_error(client_fd, tls, 401, "authentication required");
+                return false;
             }
             const std::string_view csrf = header_value(parsed, "x-csrf-token");
             if (!constant_time_equal(csrf, iterator->second.csrf_token)) {
-                send_error(client_fd, 403, "CSRF token required");
-                return;
+                send_error(client_fd, tls, 403, "CSRF token required");
+                return false;
             }
 
             std::string current_password;
@@ -1419,31 +1492,32 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
                     parsed.body, "current_password", current_password, kMaxPasswordJsonBytes) ||
                 !json_string_field(
                     parsed.body, "new_password", new_password, kMaxPasswordJsonBytes)) {
-                send_error(client_fd, 400, "invalid password request");
-                return;
+                send_error(client_fd, tls, 400, "invalid password request");
+                return false;
             }
             const PasswordChangeResult result =
                 auth_store_.change_password(current_password, new_password);
             if (result == PasswordChangeResult::invalid_current_password) {
-                send_error(client_fd, 401, "current password is incorrect");
-                return;
+                send_error(client_fd, tls, 401, "current password is incorrect");
+                return false;
             }
             if (result == PasswordChangeResult::invalid_new_password) {
-                send_error(client_fd, 400, "new password does not meet policy");
-                return;
+                send_error(client_fd, tls, 400, "new password does not meet policy");
+                return false;
             }
             if (result == PasswordChangeResult::storage_error) {
-                send_error(client_fd, 500, "unable to save password");
-                return;
+                send_error(client_fd, tls, 500, "unable to save password");
+                return false;
             }
 
             sessions_.clear();
             send_json(
                 client_fd,
+                tls,
                 200,
                 "{\"changed\":true,\"reauthenticate\":true}\n",
-                expired_session_cookie_header() + "Cache-Control: no-store\r\n");
-            return;
+                expired_session_cookie_header(tls != nullptr) + "Cache-Control: no-store\r\n");
+            return false;
         }
 
         if (request_path == "/api/v1/session/revoke-others" && parsed.method == "POST") {
@@ -1453,13 +1527,13 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
                 if (iterator != sessions_.end()) {
                     sessions_.erase(iterator);
                 }
-                send_error(client_fd, 401, "authentication required");
-                return;
+                send_error(client_fd, tls, 401, "authentication required");
+                return false;
             }
             const std::string_view csrf = header_value(parsed, "x-csrf-token");
             if (!constant_time_equal(csrf, iterator->second.csrf_token)) {
-                send_error(client_fd, 403, "CSRF token required");
-                return;
+                send_error(client_fd, tls, 403, "CSRF token required");
+                return false;
             }
             for (auto session_iterator = sessions_.begin(); session_iterator != sessions_.end();) {
                 if (session_iterator->first == token) {
@@ -1468,36 +1542,36 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
                     session_iterator = sessions_.erase(session_iterator);
                 }
             }
-            send_json(client_fd, 200, "{\"revoked\":true}\n");
-            return;
+            send_json(client_fd, tls, 200, "{\"revoked\":true}\n");
+            return false;
         }
 
         if (request_path == "/api/v1/session") {
-            send_method_not_allowed(client_fd, "GET, POST, DELETE");
+            send_method_not_allowed(client_fd, tls, "GET, POST, DELETE");
         } else if (request_path == "/api/v1/password") {
-            send_method_not_allowed(client_fd, "PUT");
+            send_method_not_allowed(client_fd, tls, "PUT");
         } else {
-            send_method_not_allowed(client_fd, "POST");
+            send_method_not_allowed(client_fd, tls, "POST");
         }
-        return;
+        return false;
     }
 
     if (request_path.rfind("/api/", 0) == 0) {
-        send_error(client_fd, 404, "not found");
-        return;
+        send_error(client_fd, tls, 404, "not found");
+        return false;
     }
 
     if (request_path == "/login" || request_path == "/login.html") {
         if (parsed.method != "GET") {
-            send_method_not_allowed(client_fd, "GET");
-            return;
+            send_method_not_allowed(client_fd, tls, "GET");
+            return false;
         }
         request_path = "/login.html";
     } else if (request_path == "/index.html" || request_path == "/overview" ||
                request_path == "/overview.html") {
         if (parsed.method != "GET") {
-            send_method_not_allowed(client_fd, "GET");
-            return;
+            send_method_not_allowed(client_fd, tls, "GET");
+            return false;
         }
         const std::string token = session_cookie(parsed);
         const auto iterator = sessions_.find(token);
@@ -1505,8 +1579,8 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
             if (iterator != sessions_.end()) {
                 sessions_.erase(iterator);
             }
-            send_redirect(client_fd, "/login");
-            return;
+            send_redirect(client_fd, tls, "/login");
+            return false;
         }
         iterator->second.expires_at = now + kSessionLifetime;
         if (request_path == "/overview") {
@@ -1515,30 +1589,31 @@ void HttpServer::handle_client(int client_fd, std::string remote_address) {
     }
 
     if (parsed.method != "GET") {
-        send_method_not_allowed(client_fd, "GET");
-        return;
+        send_method_not_allowed(client_fd, tls, "GET");
+        return false;
     }
 
     std::filesystem::path file;
     if (!resolve_file(document_root_, request_path, file)) {
-        send_response(client_fd, 404, "text/plain; charset=utf-8", "not found\n");
-        return;
+        send_response(client_fd, tls, 404, "text/plain; charset=utf-8", "not found\n");
+        return false;
     }
 
     std::ifstream input(file, std::ios::binary);
     if (!input) {
-        send_error(client_fd, 500, "internal server error");
-        return;
+        send_error(client_fd, tls, 500, "internal server error");
+        return false;
     }
     std::ostringstream contents;
     contents << input.rdbuf();
     if (input.bad()) {
-        send_error(client_fd, 500, "internal server error");
-        return;
+        send_error(client_fd, tls, 500, "internal server error");
+        return false;
     }
 
     const std::string body = contents.str();
-    send_response(client_fd, 200, content_type(file), body);
+    send_response(client_fd, tls, 200, content_type(file), body);
+    return false;
 }
 
 }  // namespace uhf::web

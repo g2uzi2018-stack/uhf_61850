@@ -15,6 +15,7 @@ cmake --build "${host_build}"
 
 exec "${host_build}/uhf-gatewayd" \
     --web \
+    --http-recovery \
     --web-root "${repo_dir}/web" \
     --state-dir "${state_dir}" \
     --simulate \

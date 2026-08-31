@@ -16,6 +16,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <stdexcept>
 #include <system_error>
 #include <utility>
 
@@ -27,6 +28,12 @@ struct WebOptions {
     std::string bind_address{"127.0.0.1"};
     std::uint16_t port{8080};
     bool listen_explicit{false};
+    bool http_recovery{false};
+    bool tls_enabled{true};
+    bool tls_certificate_explicit{false};
+    bool tls_private_key_explicit{false};
+    std::filesystem::path tls_certificate;
+    std::filesystem::path tls_private_key;
     bool start_acquisition{true};
     bool simulate{false};
     std::string acquisition_device{"/dev/ttyS1"};
@@ -72,6 +79,7 @@ void print_usage() {
     std::cerr << "usage: " << uhf::app::kProductName
               << " [--version|--self-test|--web "
                  "[--web-root PATH] [--state-dir PATH] [--listen IPV4:PORT] "
+                 "[--http-recovery] [--tls-cert PATH] [--tls-key PATH] "
                  "[--simulate|--no-acquisition] [--acquisition-device PATH] "
                  "[--modbus-tcp-listen IPV4:PORT] [--modbus-rtu-device PATH] "
                  "[--no-modbus-rtu] [--iec61850-listen IPV4:PORT] [--no-iec61850] "
@@ -116,6 +124,14 @@ int main(int argc, char* argv[]) {
                     return 2;
                 }
                 options.listen_explicit = true;
+            } else if (option == "--http-recovery") {
+                options.http_recovery = true;
+            } else if (option == "--tls-cert" && index + 1 < argc) {
+                options.tls_certificate = argv[++index];
+                options.tls_certificate_explicit = true;
+            } else if (option == "--tls-key" && index + 1 < argc) {
+                options.tls_private_key = argv[++index];
+                options.tls_private_key_explicit = true;
             } else if (option == "--simulate") {
                 options.simulate = true;
             } else if (option == "--no-acquisition") {
@@ -166,7 +182,7 @@ int main(int argc, char* argv[]) {
         if (options.simulate && !options.data_directory_explicit) {
             options.data_directory = options.state_directory / "data";
         }
-        if (!options.config_file_explicit) {
+            if (!options.config_file_explicit) {
             options.config_file = options.state_directory / "config.json";
         }
 
@@ -204,6 +220,19 @@ int main(int argc, char* argv[]) {
                 if (options.simulate) {
                     options.iec61850_port = 15102U;
                 }
+            }
+            options.tls_enabled = configured.values.tls_enabled;
+            if (options.http_recovery) {
+                options.tls_enabled = false;
+            } else if (!options.tls_enabled) {
+                throw std::runtime_error(
+                    "HTTP is disabled by configuration; use --http-recovery only for local recovery");
+            }
+            if (!options.tls_certificate_explicit) {
+                options.tls_certificate = options.state_directory / "tls" / "server.crt";
+            }
+            if (!options.tls_private_key_explicit) {
+                options.tls_private_key = options.state_directory / "tls" / "server.key";
             }
             std::unique_ptr<uhf::app::GatewayRuntime> runtime;
             if (options.start_acquisition) {
@@ -249,7 +278,9 @@ int main(int argc, char* argv[]) {
                     ? uhf::web::HealthInputProvider{}
                     : uhf::web::HealthInputProvider{
                           [runtime_pointer] { return runtime_pointer->health_input(); }},
-                config_store.get());
+                config_store.get(),
+                options.tls_enabled,
+                uhf::web::TlsFiles{options.tls_certificate, options.tls_private_key});
             const int result = server.run();
             if (runtime) {
                 runtime->stop();

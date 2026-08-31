@@ -5,6 +5,7 @@
 #include "config/config_store.hpp"
 #include "health/health.hpp"
 #include "web/auth_store.hpp"
+#include "web/tls_context.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -12,6 +13,7 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <memory>
 #include <string_view>
 #include <string>
 #include <unordered_map>
@@ -29,7 +31,9 @@ public:
         std::filesystem::path state_directory,
         const acquisition::SnapshotStore* snapshot_store = nullptr,
         HealthInputProvider health_input_provider = {},
-        config::ConfigStore* config_store = nullptr);
+        config::ConfigStore* config_store = nullptr,
+        bool tls_enabled = true,
+        TlsFiles tls_files = {});
 
     int run();
 
@@ -46,8 +50,8 @@ private:
         std::chrono::steady_clock::time_point blocked_until;
     };
 
-    void handle_client(int client_fd, std::string remote_address);
-    void run_websocket(int client_fd);
+    bool handle_client(int client_fd, SSL* tls, std::string remote_address);
+    void run_websocket(int client_fd, SSL* tls);
     void cleanup_sessions(std::chrono::steady_clock::time_point now);
     health::Report health_report(std::chrono::steady_clock::time_point now) const;
     std::optional<std::string> snapshot_json() const;
@@ -59,6 +63,8 @@ private:
     const acquisition::SnapshotStore* snapshot_store_{nullptr};
     HealthInputProvider health_input_provider_;
     config::ConfigStore* config_store_{nullptr};
+    bool tls_enabled_{true};
+    std::unique_ptr<TlsContext> tls_context_;
     health::Aggregator health_aggregator_;
     std::unordered_map<std::string, Session> sessions_;
     std::unordered_map<std::string, LoginFailures> login_failures_;

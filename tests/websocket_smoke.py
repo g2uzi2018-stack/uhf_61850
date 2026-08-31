@@ -127,6 +127,7 @@ def main() -> int:
             [
                 str(binary),
                 "--web",
+                "--http-recovery",
                 "--web-root",
                 str(web_dir),
                 "--state-dir",

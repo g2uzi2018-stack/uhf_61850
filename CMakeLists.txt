@@ -540,6 +540,13 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}/web"
         )
         add_test(
+            NAME uhf_web_tls_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/web_tls_smoke.py"
+                "$<TARGET_FILE:uhf-gatewayd>"
+                "${PROJECT_SOURCE_DIR}/web"
+        )
+        add_test(
             NAME uhf_web_live_smoke
             COMMAND "${Python3_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/tests/web_live_smoke.py"
