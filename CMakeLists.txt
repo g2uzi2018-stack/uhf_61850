@@ -229,6 +229,24 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+add_executable(uhf_dhcp_client_smoke
+    tests/dhcp_client_smoke.cpp
+    src/platform/network/dhcp_client.cpp
+)
+target_compile_features(uhf_dhcp_client_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_dhcp_client_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_dhcp_client_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
 add_executable(uhf_network_transaction_smoke
     tests/network_transaction_smoke.cpp
     src/platform/network/network_transaction.cpp
@@ -785,6 +803,7 @@ if(BUILD_TESTING)
     add_test(NAME uhf_loopback_acquisition_smoke COMMAND uhf_loopback_acquisition_smoke)
     add_test(NAME uhf_serial_port_smoke COMMAND uhf_serial_port_smoke)
     add_test(NAME uhf_network_config_smoke COMMAND uhf_network_config_smoke)
+    add_test(NAME uhf_dhcp_client_smoke COMMAND uhf_dhcp_client_smoke)
     add_test(NAME uhf_network_transaction_smoke COMMAND uhf_network_transaction_smoke)
     add_test(NAME uhf_linux_backend_smoke COMMAND uhf_linux_backend_smoke)
     add_test(NAME uhf_linux_status_smoke COMMAND uhf_linux_status_smoke)

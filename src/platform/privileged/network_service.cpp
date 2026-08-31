@@ -38,7 +38,10 @@ NetworkService::NetworkService(
     std::filesystem::path network_file,
     std::filesystem::path transaction_file,
     MaintenanceRunner* maintenance_runner)
-    : backend_(std::move(network_file), command_runner_),
+    : dhcp_client_(
+          network_file.parent_path().empty() ? std::filesystem::path{"."} :
+                                                network_file.parent_path() / "dhcp"),
+      backend_(std::move(network_file), command_runner_, &dhcp_client_),
       transaction_store_(std::move(transaction_file)),
       transaction_manager_(transaction_store_, backend_, clock_),
       maintenance_runner_(maintenance_runner == nullptr ? default_maintenance_runner_ : *maintenance_runner) {}

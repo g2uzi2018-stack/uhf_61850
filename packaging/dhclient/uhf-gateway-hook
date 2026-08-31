@@ -1,0 +1,33 @@
+#!/bin/sh
+set -eu
+
+case "${reason:-}" in
+    BOUND|REBOOT|RENEW)
+        : "${UHF_DHCP_RESULT_FILE:?missing result file}"
+        : "${UHF_DHCP_INTERFACE:?missing interface}"
+        result_file=$UHF_DHCP_RESULT_FILE
+        temporary_file="${result_file}.tmp"
+        routers=${new_routers:-}
+        dns_servers=${new_domain_name_servers:-}
+        gateway=${routers%% *}
+        dns1=${dns_servers%% *}
+        dns2=
+        if [ "$dns_servers" != "$dns1" ]; then
+            dns2=${dns_servers#"$dns1"}
+            dns2=${dns2# }
+        fi
+        umask 077
+        {
+            printf '%s\n' 'version=1'
+            printf 'interface=%s\n' "$UHF_DHCP_INTERFACE"
+            printf 'address=%s\n' "${new_ip_address:--}"
+            printf 'mask=%s\n' "${new_subnet_mask:--}"
+            printf 'gateway=%s\n' "${gateway:--}"
+            printf 'dns1=%s\n' "${dns1:--}"
+            printf 'dns2=%s\n' "${dns2:--}"
+        } >"$temporary_file"
+        mv -f -- "$temporary_file" "$result_file"
+        ;;
+esac
+
+exit 0

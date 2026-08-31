@@ -35,6 +35,7 @@ private:
     void rollback_loop();
 
     network::ExecCommandRunner command_runner_;
+    network::ExecDhcpClient dhcp_client_;
     network::LinuxNetworkBackend backend_;
     network::LinuxStatusReader status_reader_;
     network::TransactionStore transaction_store_;
