@@ -1828,7 +1828,7 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             send_error(client_fd, tls, 403, "CSRF token required");
             return false;
         }
-        if (stage_request || rollback_request) {
+        if (stage_request || confirm_request || rollback_request) {
             std::string current_password;
             if (!json_string_field(
                     parsed.body, "current_password", current_password, kMaxPasswordJsonBytes) ||

@@ -66,6 +66,7 @@ def main() -> int:
     port = free_port()
     with tempfile.TemporaryDirectory(prefix="uhf-web-smoke-") as state_directory_text:
         state_directory = Path(state_directory_text)
+        privileged_process = None
         process = subprocess.Popen(
             [
                 str(binary),
@@ -78,6 +79,8 @@ def main() -> int:
                 "--no-acquisition",
                 "--listen",
                 f"127.0.0.1:{port}",
+                "--privileged-socket",
+                str(state_directory / "privileged.sock"),
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -220,8 +223,55 @@ def main() -> int:
             assert_status(iec_page_status, 200, "authenticated IEC page")
             if "IEC 61850".encode("utf-8") not in iec_page_body:
                 fail("authenticated IEC page was not served")
+            privileged_process = subprocess.Popen(
+                [
+                    str(binary.with_name("uhf-privilegedd")),
+                    "--socket",
+                    str(state_directory / "privileged.sock"),
+                    "--network-config",
+                    str(state_directory / "network.json"),
+                    "--transaction",
+                    str(state_directory / "transaction.json"),
+                    "--skip-network-runtime",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            socket_deadline = time.monotonic() + 2
+            while time.monotonic() < socket_deadline and not (state_directory / "privileged.sock").exists():
+                if privileged_process.poll() is not None:
+                    stderr = privileged_process.stderr.read() if privileged_process.stderr else ""
+                    fail(f"privileged service exited early: {stderr.strip()}")
+                time.sleep(0.02)
+            if not (state_directory / "privileged.sock").exists():
+                fail("privileged service did not create its socket")
             network_status, _, _ = request(port, "GET", "/api/v1/network", headers={"Cookie": cookie})
-            assert_status(network_status, 503, "network helper unavailable")
+            assert_status(network_status, 200, "network helper status")
+            confirm_without_password_status, _, _ = request(
+                port,
+                "POST",
+                "/api/v1/network/confirm",
+                json_body({}),
+                {"Cookie": cookie, "X-CSRF-Token": csrf_token},
+            )
+            assert_status(confirm_without_password_status, 401, "network confirm reauthentication")
+            confirm_wrong_password_status, _, _ = request(
+                port,
+                "POST",
+                "/api/v1/network/confirm",
+                json_body({"current_password": "wrong-password"}),
+                {"Cookie": cookie, "X-CSRF-Token": csrf_token},
+            )
+            assert_status(confirm_wrong_password_status, 401, "network confirm password")
+            confirm_status, _, _ = request(
+                port,
+                "POST",
+                "/api/v1/network/confirm",
+                json_body({"current_password": initial_password}),
+                {"Cookie": cookie, "X-CSRF-Token": csrf_token},
+            )
+            assert_status(confirm_status, 409, "network confirm without transaction")
             iec_status, iec_body, _ = request(port, "GET", "/api/v1/iec61850", headers={"Cookie": cookie})
             assert_status(iec_status, 200, "IEC status lookup")
             iec_payload = json.loads(iec_body)
@@ -409,6 +459,13 @@ def main() -> int:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.communicate()
+            if privileged_process is not None:
+                privileged_process.terminate()
+                try:
+                    privileged_process.communicate(timeout=2)
+                except subprocess.TimeoutExpired:
+                    privileged_process.kill()
+                    privileged_process.communicate()
 
 
 if __name__ == "__main__":
