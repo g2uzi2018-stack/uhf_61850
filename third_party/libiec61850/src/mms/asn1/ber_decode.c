@@ -23,6 +23,11 @@
 
 #include "libiec61850_platform_includes.h"
 #include "ber_decode.h"
+#include "stack_config.h"
+
+#ifndef CONFIG_MMS_MAX_DATA_STRUCTURE_NESTING_LEVEL
+#define CONFIG_MMS_MAX_DATA_STRUCTURE_NESTING_LEVEL 10
+#endif
 
 static int
 BerDecoder_decodeLengthRecursive(uint8_t* buffer, int* length, int bufPos, int maxBufPos, int depth, int maxDepth);
@@ -126,7 +131,13 @@ BerDecoder_decodeLengthRecursive(uint8_t* buffer, int* length, int bufPos, int m
 int
 BerDecoder_decodeLength(uint8_t* buffer, int* length, int bufPos, int maxBufPos)
 {
-    return BerDecoder_decodeLengthRecursive(buffer, length, bufPos, maxBufPos, 0, 50);
+    return BerDecoder_decodeLengthRecursive(
+        buffer,
+        length,
+        bufPos,
+        maxBufPos,
+        0,
+        CONFIG_MMS_MAX_DATA_STRUCTURE_NESTING_LEVEL);
 }
 
 char*
