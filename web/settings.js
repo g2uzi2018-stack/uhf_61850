@@ -11,6 +11,8 @@
         "acquisition_slave_id", "acquisition_period_ms", "acquisition_response_timeout_ms",
         "acquisition_max_retries", "rtu_unit_id", "modbus_tcp_port", "modbus_tcp_unit_id",
         "iec_port", "storage_period_seconds", "storage_retention_days", "storage_min_free_bytes",
+        "storage_event_threshold_dbm", "storage_event_rearm_dbm", "storage_event_delta_db",
+        "storage_event_merge_seconds",
         "web_port"
     ];
 

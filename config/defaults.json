@@ -17,5 +17,9 @@
   "iec_ied_name": "UHFPD1",
   "storage_period_seconds": 300,
   "storage_retention_days": 1,
-  "storage_min_free_bytes": 536870912
+  "storage_min_free_bytes": 536870912,
+  "storage_event_threshold_dbm": -45,
+  "storage_event_rearm_dbm": -50,
+  "storage_event_delta_db": 10,
+  "storage_event_merge_seconds": 60
 }

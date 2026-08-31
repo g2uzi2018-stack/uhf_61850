@@ -37,7 +37,11 @@ const char* valid_object() {
         "iec_ied_name":"UHFPD2",
         "storage_period_seconds":600,
         "storage_retention_days":2,
-        "storage_min_free_bytes":268435456
+        "storage_min_free_bytes":268435456,
+        "storage_event_threshold_dbm":-45,
+        "storage_event_rearm_dbm":-50,
+        "storage_event_delta_db":10,
+        "storage_event_merge_seconds":60
     })";
 }
 
@@ -108,11 +112,28 @@ int main() {
             }
             return value;
         }();
-        const uhf::config::UpdateResult conflict_ports =
+    const uhf::config::UpdateResult conflict_ports =
             store.update(1U, conflicting_ports);
         if (!expect(
                 conflict_ports == uhf::config::UpdateResult::invalid,
                 "conflicting service ports accepted")) {
+            return 1;
+        }
+        const std::string invalid_event_window = [] {
+            std::string value = valid_object();
+            const std::string rearm = "\"storage_event_rearm_dbm\":-50";
+            const std::size_t position = value.find(rearm);
+            if (position != std::string::npos) {
+                value.replace(
+                    position, rearm.size(), "\"storage_event_rearm_dbm\":-45");
+            }
+            return value;
+        }();
+        const uhf::config::UpdateResult invalid_event =
+            store.update(1U, invalid_event_window);
+        if (!expect(
+                invalid_event == uhf::config::UpdateResult::invalid,
+                "event rearm threshold must be below trigger threshold")) {
             return 1;
         }
         const uhf::config::UpdateResult updated = store.update(1U, valid_object());
@@ -124,6 +145,10 @@ int main() {
             !expect(changed.values.tls_enabled, "TLS remains enabled") ||
             !expect(changed.values.iec_enabled == false, "updated IEC flag") ||
             !expect(changed.values.iec_port == 15102U, "updated IEC port") ||
+            !expect(changed.values.storage_event_threshold_dbm == -45, "event threshold") ||
+            !expect(changed.values.storage_event_rearm_dbm == -50, "event rearm") ||
+            !expect(changed.values.storage_event_delta_db == 10U, "event delta") ||
+            !expect(changed.values.storage_event_merge_seconds == 60U, "event merge window") ||
             !expect(std::filesystem::file_size(path) < 16U * 1024U, "updated file bound")) {
             return 1;
         }

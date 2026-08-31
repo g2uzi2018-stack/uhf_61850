@@ -72,6 +72,10 @@ def main() -> int:
         "storage_period_seconds": 600,
         "storage_retention_days": 2,
         "storage_min_free_bytes": 268435456,
+        "storage_event_threshold_dbm": -45,
+        "storage_event_rearm_dbm": -50,
+        "storage_event_delta_db": 10,
+        "storage_event_merge_seconds": 60,
     }
     with tempfile.TemporaryDirectory(prefix="uhf-config-runtime-") as state_text:
         state_dir = Path(state_text)

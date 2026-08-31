@@ -54,7 +54,8 @@ public:
             if (consume('}')) {
                 skip_space();
                 return position_ == input_.size() &&
-                    (keys_.size() == 18U || keys_.size() == 19U);
+                    (keys_.size() == 18U || keys_.size() == 19U ||
+                     keys_.size() == 22U || keys_.size() == 23U);
             }
             if (!consume(',')) {
                 return false;
@@ -115,6 +116,25 @@ private:
         return parsed.ec == std::errc{} && parsed.ptr == input_.data() + position_;
     }
 
+    bool parse_signed(std::int64_t& result) {
+        const std::size_t begin = position_;
+        if (position_ < input_.size() && input_[position_] == '-') {
+            ++position_;
+        }
+        const std::size_t digits_begin = position_;
+        while (position_ < input_.size() && input_[position_] >= '0' &&
+               input_[position_] <= '9') {
+            ++position_;
+        }
+        if (digits_begin == position_) {
+            position_ = begin;
+            return false;
+        }
+        const auto parsed = std::from_chars(
+            input_.data() + begin, input_.data() + position_, result);
+        return parsed.ec == std::errc{} && parsed.ptr == input_.data() + position_;
+    }
+
     bool parse_boolean(bool& result) {
         if (input_.substr(position_, 4U) == "true") {
             position_ += 4U;
@@ -134,6 +154,17 @@ private:
         const std::uint64_t lower = static_cast<std::uint64_t>(minimum);
         const std::uint64_t upper = static_cast<std::uint64_t>(maximum);
         if (value < lower || value > upper) {
+            return false;
+        }
+        output = static_cast<Integer>(value);
+        return true;
+    }
+
+    template <typename Integer>
+    static bool assign_signed(
+        std::int64_t value, Integer minimum, Integer maximum, Integer& output) {
+        if (value < static_cast<std::int64_t>(minimum) ||
+            value > static_cast<std::int64_t>(maximum)) {
             return false;
         }
         output = static_cast<Integer>(value);
@@ -172,6 +203,18 @@ private:
         }
         if (key == "iec_enabled") {
             return parse_boolean(values.iec_enabled);
+        }
+        if (key == "storage_event_threshold_dbm") {
+            std::int64_t threshold_value = 0;
+            return parse_signed(threshold_value) &&
+                assign_signed(threshold_value, std::int32_t{-70}, std::int32_t{15},
+                    values.storage_event_threshold_dbm);
+        }
+        if (key == "storage_event_rearm_dbm") {
+            std::int64_t rearm_value = 0;
+            return parse_signed(rearm_value) &&
+                assign_signed(rearm_value, std::int32_t{-70}, std::int32_t{15},
+                    values.storage_event_rearm_dbm);
         }
         if (!parse_unsigned(value)) {
             return false;
@@ -214,6 +257,14 @@ private:
             return assign_unsigned(
                 value, std::uint64_t{268435456U}, std::numeric_limits<std::uint64_t>::max(),
                 values.storage_min_free_bytes);
+        }
+        if (key == "storage_event_delta_db") {
+            return assign_unsigned(value, std::uint32_t{1U}, std::uint32_t{85U},
+                values.storage_event_delta_db);
+        }
+        if (key == "storage_event_merge_seconds") {
+            return assign_unsigned(value, std::uint32_t{0U}, std::uint32_t{3600U},
+                values.storage_event_merge_seconds);
         }
         return false;
     }
@@ -398,7 +449,14 @@ bool ConfigStore::validate(const Values& values) noexcept {
         values.web_port >= 1024U && values.iec_port != 0U &&
         values.storage_period_seconds >= 60U &&
         values.storage_retention_days >= 1U && values.storage_retention_days <= 30U &&
-        values.storage_min_free_bytes >= 268435456U;
+        values.storage_min_free_bytes >= 268435456U &&
+        values.storage_event_threshold_dbm >= -70 &&
+        values.storage_event_threshold_dbm <= 15 &&
+        values.storage_event_rearm_dbm >= -70 &&
+        values.storage_event_rearm_dbm <= 15 &&
+        values.storage_event_rearm_dbm < values.storage_event_threshold_dbm &&
+        values.storage_event_delta_db >= 1U && values.storage_event_delta_db <= 85U &&
+        values.storage_event_merge_seconds <= 3600U;
 }
 
 std::string ConfigStore::serialize(const Snapshot& snapshot) {
@@ -422,7 +480,11 @@ std::string ConfigStore::serialize(const Snapshot& snapshot) {
         "  \"iec_ied_name\": \"" + json_escape(values.iec_ied_name) + "\",\n"
         "  \"storage_period_seconds\": " + std::to_string(values.storage_period_seconds) + ",\n"
         "  \"storage_retention_days\": " + std::to_string(values.storage_retention_days) + ",\n"
-        "  \"storage_min_free_bytes\": " + std::to_string(values.storage_min_free_bytes) + "\n"
+        "  \"storage_min_free_bytes\": " + std::to_string(values.storage_min_free_bytes) + ",\n"
+        "  \"storage_event_threshold_dbm\": " + std::to_string(values.storage_event_threshold_dbm) + ",\n"
+        "  \"storage_event_rearm_dbm\": " + std::to_string(values.storage_event_rearm_dbm) + ",\n"
+        "  \"storage_event_delta_db\": " + std::to_string(values.storage_event_delta_db) + ",\n"
+        "  \"storage_event_merge_seconds\": " + std::to_string(values.storage_event_merge_seconds) + "\n"
         "}\n";
 }
 

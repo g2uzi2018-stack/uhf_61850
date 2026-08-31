@@ -49,6 +49,10 @@
                         <label>周期保存间隔（秒）<input name="storage_period_seconds" type="number" min="60" max="86400" required><small>默认 300 秒</small></label>
                         <label>保留天数<input name="storage_retention_days" type="number" min="1" max="30" required><small>范围 1–30 天</small></label>
                         <label>最低可用空间（字节）<input name="storage_min_free_bytes" type="number" min="268435456" required><small>不得低于 256 MiB</small></label>
+                        <label>强放电触发阈值（dBm）<input name="storage_event_threshold_dbm" type="number" min="-70" max="15" required><small>默认 -45；仅 fresh/valid 峰值触发</small></label>
+                        <label>强放电重新布防（dBm）<input name="storage_event_rearm_dbm" type="number" min="-70" max="15" required><small>必须低于触发阈值，默认 -50</small></label>
+                        <label>突变差值阈值（dB）<input name="storage_event_delta_db" type="number" min="1" max="85" required><small>默认 10；比较相邻有效峰值</small></label>
+                        <label>事件合并窗口（秒）<input name="storage_event_merge_seconds" type="number" min="0" max="3600" required><small>默认 60；不会因合并延长</small></label>
                         <label>Web 端口<input name="web_port" type="number" min="1024" max="65535" required><small>默认 8080，HTTPS 产品入口</small></label>
                     </div></section>
                     <div class="settings-actions"><span class="form-error" id="settings-error" role="alert"></span><span class="settings-saved" id="settings-saved"></span><button class="ghost-button" id="reload-settings" type="button">重新读取</button><button class="primary-button" type="submit">保存配置</button></div>

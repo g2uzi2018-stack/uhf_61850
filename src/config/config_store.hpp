@@ -29,6 +29,10 @@ struct Values {
     std::uint32_t storage_period_seconds{300U};
     std::uint32_t storage_retention_days{1U};
     std::uint64_t storage_min_free_bytes{536870912U};
+    std::int32_t storage_event_threshold_dbm{-45};
+    std::int32_t storage_event_rearm_dbm{-50};
+    std::uint32_t storage_event_delta_db{10U};
+    std::uint32_t storage_event_merge_seconds{60U};
 };
 
 struct Snapshot {
