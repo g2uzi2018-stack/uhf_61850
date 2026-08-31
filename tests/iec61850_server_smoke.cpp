@@ -4,6 +4,7 @@
 #include "iec61850_client.h"
 #include "iec61850/server.hpp"
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -63,6 +64,27 @@ int main() {
     ok = expect(error == IED_ERROR_OK, "MMS client connects") && ok;
 
     if (error == IED_ERROR_OK) {
+        std::array<IedConnection, 3> capacity_connections{};
+        for (IedConnection& capacity_connection : capacity_connections) {
+            capacity_connection = IedConnection_create();
+            IedConnection_setConnectTimeout(capacity_connection, 1000U);
+            IedClientError capacity_error = IED_ERROR_OK;
+            IedConnection_connect(capacity_connection, &capacity_error, "127.0.0.1", 15102);
+            ok = expect(capacity_error == IED_ERROR_OK, "MMS connection within cap succeeds") && ok;
+        }
+
+        IedConnection overflow_connection = IedConnection_create();
+        IedConnection_setConnectTimeout(overflow_connection, 1000U);
+        IedClientError overflow_error = IED_ERROR_OK;
+        IedConnection_connect(overflow_connection, &overflow_error, "127.0.0.1", 15102);
+        ok = expect(overflow_error != IED_ERROR_OK, "fifth MMS connection is rejected") && ok;
+        IedConnection_close(overflow_connection);
+        IedConnection_destroy(overflow_connection);
+        for (IedConnection capacity_connection : capacity_connections) {
+            IedConnection_close(capacity_connection);
+            IedConnection_destroy(capacity_connection);
+        }
+
         std::this_thread::sleep_for(std::chrono::milliseconds(150));
         MmsValue* value = IedConnection_readObject(
             connection,
