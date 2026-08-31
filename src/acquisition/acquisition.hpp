@@ -12,6 +12,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace uhf::acquisition {
 
@@ -64,18 +65,42 @@ struct PublishedSnapshot {
     domain::ParsedSnapshot payload;
 };
 
+enum class Availability {
+    fresh,
+    stale,
+    invalid,
+};
+
+std::string_view availability_name(Availability availability) noexcept;
+
+struct AcquisitionStatus {
+    Availability availability{Availability::invalid};
+    bool attempt_known{false};
+    std::chrono::steady_clock::time_point last_attempt_at{};
+    std::string last_error;
+};
+
+struct ServingView {
+    std::optional<PublishedSnapshot> snapshot;
+    AcquisitionStatus status;
+};
+
 class SnapshotStore {
 public:
     void publish(
         domain::ParsedSnapshot payload,
         std::chrono::steady_clock::time_point started_at,
         std::chrono::steady_clock::time_point completed_at);
+    void record_failure(
+        std::chrono::steady_clock::time_point attempted_at, std::string error);
 
     std::optional<PublishedSnapshot> latest() const;
+    ServingView serving_view() const;
 
 private:
     mutable std::mutex mutex_;
     std::optional<PublishedSnapshot> latest_;
+    AcquisitionStatus status_;
     std::uint64_t next_generation_{1U};
 };
 

@@ -118,6 +118,10 @@ bool run_fatal_case(PortMode mode, std::size_t expected_writes, bool expect_late
         expect(port.write_count() == expected_writes, "fatal case retried an unsafe response") &&
         expect(!engine.last_error().empty(), "fatal case did not retain an error") &&
         expect(!store.latest().has_value(), "fatal case published a partial snapshot") &&
+        expect(
+            store.serving_view().status.availability == uhf::acquisition::Availability::invalid,
+            "fatal case did not mark snapshot invalid") &&
+        expect(store.serving_view().status.attempt_known, "fatal case did not record attempt") &&
         expect(elapsed_ms >= std::chrono::milliseconds(expect_late_extension ? 24 : 19),
             "quarantine window was not enforced");
 }
@@ -129,7 +133,10 @@ int main() {
     if (!expect(defaults.max_retries == 3U, "default retry count") ||
         !expect(defaults.retry_delay == std::chrono::milliseconds(100), "default retry delay") ||
         !expect(defaults.quarantine_duration == std::chrono::milliseconds(6000),
-            "default quarantine duration")) {
+            "default quarantine duration") ||
+        !expect(
+            uhf::acquisition::availability_name(uhf::acquisition::Availability::fresh) == "fresh",
+            "fresh availability name")) {
         return 1;
     }
 
@@ -148,7 +155,28 @@ int main() {
         uhf::acquisition::AcquisitionEngine engine(port, store, options);
         if (!expect(engine.poll_once(), "CRC error was not retried") ||
             !expect(port.write_count() == 32U, "CRC retry did not preserve request order") ||
-            !expect(store.latest().has_value(), "CRC retry did not publish complete snapshot")) {
+            !expect(store.latest().has_value(), "CRC retry did not publish complete snapshot") ||
+            !expect(
+                store.serving_view().status.availability == uhf::acquisition::Availability::fresh,
+                "successful poll was not marked fresh") ||
+            !expect(store.serving_view().status.last_error.empty(), "fresh status retained error")) {
+            return 1;
+        }
+
+        const auto fresh_view = store.serving_view();
+        store.record_failure(
+            std::chrono::steady_clock::now(), std::string(300U, 'e'));
+        const auto stale_view = store.serving_view();
+        if (!expect(stale_view.snapshot.has_value(), "stale status discarded last snapshot") ||
+            !expect(
+                stale_view.status.availability == uhf::acquisition::Availability::stale,
+                "failed poll did not mark last snapshot stale") ||
+            !expect(
+                stale_view.snapshot->generation == fresh_view.snapshot->generation,
+                "failed poll changed snapshot generation") ||
+            !expect(
+                stale_view.status.last_error.size() == 256U,
+                "acquisition error was not bounded")) {
             return 1;
         }
     }

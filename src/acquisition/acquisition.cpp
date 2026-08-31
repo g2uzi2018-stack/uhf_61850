@@ -23,6 +23,7 @@ namespace {
 constexpr std::size_t kRequestFrameBytes = 8U;
 constexpr std::size_t kResponseHeaderBytes = 3U;
 constexpr std::size_t kResponseCrcBytes = 2U;
+constexpr std::size_t kMaxAcquisitionErrorBytes = 256U;
 constexpr speed_t kSerialSpeed = B115200;
 
 int timeout_milliseconds(std::chrono::milliseconds timeout) {
@@ -41,6 +42,18 @@ int timeout_milliseconds(std::chrono::milliseconds timeout) {
 }  // namespace
 
 namespace uhf::acquisition {
+
+std::string_view availability_name(Availability availability) noexcept {
+    switch (availability) {
+    case Availability::fresh:
+        return "fresh";
+    case Availability::stale:
+        return "stale";
+    case Availability::invalid:
+        return "invalid";
+    }
+    return "invalid";
+}
 
 PosixSerialPort::PosixSerialPort(const std::string& device) : file_descriptor_(-1) {
     file_descriptor_ = ::open(device.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
@@ -147,11 +160,32 @@ void SnapshotStore::publish(
     std::lock_guard<std::mutex> lock(mutex_);
     published.generation = next_generation_++;
     latest_ = std::move(published);
+    status_.availability = Availability::fresh;
+    status_.attempt_known = true;
+    status_.last_attempt_at = completed_at;
+    status_.last_error.clear();
+}
+
+void SnapshotStore::record_failure(
+    std::chrono::steady_clock::time_point attempted_at, std::string error) {
+    if (error.size() > kMaxAcquisitionErrorBytes) {
+        error.resize(kMaxAcquisitionErrorBytes);
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    status_.availability = latest_ ? Availability::stale : Availability::invalid;
+    status_.attempt_known = true;
+    status_.last_attempt_at = attempted_at;
+    status_.last_error = std::move(error);
 }
 
 std::optional<PublishedSnapshot> SnapshotStore::latest() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return latest_;
+}
+
+ServingView SnapshotStore::serving_view() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return ServingView{latest_, status_};
 }
 
 AcquisitionEngine::AcquisitionEngine(
@@ -271,12 +305,14 @@ void AcquisitionEngine::quarantine() {
 
 bool AcquisitionEngine::fail_and_quarantine(std::string message) {
     last_error_ = std::move(message);
+    snapshot_store_.record_failure(std::chrono::steady_clock::now(), last_error_);
     quarantine();
     return false;
 }
 
 bool AcquisitionEngine::fail(std::string message) {
     last_error_ = std::move(message);
+    snapshot_store_.record_failure(std::chrono::steady_clock::now(), last_error_);
     return false;
 }
 
