@@ -672,6 +672,7 @@ endif()
 
 add_executable(uhf_persistence_runtime_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/persistence_runtime_smoke.cpp
+    src/config/config_store.cpp
     src/storage/persistence_runtime.cpp
     src/storage/frame_store.cpp
     src/storage/event_detector.cpp
