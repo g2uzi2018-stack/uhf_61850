@@ -20,6 +20,7 @@ configure_file(
 add_executable(uhf-gatewayd
     src/main.cpp
     src/domain/modbus.cpp
+    src/domain/snapshot.cpp
     src/web/auth_store.cpp
     src/web/crypto.cpp
     src/web/http_server.cpp
@@ -54,6 +55,24 @@ target_compile_features(uhf_domain_smoke PRIVATE cxx_std_17)
 target_include_directories(uhf_domain_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
 if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(uhf_domain_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
+add_executable(uhf_snapshot_smoke
+    tests/snapshot_smoke.cpp
+    src/domain/snapshot.cpp
+)
+target_compile_features(uhf_snapshot_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_snapshot_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_snapshot_smoke PRIVATE
         -Wall
         -Wextra
         -Wpedantic
@@ -99,6 +118,7 @@ if(BUILD_TESTING)
         COMMAND uhf_domain_smoke
             "${PROJECT_SOURCE_DIR}/tests/fixtures/pd1000_request_plan.txt"
     )
+    add_test(NAME uhf_snapshot_smoke COMMAND uhf_snapshot_smoke)
 
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
