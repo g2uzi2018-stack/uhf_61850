@@ -41,7 +41,7 @@ def main() -> int:
     for marker in ("实时总览", "prpd-canvas", "prps-canvas"):
         if marker not in overview_html:
             fail(f"overview.html is missing {marker!r}")
-    for marker in ("drawPrpd", "drawPrps", "3600", "api/v1/snapshot/latest", "api/v1/health"):
+    for marker in ("drawPrpd", "drawPrps", "3600", "api/v1/snapshot/latest", "api/v1/health", "WebSocket"):
         if marker not in overview_javascript:
             fail(f"overview.js is missing {marker!r}")
     for marker in ("api/v1/session", "same-origin", "登录尝试过于频繁"):

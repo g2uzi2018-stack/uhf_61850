@@ -2,6 +2,9 @@
     "use strict";
 
     var pollTimer;
+    var reconnectTimer;
+    var websocket;
+    var websocketConnected = false;
     var colors = ["#e8eef8", "#9cc8ff", "#5a9df2", "#786ed8", "#c55cb8", "#e66b66", "#e8a03e"];
 
     function redirectToLogin() {
@@ -120,6 +123,7 @@
     }
 
     function updateSnapshot(payload) {
+        window.latestSnapshot = payload;
         var measurements = {};
         (payload.measurements || []).forEach(function (measurement) { measurements[measurement.name] = measurement; });
         Object.keys(measurements).forEach(function (name) {
@@ -158,8 +162,68 @@
                 showToast("实时数据暂时不可用，正在重试");
             }
         }).then(function () {
-            pollTimer = window.setTimeout(refresh, 6000);
+            if (!websocketConnected) {
+                pollTimer = window.setTimeout(function () {
+                    pollTimer = null;
+                    refresh();
+                }, 6000);
+            }
         });
+    }
+
+    function setTransport(text, className) {
+        var badge = document.getElementById("transport-badge");
+        badge.textContent = text;
+        badge.className = "heading-badge " + (className || "dev-badge");
+        var marker = document.createElement("i");
+        badge.insertBefore(marker, badge.firstChild);
+    }
+
+    function connectWebSocket() {
+        if (typeof window.WebSocket !== "function") {
+            setTransport("HTTP 降级拉取", "dev-badge");
+            return;
+        }
+        var protocol = window.location.protocol === "https:" ? "wss" : "ws";
+        try {
+            websocket = new window.WebSocket(protocol + "://" + window.location.host + "/ws/v1/telemetry");
+        } catch (error) {
+            setTransport("HTTP 降级拉取", "dev-badge");
+            reconnectTimer = window.setTimeout(connectWebSocket, 2000);
+            return;
+        }
+        websocket.onopen = function () {
+            websocketConnected = true;
+            if (pollTimer) {
+                window.clearTimeout(pollTimer);
+                pollTimer = null;
+            }
+            setTransport("WebSocket 已连接", "");
+        };
+        websocket.onmessage = function (event) {
+            try {
+                var message = JSON.parse(event.data);
+                if (message.type === "telemetry") {
+                    updateHealth(message.health || {});
+                    updateSnapshot(message.snapshot || {});
+                } else if (message.type === "health") {
+                    updateHealth(message.data || {});
+                }
+            } catch (error) {
+                showToast("实时消息格式无效");
+            }
+        };
+        websocket.onclose = function () {
+            websocketConnected = false;
+            setTransport("HTTP 降级拉取", "dev-badge");
+            if (!pollTimer) {
+                refresh();
+            }
+            reconnectTimer = window.setTimeout(connectWebSocket, 2000);
+        };
+        websocket.onerror = function () {
+            setTransport("正在重连 WebSocket", "dev-badge");
+        };
     }
 
     document.querySelectorAll('[data-action="logout"]').forEach(function (button) {
@@ -180,10 +244,6 @@
             drawPrps(snapshot.spectrum || [], snapshot.spectrum_valid || []);
         }
     });
-    var originalUpdateSnapshot = updateSnapshot;
-    updateSnapshot = function (payload) {
-        window.latestSnapshot = payload;
-        originalUpdateSnapshot(payload);
-    };
     refresh();
+    connectWebSocket();
 }());
