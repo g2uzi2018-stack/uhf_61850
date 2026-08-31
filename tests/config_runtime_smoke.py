@@ -44,6 +44,8 @@ def main() -> int:
     web_dir = Path(sys.argv[2])
     configured_web_port = free_port()
     configured_tcp_port = free_port()
+    while configured_tcp_port == configured_web_port:
+        configured_tcp_port = free_port()
     configuration = {
         "version": 7,
         "acquisition_device": "/dev/ttyS1",
@@ -80,7 +82,9 @@ def main() -> int:
                 str(state_dir),
                 "--config",
                 str(config_path),
-                "--no-acquisition",
+                "--simulate",
+                "--modbus-tcp-listen",
+                f"127.0.0.1:{configured_tcp_port}",
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -116,6 +120,10 @@ def main() -> int:
             if status != 200:
                 fail(f"login returned {status}: {body!r}")
             cookie = headers["Set-Cookie"].split(";", 1)[0]
+            session = json.loads(body)
+            csrf_token = session.get("csrf_token")
+            if not isinstance(csrf_token, str) or not csrf_token:
+                fail(f"login did not return a CSRF token: {session!r}")
             config_status, config_body, _ = request(
                 configured_web_port, "GET", "/api/v1/config", headers={"Cookie": cookie}
             )
@@ -124,6 +132,45 @@ def main() -> int:
             loaded = json.loads(config_body)
             if loaded.get("version") != 7 or loaded.get("rtu_unit_id") != 3 or loaded.get("modbus_tcp_unit_id") != 4 or loaded.get("iec_enabled") is not False:
                 fail(f"persisted configuration was not loaded: {loaded!r}")
+
+            update = dict(loaded)
+            update.pop("version", None)
+            update["acquisition_slave_id"] = 3
+            update["acquisition_response_timeout_ms"] = 120
+            update["acquisition_max_retries"] = 1
+            update_status, update_body, _ = request(
+                configured_web_port,
+                "PUT",
+                "/api/v1/config",
+                json.dumps(update, separators=(",", ":")).encode("utf-8"),
+                {
+                    "Content-Type": "application/json",
+                    "Cookie": cookie,
+                    "X-CSRF-Token": csrf_token,
+                    "If-Match": '"7"',
+                },
+            )
+            if update_status != 200:
+                fail(f"hot reload configuration update returned {update_status}: {update_body!r}")
+            if json.loads(update_body).get("version") != 8:
+                fail(f"hot reload configuration version mismatch: {update_body!r}")
+
+            deadline = time.monotonic() + 9
+            while time.monotonic() < deadline:
+                logs_status, logs_body, _ = request(
+                    configured_web_port, "GET", "/api/v1/logs", headers={"Cookie": cookie}
+                )
+                if logs_status == 200:
+                    entries = json.loads(logs_body).get("entries", [])
+                    if any(
+                        entry.get("event") == "configuration.reloaded" and
+                        entry.get("fields", {}).get("version") == "8"
+                        for entry in entries
+                    ):
+                        break
+                time.sleep(0.1)
+            else:
+                fail("hot reload configuration was not applied by the acquisition runtime")
             print("config runtime smoke: OK")
             return 0
         finally:
