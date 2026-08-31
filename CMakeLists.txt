@@ -798,6 +798,13 @@ if(BUILD_TESTING)
             COMMAND "${Python3_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/tests/privileged_service_smoke.py"
         )
+        add_test(
+            NAME uhf_install_tree_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/install_tree_smoke.py"
+                "${PROJECT_SOURCE_DIR}"
+                "${CMAKE_BINARY_DIR}"
+        )
     endif()
     add_test(NAME uhf_acquisition_fault_smoke COMMAND uhf_acquisition_fault_smoke)
     add_test(NAME uhf_loopback_acquisition_smoke COMMAND uhf_loopback_acquisition_smoke)
@@ -857,3 +864,11 @@ endif()
 install(TARGETS uhf-gatewayd uhf-privilegedd RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(FILES LICENSE DESTINATION "${CMAKE_INSTALL_DOCDIR}")
 install(FILES config/schema.json DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/uhf-gateway")
+install(DIRECTORY web/ DESTINATION web)
+install(FILES
+    config/schema.json
+    config/UHFPD1.icd
+    third_party/manifest.json
+    DESTINATION config
+)
+install(PROGRAMS packaging/dhclient/uhf-gateway-hook DESTINATION libexec/uhf-gateway)
