@@ -27,6 +27,7 @@ add_executable(uhf-gatewayd
     src/storage/frame_store.cpp
     src/storage/event_detector.cpp
     src/storage/event_store.cpp
+    src/storage/storage_cleaner.cpp
     src/logging/logger.cpp
     src/health/health.cpp
     src/web/auth_store.cpp
@@ -263,6 +264,24 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+add_executable(uhf_storage_cleaner_smoke
+    tests/storage_cleaner_smoke.cpp
+    src/storage/storage_cleaner.cpp
+)
+target_compile_features(uhf_storage_cleaner_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_storage_cleaner_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_storage_cleaner_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
 if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(uhf_modbus_rtu_smoke PRIVATE
         -Wall
@@ -351,6 +370,7 @@ if(BUILD_TESTING)
     add_test(NAME uhf_event_store_smoke COMMAND uhf_event_store_smoke)
     add_test(NAME uhf_logger_smoke COMMAND uhf_logger_smoke)
     add_test(NAME uhf_health_smoke COMMAND uhf_health_smoke)
+    add_test(NAME uhf_storage_cleaner_smoke COMMAND uhf_storage_cleaner_smoke)
 endif()
 
 if(UHF_BUILD_FORMAT_TARGET)
