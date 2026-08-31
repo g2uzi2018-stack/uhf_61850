@@ -23,6 +23,7 @@ add_executable(uhf-gatewayd
     src/domain/modbus.cpp
     src/domain/snapshot.cpp
     src/modbus/tcp_server.cpp
+    src/modbus/rtu_server.cpp
     src/web/auth_store.cpp
     src/web/crypto.cpp
     src/web/http_server.cpp
@@ -148,6 +149,31 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+add_executable(uhf_modbus_rtu_smoke
+    tests/modbus_rtu_smoke.cpp
+    src/modbus/rtu_server.cpp
+    src/acquisition/acquisition.cpp
+    src/domain/modbus.cpp
+    src/domain/snapshot.cpp
+)
+target_compile_features(uhf_modbus_rtu_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_modbus_rtu_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+find_library(UHF_UTIL_LIBRARY NAMES util)
+if(UHF_UTIL_LIBRARY)
+    target_link_libraries(uhf_modbus_rtu_smoke PRIVATE "${UHF_UTIL_LIBRARY}")
+endif()
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_modbus_rtu_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
 if(UHF_ENABLE_ASAN OR UHF_ENABLE_UBSAN)
     if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         message(FATAL_ERROR "Sanitizers require a GNU or Clang compiler")
@@ -218,6 +244,7 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME uhf_acquisition_fault_smoke COMMAND uhf_acquisition_fault_smoke)
     add_test(NAME uhf_modbus_tcp_smoke COMMAND uhf_modbus_tcp_smoke)
+    add_test(NAME uhf_modbus_rtu_smoke COMMAND uhf_modbus_rtu_smoke)
 endif()
 
 if(UHF_BUILD_FORMAT_TARGET)
