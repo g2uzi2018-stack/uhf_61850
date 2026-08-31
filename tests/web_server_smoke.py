@@ -194,8 +194,17 @@ def main() -> int:
                 assert_status(page_status, 200, f"authenticated {page}")
                 if marker.encode("utf-8") not in page_body:
                     fail(f"authenticated page was not served: {page}")
+            iec_page_status, iec_page_body, _ = request(port, "GET", "/iec61850.html", headers={"Cookie": cookie})
+            assert_status(iec_page_status, 200, "authenticated IEC page")
+            if "IEC 61850".encode("utf-8") not in iec_page_body:
+                fail("authenticated IEC page was not served")
             network_status, _, _ = request(port, "GET", "/api/v1/network", headers={"Cookie": cookie})
             assert_status(network_status, 503, "network helper unavailable")
+            iec_status, iec_body, _ = request(port, "GET", "/api/v1/iec61850", headers={"Cookie": cookie})
+            assert_status(iec_status, 200, "IEC status lookup")
+            iec_payload = json.loads(iec_body)
+            if iec_payload.get("ied_name") != "UHFPD1" or len(iec_payload.get("model", [])) != 7:
+                fail(f"IEC status model is incomplete: {iec_payload!r}")
 
             config_status, config_body, _ = request(
                 port, "GET", "/api/v1/config", headers={"Cookie": cookie}

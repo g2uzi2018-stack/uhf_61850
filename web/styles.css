@@ -185,6 +185,9 @@ noscript { position: fixed; z-index: 30; inset: 0; padding: 35vh 20px; backgroun
 .log-level.warn { color: #ae6b27; }.log-level.error, .log-level.critical { color: var(--danger); }.log-level.info { color: #277d5d; }
 .storage-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .network-interface-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.iec-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.iec-summary-grid .settings-panel { margin-bottom: 0; }
+.data-table td:first-child { color: #425d89; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
 .storage-card .panel-header { align-items: center; }.link-button { text-decoration: none; white-space: nowrap; }
 .storage-list { padding: 0 23px 14px; }.storage-row { display: flex; min-width: 0; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 1px solid var(--line-soft); }.storage-row strong { overflow: hidden; color: #53647c; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }.storage-row span { color: var(--muted); font-size: 10px; }
 
@@ -194,6 +197,7 @@ noscript { position: fixed; z-index: 30; inset: 0; padding: 35vh 20px; backgroun
     .settings-actions .form-error { flex-basis: 100%; }
     .storage-summary-grid { grid-template-columns: 1fr; }
     .network-interface-grid { grid-template-columns: 1fr; }
+    .iec-summary-grid { grid-template-columns: 1fr; }
     .toolbar { justify-content: flex-start; }
 }
 

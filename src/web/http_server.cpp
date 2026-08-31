@@ -1031,6 +1031,64 @@ health::Report HttpServer::health_report(std::chrono::steady_clock::time_point n
     return health_aggregator_.evaluate(input, now);
 }
 
+std::string HttpServer::iec61850_json(std::chrono::steady_clock::time_point now) const {
+    config::Values values;
+    if (config_store_ != nullptr) {
+        values = config_store_->snapshot().values;
+    }
+    const health::Report report = health_report(now);
+    constexpr std::array<std::string_view, 7U> references = {
+        "PDMON/SPDC1.UhfPaDsch.mag.f",
+        "PDMON/SPDC1.PaDschAlm.stVal",
+        "PDMON/GGIO1.AnIn1.mag.f",
+        "PDMON/GGIO1.IntIn1.stVal",
+        "PDMON/GGIO1.AnIn2.mag.f",
+        "PDMON/GGIO1.AnIn3.mag.f",
+        "PDMON/GGIO1.AnIn4.mag.f"};
+    constexpr std::array<std::string_view, 7U> types = {
+        "MV", "SPS", "MV", "INS", "MV", "MV", "MV"};
+    constexpr std::array<std::string_view, 7U> units = {
+        "dBm", "boolean", "dBm", "次/秒", "dBm", "degree", "mV"};
+    constexpr std::array<int, 7U> source_registers = {10003, 0, 10001, 10002, 10003, 10004, 10005};
+
+    std::string body = "{\"schema_version\":1,\"status\":\"";
+    body.append(health::state_name(report.iec61850));
+    body.append("\",\"enabled\":");
+    body.append(values.iec_enabled ? "true" : "false");
+    body.append(",\"ied_name\":\"");
+    body.append(json_escape(values.iec_ied_name));
+    body.append("\",\"bind_address\":\"");
+    body.append(json_escape(values.modbus_tcp_bind));
+    body.append("\",\"port\":");
+    body.append(std::to_string(values.iec_port));
+    body.append(",\"model\":[");
+    for (std::size_t index = 0U; index < references.size(); ++index) {
+        if (index > 0U) {
+            body.push_back(',');
+        }
+        body.append("{\"reference\":\"");
+        body.append(references[index]);
+        body.append("\",\"type\":\"");
+        body.append(types[index]);
+        body.append("\",\"unit\":\"");
+        body.append(units[index]);
+        body.append("\",\"source_register\":");
+        body.append(std::to_string(source_registers[index]));
+        body.push_back('}');
+    }
+    body.append("],\"dataset\":{\"reference\":\"PDMON/LLN0.DSMeasurements\",\"members\":[");
+    for (std::size_t index = 0U; index < references.size(); ++index) {
+        if (index > 0U) {
+            body.push_back(',');
+        }
+        body.push_back('\"');
+        body.append(references[index]);
+        body.push_back('\"');
+    }
+    body.append("]},\"report\":{\"reference\":\"PDMON/LLN0.RPMeasurements\",\"buffered\":false,\"integrity_seconds\":60,\"triggers\":[\"data_changed\",\"quality_changed\",\"integrity\"]},\"limits\":{\"max_connections\":4,\"max_pdu_bytes\":16384,\"max_pending_bytes\":65536}}\n");
+    return body;
+}
+
 std::optional<std::string> HttpServer::snapshot_json() const {
     if (!snapshot_store_) {
         return std::nullopt;
@@ -1571,6 +1629,30 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             return false;
         }
         send_json(client_fd, tls, 200, *body);
+        return false;
+    }
+
+    if (request_path == "/api/v1/iec61850") {
+        if (parsed.method != "GET") {
+            send_method_not_allowed(client_fd, tls, "GET");
+            return false;
+        }
+        const std::string token = session_cookie(parsed);
+        const auto iterator = sessions_.find(token);
+        if (token.empty() || iterator == sessions_.end() || iterator->second.expires_at <= now) {
+            if (iterator != sessions_.end()) {
+                sessions_.erase(iterator);
+            }
+            send_error(client_fd, tls, 401, "authentication required");
+            return false;
+        }
+        iterator->second.expires_at = now + kSessionLifetime;
+        const std::string body = iec61850_json(now);
+        if (body.size() > kMaxBodyBytes) {
+            send_error(client_fd, tls, 500, "IEC 61850 status response too large");
+            return false;
+        }
+        send_json(client_fd, tls, 200, body, "Cache-Control: no-store\r\n");
         return false;
     }
 
@@ -2141,7 +2223,8 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
     } else if (request_path == "/index.html" || request_path == "/overview" ||
                request_path == "/overview.html" || request_path == "/settings.html" ||
                request_path == "/logs.html" || request_path == "/storage.html" ||
-               request_path == "/network.html" || request_path == "/maintenance.html") {
+               request_path == "/network.html" || request_path == "/iec61850.html" ||
+               request_path == "/maintenance.html") {
         if (parsed.method != "GET") {
             send_method_not_allowed(client_fd, tls, "GET");
             return false;
