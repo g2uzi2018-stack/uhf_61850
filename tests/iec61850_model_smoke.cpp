@@ -26,8 +26,12 @@ int main() {
         "standard peak reference exists") && ok;
     ok = expect(
         IedModel_getModelNodeByObjectReference(
-            model.raw(), "TESTIEDPDMON/GGIO1.AnIn5.mag.f") != nullptr,
-        "fifth measurement reference exists") && ok;
+            model.raw(), "TESTIEDPDMON/GGIO1.IntIn1.stVal") != nullptr,
+        "frequency measurement reference exists") && ok;
+    ok = expect(
+        IedModel_getModelNodeByObjectReference(
+            model.raw(), "TESTIEDPDMON/GGIO1.AnIn4.mag.f") != nullptr,
+        "fourth analog measurement reference exists") && ok;
     ok = expect(
         IedModel_getModelNodeByObjectReference(
             model.raw(), "TESTIEDPDMON/SPDC1.PaDschAlm.stVal") != nullptr,
@@ -39,6 +43,8 @@ int main() {
         ok = expect(model.measurement_quality(index) != nullptr, "measurement quality exists") && ok;
         ok = expect(model.measurement_time(index) != nullptr, "measurement time exists") && ok;
     }
+    ok = expect(model.measurement_integer(1U), "frequency is integer") && ok;
+    ok = expect(!model.measurement_integer(0U), "average is analog") && ok;
     ok = expect(model.peak_value() != nullptr, "peak handle exists") && ok;
     ok = expect(model.alarm_value() != nullptr, "alarm handle exists") && ok;
     ok = expect(model.alarm_quality() != nullptr, "alarm quality handle exists") && ok;

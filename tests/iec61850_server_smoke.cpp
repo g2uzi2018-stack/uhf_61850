@@ -73,6 +73,19 @@ int main() {
             MmsValue_delete(value);
         }
 
+        MmsValue* frequency = IedConnection_readObject(
+            connection,
+            &error,
+            "TESTIEDPDMON/GGIO1.IntIn1.stVal",
+            IEC61850_FC_ST);
+        ok = expect(error == IED_ERROR_OK && frequency != nullptr, "read frequency") && ok;
+        if (frequency != nullptr) {
+            ok = expect(
+                MmsValue_getType(frequency) == MMS_INTEGER && MmsValue_toInt32(frequency) == 12,
+                "frequency value") && ok;
+            MmsValue_delete(frequency);
+        }
+
         MmsValue* peak = IedConnection_readObject(
             connection,
             &error,

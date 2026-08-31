@@ -61,14 +61,17 @@ Model::Model(std::string ied_name) {
         alarm_time_ = child_attribute(alarm, "t");
 
         static constexpr const char* kMeasurementNames[kMeasurementCount] = {
-            "AnIn1", "AnIn2", "AnIn3", "AnIn4", "AnIn5"};
+            "AnIn1", "IntIn1", "AnIn2", "AnIn3", "AnIn4"};
         for (std::size_t index = 0; index < kMeasurementCount; ++index) {
-            DataObject* measurement = CDC_MV_create(
-                kMeasurementNames[index], as_model_node(ggio1), 0U, false);
+            DataObject* measurement = index == 1U
+                ? CDC_INS_create(kMeasurementNames[index], as_model_node(ggio1), 0U)
+                : CDC_MV_create(kMeasurementNames[index], as_model_node(ggio1), 0U, false);
             if (measurement == nullptr) {
                 throw std::runtime_error("unable to create IEC 61850 measurement object");
             }
-            measurement_values_[index] = child_attribute(measurement, "mag.f");
+            measurement_values_[index] = child_attribute(
+                measurement, index == 1U ? "stVal" : "mag.f");
+            measurement_integer_[index] = index == 1U;
             measurement_qualities_[index] = child_attribute(measurement, "q");
             measurement_times_[index] = child_attribute(measurement, "t");
         }
@@ -78,8 +81,10 @@ Model::Model(std::string ied_name) {
             throw std::runtime_error("unable to create IEC 61850 data set");
         }
         for (std::size_t index = 0; index < kMeasurementCount; ++index) {
-            const std::string reference =
-                std::string("GGIO1$MX$AnIn") + std::to_string(index + 1U) + "$mag$f";
+            const std::string reference = index == 1U
+                ? "GGIO1$ST$IntIn1$stVal"
+                : std::string("GGIO1$MX$AnIn") +
+                    std::to_string(index == 0U ? 1U : index) + "$mag$f";
             if (DataSetEntry_create(data_set, reference.c_str(), -1, nullptr) == nullptr) {
                 throw std::runtime_error("unable to create IEC 61850 data set member");
             }
@@ -135,6 +140,10 @@ DataAttribute* Model::measurement_quality(std::size_t index) const noexcept {
 
 DataAttribute* Model::measurement_time(std::size_t index) const noexcept {
     return index < measurement_times_.size() ? measurement_times_[index] : nullptr;
+}
+
+bool Model::measurement_integer(std::size_t index) const noexcept {
+    return index < measurement_integer_.size() && measurement_integer_[index];
 }
 
 DataAttribute* Model::peak_value() const noexcept {

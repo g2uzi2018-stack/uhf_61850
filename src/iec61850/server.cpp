@@ -84,7 +84,11 @@ void Server::publish_invalid_values() {
     const std::uint64_t timestamp_ms = now_milliseconds();
     IedServer_lockDataModel(server_);
     for (std::size_t index = 0; index < kMeasurementCount; ++index) {
-        IedServer_updateFloatAttributeValue(server_, model_->measurement_value(index), 0.0F);
+        if (model_->measurement_integer(index)) {
+            IedServer_updateInt32AttributeValue(server_, model_->measurement_value(index), 0);
+        } else {
+            IedServer_updateFloatAttributeValue(server_, model_->measurement_value(index), 0.0F);
+        }
         IedServer_updateQuality(
             server_, model_->measurement_quality(index), quality_for(false));
         update_timestamp(model_->measurement_time(index), timestamp_ms);
@@ -102,8 +106,14 @@ void Server::publish_snapshot(const acquisition::PublishedSnapshot& snapshot) {
     IedServer_lockDataModel(server_);
     for (std::size_t index = 0; index < kMeasurementCount; ++index) {
         const domain::Measurement& measurement = payload.measurements[index];
-        IedServer_updateFloatAttributeValue(
-            server_, model_->measurement_value(index), static_cast<float>(measurement.value));
+        if (model_->measurement_integer(index)) {
+            IedServer_updateInt32AttributeValue(
+                server_, model_->measurement_value(index),
+                static_cast<std::int32_t>(measurement.value));
+        } else {
+            IedServer_updateFloatAttributeValue(
+                server_, model_->measurement_value(index), static_cast<float>(measurement.value));
+        }
         IedServer_updateQuality(
             server_, model_->measurement_quality(index), quality_for(measurement.valid));
         update_timestamp(model_->measurement_time(index), timestamp_ms);
