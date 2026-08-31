@@ -28,7 +28,9 @@
 
 #if (MMS_WRITE_SERVICE == 1)
 
-#define CONFIG_MMS_WRITE_SERVICE_MAX_NUMBER_OF_WRITE_ITEMS 100
+#ifndef CONFIG_MMS_WRITE_SERVICE_MAX_NUMBER_OF_WRITE_ITEMS
+#define CONFIG_MMS_WRITE_SERVICE_MAX_NUMBER_OF_WRITE_ITEMS CONFIG_MMS_MAX_NUMBER_OF_REQUEST_ELEMENTS
+#endif
 
 void
 mmsServer_createMmsWriteResponse(MmsServerConnection connection, uint32_t invokeId, ByteBuffer* response,
@@ -781,6 +783,12 @@ mmsServer_handleWriteRequest(MmsServerConnection connection, uint8_t* buffer, in
 
                     int index = mmsServer_getLowIndex(alternateAccess);
                     int numberOfElements = mmsServer_getNumberOfElements(alternateAccess);
+
+                    if (numberOfElements > CONFIG_MMS_MAX_NUMBER_OF_REQUEST_ELEMENTS)
+                    {
+                        accessResults[i] = DATA_ACCESS_ERROR_OBJECT_VALUE_INVALID;
+                        goto end_of_main_loop;
+                    }
 
                     if (numberOfElements == 0) /* select single array element with index */
                     {

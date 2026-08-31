@@ -22,7 +22,8 @@ if(UHF_ENABLE_IEC61850)
     set(CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS 4 CACHE STRING "" FORCE)
     set(CONFIG_IEC61850_MEMORY_LIMIT_BYTES 8388608)
     set(CONFIG_MMS_SINGLE_THREADED ON CACHE BOOL "" FORCE)
-    set(CONFIG_MMS_MAX_NUMBER_OF_DATA_SET_MEMBERS 16 CACHE STRING "" FORCE)
+    set(CONFIG_MMS_MAX_NUMBER_OF_DATA_SET_MEMBERS 512 CACHE STRING "" FORCE)
+    set(CONFIG_MMS_MAX_NUMBER_OF_REQUEST_ELEMENTS 512 CACHE STRING "" FORCE)
     set(CONFIG_DEFAULT_MAX_SERV_OUTSTANDING_CALLING 2)
     set(CONFIG_DEFAULT_MAX_SERV_OUTSTANDING_CALLED 2)
     set(CONFIG_MMS_MAX_DATA_STRUCTURE_NESTING_LEVEL 32)
@@ -728,6 +729,40 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 if(UHF_ENABLE_IEC61850)
+    add_executable(uhf_iec61850_request_limit_smoke ${UHF_TEST_TARGET_OPTIONS}
+        tests/iec61850_request_limit_smoke.cpp
+        src/iec61850/server.cpp
+        src/iec61850/model.cpp
+        src/acquisition/acquisition.cpp
+        src/domain/modbus.cpp
+        src/domain/snapshot.cpp
+    )
+    target_compile_features(uhf_iec61850_request_limit_smoke PRIVATE cxx_std_17)
+    target_include_directories(uhf_iec61850_request_limit_smoke PRIVATE
+        "${PROJECT_SOURCE_DIR}/src"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/hal/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/common/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/iec61850/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/iec61850/inc_private"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/inc_private"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/iso_mms/asn1c"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/logging"
+        "${PROJECT_BINARY_DIR}/third_party/libiec61850/config"
+    )
+    target_link_libraries(uhf_iec61850_request_limit_smoke PRIVATE iec61850)
+    if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(uhf_iec61850_request_limit_smoke PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Wconversion
+            -Wsign-conversion
+            -Wshadow
+            -Werror
+        )
+    endif()
+
     add_executable(uhf_iec61850_memory_smoke ${UHF_TEST_TARGET_OPTIONS}
         tests/iec61850_memory_smoke.cpp
     )
@@ -1053,6 +1088,7 @@ if(BUILD_TESTING)
     add_test(NAME uhf_tls_context_smoke COMMAND uhf_tls_context_smoke)
     if(UHF_ENABLE_IEC61850)
         add_test(NAME uhf_iec61850_memory_smoke COMMAND uhf_iec61850_memory_smoke)
+        add_test(NAME uhf_iec61850_request_limit_smoke COMMAND uhf_iec61850_request_limit_smoke)
         add_test(NAME uhf_iec61850_model_smoke COMMAND uhf_iec61850_model_smoke)
         add_test(NAME uhf_iec61850_server_smoke COMMAND uhf_iec61850_server_smoke)
     endif()

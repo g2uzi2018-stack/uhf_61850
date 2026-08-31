@@ -206,6 +206,12 @@ alternateArrayAccess(MmsServerConnection connection,
 
 		int numberOfElements = mmsServer_getNumberOfElements(alternateAccess);
 
+		if (numberOfElements > CONFIG_MMS_MAX_NUMBER_OF_REQUEST_ELEMENTS)
+		{
+			appendErrorToResultList(values, DATA_ACCESS_ERROR_OBJECT_VALUE_INVALID);
+			return;
+		}
+
 		int index = lowIndex;
 
 		MmsValue* arrayValue = mmsServer_getValue(connection->server, domain, itemId, connection, false);
@@ -561,6 +567,13 @@ handleReadListOfVariablesRequest(
 		ByteBuffer* response)
 {
 	int variableCount = read->variableAccessSpecification.choice.listOfVariable.list.count;
+
+	if ((variableCount < 1) ||
+			(variableCount > CONFIG_MMS_MAX_NUMBER_OF_REQUEST_ELEMENTS))
+	{
+		mmsMsg_createMmsRejectPdu(&invokeId, MMS_ERROR_REJECT_REQUEST_INVALID_ARGUMENT, response);
+		return;
+	}
 
 	LinkedList /*<MmsValue>*/ values = LinkedList_create();
 

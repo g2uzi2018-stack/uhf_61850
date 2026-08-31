@@ -214,6 +214,9 @@
 /* Maximum number of the members in a data set (named variable list) */
 #cmakedefine CONFIG_MMS_MAX_NUMBER_OF_DATA_SET_MEMBERS @CONFIG_MMS_MAX_NUMBER_OF_DATA_SET_MEMBERS@
 
+/* Maximum number of variable or array elements handled by one MMS request */
+#cmakedefine CONFIG_MMS_MAX_NUMBER_OF_REQUEST_ELEMENTS @CONFIG_MMS_MAX_NUMBER_OF_REQUEST_ELEMENTS@
+
 /* Maximum number of get file tasks */
 #cmakedefine CONFIG_MMS_SERVER_MAX_GET_FILE_TASKS @CONFIG_MMS_SERVER_MAX_GET_FILE_TASKS@
 
