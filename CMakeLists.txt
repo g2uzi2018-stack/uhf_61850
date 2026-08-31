@@ -226,6 +226,25 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         -Werror
     )
 endif()
+
+add_executable(uhf_network_transaction_smoke
+    tests/network_transaction_smoke.cpp
+    src/platform/network/network_transaction.cpp
+    src/platform/network/network_config.cpp
+)
+target_compile_features(uhf_network_transaction_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_network_transaction_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_network_transaction_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
 if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(uhf_serial_port_smoke PRIVATE
         -Wall
@@ -642,6 +661,7 @@ if(BUILD_TESTING)
     add_test(NAME uhf_loopback_acquisition_smoke COMMAND uhf_loopback_acquisition_smoke)
     add_test(NAME uhf_serial_port_smoke COMMAND uhf_serial_port_smoke)
     add_test(NAME uhf_network_config_smoke COMMAND uhf_network_config_smoke)
+    add_test(NAME uhf_network_transaction_smoke COMMAND uhf_network_transaction_smoke)
     add_test(NAME uhf_modbus_tcp_smoke COMMAND uhf_modbus_tcp_smoke)
     add_test(NAME uhf_modbus_rtu_smoke COMMAND uhf_modbus_rtu_smoke)
     add_test(NAME uhf_frame_store_smoke COMMAND uhf_frame_store_smoke)
