@@ -14,6 +14,7 @@
 #include <openssl/bio.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
+#include <openssl/objects.h>
 #include <openssl/pem.h>
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
@@ -159,11 +160,79 @@ SSL_CTX* create_context() {
 }
 
 bool valid_certificate(X509* certificate, EVP_PKEY* key) {
-    if (certificate == nullptr || key == nullptr || X509_check_private_key(certificate, key) != 1 ||
+    if (certificate == nullptr || key == nullptr ||
+        X509_check_private_key(certificate, key) != 1 ||
         X509_cmp_current_time(X509_get_notBefore(certificate)) > 0 ||
-        X509_cmp_current_time(X509_get_notAfter(certificate)) < 0 ||
-        X509_get_ext_by_NID(certificate, NID_subject_alt_name, -1) < 0) {
+        X509_cmp_current_time(X509_get_notAfter(certificate)) < 0) {
         return false;
+    }
+
+    int critical = 0;
+    int extension_index = -1;
+    GENERAL_NAMES* names = static_cast<GENERAL_NAMES*>(
+        X509_get_ext_d2i(
+            certificate, NID_subject_alt_name, &critical, &extension_index));
+    if (names == nullptr || sk_GENERAL_NAME_num(names) == 0) {
+        GENERAL_NAMES_free(names);
+        return false;
+    }
+    bool usable_name = false;
+    for (int index = 0; index < sk_GENERAL_NAME_num(names); ++index) {
+        const GENERAL_NAME* name = sk_GENERAL_NAME_value(names, index);
+        if (name->type == GEN_DNS && name->d.dNSName != nullptr &&
+            ASN1_STRING_length(name->d.dNSName) > 0) {
+            usable_name = true;
+        } else if (name->type == GEN_IPADD && name->d.iPAddress != nullptr &&
+                   (ASN1_STRING_length(name->d.iPAddress) == 4 ||
+                    ASN1_STRING_length(name->d.iPAddress) == 16)) {
+            usable_name = true;
+        }
+    }
+    GENERAL_NAMES_free(names);
+    if (!usable_name) {
+        return false;
+    }
+
+    extension_index = -1;
+    EXTENDED_KEY_USAGE* extended_usage = static_cast<EXTENDED_KEY_USAGE*>(
+        X509_get_ext_d2i(
+            certificate, NID_ext_key_usage, &critical, &extension_index));
+    if (extended_usage == nullptr) {
+        EXTENDED_KEY_USAGE_free(extended_usage);
+        return false;
+    }
+    bool server_auth = false;
+    for (int index = 0; index < sk_ASN1_OBJECT_num(extended_usage); ++index) {
+        if (OBJ_obj2nid(sk_ASN1_OBJECT_value(extended_usage, index)) == NID_server_auth) {
+            server_auth = true;
+            break;
+        }
+    }
+    EXTENDED_KEY_USAGE_free(extended_usage);
+    if (!server_auth) {
+        return false;
+    }
+
+    extension_index = -1;
+    BASIC_CONSTRAINTS* constraints = static_cast<BASIC_CONSTRAINTS*>(
+        X509_get_ext_d2i(
+            certificate, NID_basic_constraints, &critical, &extension_index));
+    const bool is_ca = constraints != nullptr && constraints->ca != 0;
+    BASIC_CONSTRAINTS_free(constraints);
+    if (is_ca) {
+        return false;
+    }
+
+    extension_index = -1;
+    ASN1_BIT_STRING* key_usage = static_cast<ASN1_BIT_STRING*>(
+        X509_get_ext_d2i(certificate, NID_key_usage, &critical, &extension_index));
+    if (key_usage != nullptr) {
+        const bool can_sign = ASN1_BIT_STRING_get_bit(key_usage, 0) != 0;
+        const bool can_encrypt = ASN1_BIT_STRING_get_bit(key_usage, 2) != 0;
+        ASN1_BIT_STRING_free(key_usage);
+        if (!can_sign && !can_encrypt) {
+            return false;
+        }
     }
     return true;
 }
@@ -200,7 +269,9 @@ SSL_CTX* context_from_files(const uhf::web::TlsFiles& files) {
     if (context == nullptr ||
         SSL_CTX_use_certificate_chain_file(context, files.certificate.c_str()) != 1 ||
         SSL_CTX_use_PrivateKey_file(context, files.private_key.c_str(), SSL_FILETYPE_PEM) != 1 ||
-        SSL_CTX_check_private_key(context) != 1) {
+        SSL_CTX_check_private_key(context) != 1 ||
+        !valid_certificate(
+            SSL_CTX_get0_certificate(context), SSL_CTX_get0_privatekey(context))) {
         SSL_CTX_free(context);
         return nullptr;
     }

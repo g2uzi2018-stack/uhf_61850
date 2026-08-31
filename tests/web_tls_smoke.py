@@ -116,6 +116,58 @@ def main() -> int:
             csrf_token = session.get("csrf_token")
             certificate_pem = certificate.read_text(encoding="ascii")
             private_key_pem = private_key.read_text(encoding="ascii")
+            bad_certificate = state_dir / "bad.crt"
+            bad_private_key = state_dir / "bad.key"
+            generated = subprocess.run(
+                [
+                    "openssl",
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "rsa:2048",
+                    "-nodes",
+                    "-keyout",
+                    str(bad_private_key),
+                    "-out",
+                    str(bad_certificate),
+                    "-days",
+                    "1",
+                    "-subj",
+                    "/CN=wrong-purpose",
+                    "-addext",
+                    "basicConstraints=critical,CA:FALSE",
+                    "-addext",
+                    "keyUsage=critical,digitalSignature",
+                    "-addext",
+                    "subjectAltName=DNS:localhost",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if generated.returncode != 0:
+                fail(f"could not create invalid-purpose certificate: {generated.stderr.strip()}")
+            bad_body = json.dumps(
+                {
+                    "current_password": initial_password,
+                    "certificate_pem": bad_certificate.read_text(encoding="ascii"),
+                    "private_key_pem": bad_private_key.read_text(encoding="ascii"),
+                },
+                separators=(",", ":"),
+            ).encode("utf-8")
+            status, _, _ = https_request(
+                port,
+                "PUT",
+                "/api/v1/tls",
+                bad_body,
+                {
+                    "Content-Type": "application/json",
+                    "Cookie": cookie.split(";", 1)[0],
+                    "X-CSRF-Token": str(csrf_token),
+                },
+            )
+            if status != 400 or certificate.read_text(encoding="ascii") != certificate_pem:
+                fail("certificate without serverAuth was accepted or replaced the active certificate")
             status, _, _ = https_request(port, "GET", "/api/v1/tls", headers={"Cookie": cookie.split(";", 1)[0]})
             if status != 200:
                 fail(f"TLS status returned {status}")
