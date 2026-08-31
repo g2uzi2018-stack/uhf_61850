@@ -102,7 +102,13 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_domain_smoke
+if(BUILD_TESTING)
+    set(UHF_TEST_TARGET_OPTIONS)
+else()
+    set(UHF_TEST_TARGET_OPTIONS EXCLUDE_FROM_ALL)
+endif()
+
+add_executable(uhf_domain_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/domain_smoke.cpp
     src/domain/modbus.cpp
 )
@@ -120,7 +126,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_snapshot_smoke
+add_executable(uhf_snapshot_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/snapshot_smoke.cpp
     src/domain/snapshot.cpp
 )
@@ -138,7 +144,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_acquisition_smoke
+add_executable(uhf_acquisition_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/acquisition_smoke.cpp
     src/acquisition/acquisition.cpp
     src/domain/modbus.cpp
@@ -158,7 +164,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_acquisition_fault_smoke
+add_executable(uhf_acquisition_fault_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/acquisition_fault_smoke.cpp
     src/acquisition/acquisition.cpp
     src/domain/modbus.cpp
@@ -178,7 +184,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_loopback_acquisition_smoke
+add_executable(uhf_loopback_acquisition_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/loopback_acquisition_smoke.cpp
     src/acquisition/loopback_pd1000.cpp
     src/acquisition/acquisition.cpp
@@ -199,7 +205,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_serial_port_smoke
+add_executable(uhf_serial_port_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/serial_port_smoke.cpp
     src/acquisition/acquisition.cpp
     src/domain/modbus.cpp
@@ -212,7 +218,7 @@ if(UHF_SERIAL_UTIL_LIBRARY)
     target_link_libraries(uhf_serial_port_smoke PRIVATE "${UHF_SERIAL_UTIL_LIBRARY}")
 endif()
 
-add_executable(uhf_network_config_smoke
+add_executable(uhf_network_config_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/network_config_smoke.cpp
     src/platform/network/network_config.cpp
 )
@@ -230,7 +236,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_dhcp_client_smoke
+add_executable(uhf_dhcp_client_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/dhcp_client_smoke.cpp
     src/platform/network/dhcp_client.cpp
 )
@@ -248,7 +254,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_network_transaction_smoke
+add_executable(uhf_network_transaction_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/network_transaction_smoke.cpp
     src/platform/network/network_transaction.cpp
     src/platform/network/network_config.cpp
@@ -267,7 +273,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_linux_backend_smoke
+add_executable(uhf_linux_backend_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/linux_backend_smoke.cpp
     src/platform/network/linux_backend.cpp
     src/platform/network/dhcp_client.cpp
@@ -288,7 +294,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_linux_status_smoke
+add_executable(uhf_linux_status_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/linux_status_smoke.cpp
     src/platform/network/linux_status.cpp
 )
@@ -306,7 +312,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_unix_socket_smoke
+add_executable(uhf_unix_socket_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/unix_socket_smoke.cpp
     src/platform/privileged/unix_socket.cpp
     src/platform/network/network_config.cpp
@@ -326,7 +332,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_network_service_smoke
+add_executable(uhf_network_service_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/network_service_smoke.cpp
     src/platform/privileged/network_service.cpp
     src/platform/privileged/maintenance.cpp
@@ -443,7 +449,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_systemd_notify_smoke
+add_executable(uhf_systemd_notify_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/systemd_notify_smoke.cpp
     src/platform/systemd/notify.cpp
 )
@@ -472,7 +478,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_modbus_tcp_smoke
+add_executable(uhf_modbus_tcp_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/modbus_tcp_smoke.cpp
     src/modbus/tcp_server.cpp
     src/acquisition/acquisition.cpp
@@ -494,7 +500,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_modbus_rtu_smoke
+add_executable(uhf_modbus_rtu_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/modbus_rtu_smoke.cpp
     src/modbus/rtu_server.cpp
     src/acquisition/acquisition.cpp
@@ -508,7 +514,7 @@ if(UHF_UTIL_LIBRARY)
     target_link_libraries(uhf_modbus_rtu_smoke PRIVATE "${UHF_UTIL_LIBRARY}")
 endif()
 
-add_executable(uhf_frame_store_smoke
+add_executable(uhf_frame_store_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/frame_store_smoke.cpp
     src/storage/frame_store.cpp
     src/acquisition/acquisition.cpp
@@ -529,7 +535,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_event_detector_smoke
+add_executable(uhf_event_detector_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/event_detector_smoke.cpp
     src/storage/event_detector.cpp
     src/domain/snapshot.cpp
@@ -548,7 +554,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_event_store_smoke
+add_executable(uhf_event_store_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/event_store_smoke.cpp
     src/storage/event_store.cpp
     src/domain/snapshot.cpp
@@ -567,7 +573,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_logger_smoke
+add_executable(uhf_logger_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/logger_smoke.cpp
     src/logging/logger.cpp
 )
@@ -585,7 +591,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_health_smoke
+add_executable(uhf_health_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/health_smoke.cpp
     src/health/health.cpp
 )
@@ -603,7 +609,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_storage_cleaner_smoke
+add_executable(uhf_storage_cleaner_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/storage_cleaner_smoke.cpp
     src/storage/storage_cleaner.cpp
 )
@@ -621,7 +627,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_persistence_runtime_smoke
+add_executable(uhf_persistence_runtime_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/persistence_runtime_smoke.cpp
     src/storage/persistence_runtime.cpp
     src/storage/frame_store.cpp
@@ -648,7 +654,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-    add_executable(uhf_config_store_smoke
+    add_executable(uhf_config_store_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/config_store_smoke.cpp
     src/config/config_store.cpp
 )
@@ -667,7 +673,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 if(UHF_ENABLE_IEC61850)
-    add_executable(uhf_iec61850_model_smoke
+    add_executable(uhf_iec61850_model_smoke ${UHF_TEST_TARGET_OPTIONS}
         tests/iec61850_model_smoke.cpp
         src/iec61850/model.cpp
     )
@@ -697,7 +703,7 @@ if(UHF_ENABLE_IEC61850)
         )
     endif()
 
-    add_executable(uhf_iec61850_server_smoke
+    add_executable(uhf_iec61850_server_smoke ${UHF_TEST_TARGET_OPTIONS}
         tests/iec61850_server_smoke.cpp
         src/iec61850/server.cpp
         src/iec61850/model.cpp
@@ -731,7 +737,7 @@ if(UHF_ENABLE_IEC61850)
         )
     endif()
 
-    add_executable(uhf_tls_context_smoke
+    add_executable(uhf_tls_context_smoke ${UHF_TEST_TARGET_OPTIONS}
         tests/tls_context_smoke.cpp
         src/web/tls_context.cpp
     )
