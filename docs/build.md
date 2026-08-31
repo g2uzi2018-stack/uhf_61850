@@ -32,6 +32,18 @@ format-check 是可选的 CMake 目标；安装 clang-format 后执行：
 
     cmake --build build/host --target format-check
 
+## 界面预览
+
+用户管理页面目前以本地静态预览形式提供，不包含真实登录、会话或密码接口。启动预览服务器：
+
+    bash tools/preview-web.sh
+
+在 Windows 浏览器打开 Linux 开发机的局域网地址，例如：
+
+    http://192.168.30.13:8080/
+
+本机网卡地址可能不同，可用 ip -br addr 查看。预览服务器绑定所有接口且没有认证，只应在可信的开发网络中使用；看完后在启动终端按 Ctrl-C 停止。若只想本机监听，可设置 UHF_PREVIEW_HOST=127.0.0.1。
+
 ## 发布材料
 
 源码发布必须保留与版本对应的 Git commit/tag、LICENSE 和 third_party/manifest.json。新增第三方依赖前，先记录固定版本、来源、SHA-256、许可证和启用特性，再进入产品构建。

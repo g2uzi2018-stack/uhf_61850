@@ -66,6 +66,16 @@ if(BUILD_TESTING)
     set_tests_properties(uhf_gatewayd_smoke PROPERTIES
         PASS_REGULAR_EXPRESSION "uhf-gatewayd self-test: OK"
     )
+
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME uhf_web_preview_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/web_preview_smoke.py"
+                "${PROJECT_SOURCE_DIR}/web"
+        )
+    endif()
 endif()
 
 if(UHF_BUILD_FORMAT_TARGET)
