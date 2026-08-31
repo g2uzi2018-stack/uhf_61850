@@ -18,7 +18,7 @@ struct Values {
     std::uint8_t acquisition_max_retries{3U};
     std::string rtu_device{"/dev/ttyS4"};
     std::uint8_t rtu_unit_id{1U};
-    std::string modbus_tcp_bind{"127.0.0.1"};
+    std::string modbus_tcp_bind{"192.168.3.230"};
     std::uint8_t modbus_tcp_unit_id{1U};
     std::uint16_t modbus_tcp_port{502U};
     std::uint16_t web_port{8080U};

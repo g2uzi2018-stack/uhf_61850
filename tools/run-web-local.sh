@@ -19,4 +19,6 @@ exec "${host_build}/uhf-gatewayd" \
     --web-root "${repo_dir}/web" \
     --state-dir "${state_dir}" \
     --simulate \
-    --listen "${web_listen}"
+    --listen "${web_listen}" \
+    --modbus-tcp-listen "127.0.0.1:15020" \
+    --iec61850-listen "127.0.0.1:15102"

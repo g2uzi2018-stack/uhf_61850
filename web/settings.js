@@ -6,6 +6,7 @@
     var saved = document.getElementById("settings-saved");
     var version = 0;
     var csrfToken = "";
+    var modbusTcpBind = "192.168.3.230";
     var numericFields = [
         "acquisition_slave_id", "acquisition_period_ms", "acquisition_response_timeout_ms",
         "acquisition_max_retries", "rtu_unit_id", "modbus_tcp_port", "modbus_tcp_unit_id",
@@ -37,6 +38,7 @@
             return response.json();
         }).then(function (config) {
             version = Number(config.version);
+            modbusTcpBind = String(config.modbus_tcp_bind);
             document.getElementById("config-version").innerHTML = "<i></i>配置版本 " + version;
             numericFields.forEach(function (name) { setValue(name, config[name]); });
             setValue("iec_enabled", config.iec_enabled);
@@ -53,7 +55,7 @@
         payload.iec_ied_name = form.elements.iec_ied_name.value;
         payload.acquisition_device = "/dev/ttyS1";
         payload.rtu_device = "/dev/ttyS4";
-        payload.modbus_tcp_bind = "127.0.0.1";
+        payload.modbus_tcp_bind = modbusTcpBind;
         payload.tls_enabled = true;
         fetch("/api/v1/config", {method: "PUT", credentials: "same-origin", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrfToken, "If-Match": '"' + version + '"'}, body: JSON.stringify(payload)}).then(function (response) {
             if (response.status === 401) { redirectToLogin(); return null; }

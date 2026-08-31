@@ -7,7 +7,7 @@
   "acquisition_max_retries": 3,
   "rtu_device": "/dev/ttyS4",
   "rtu_unit_id": 1,
-  "modbus_tcp_bind": "127.0.0.1",
+  "modbus_tcp_bind": "192.168.3.230",
   "modbus_tcp_unit_id": 1,
   "modbus_tcp_port": 502,
   "web_port": 8080,

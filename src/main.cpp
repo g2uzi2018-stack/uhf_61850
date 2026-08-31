@@ -40,14 +40,14 @@ struct WebOptions {
     std::string acquisition_device{"/dev/ttyS1"};
     bool acquisition_device_explicit{false};
     bool modbus_tcp_explicit{false};
-    std::string modbus_tcp_bind{"127.0.0.1"};
+    std::string modbus_tcp_bind{"192.168.3.230"};
     std::uint16_t modbus_tcp_port{502};
     bool modbus_rtu_explicit{false};
     bool start_modbus_rtu{true};
     std::string modbus_rtu_device{"/dev/ttyS4"};
     bool iec61850_explicit{false};
     bool start_iec61850{true};
-    std::string iec61850_bind{"127.0.0.1"};
+    std::string iec61850_bind{"192.168.3.230"};
     std::uint16_t iec61850_port{102U};
     std::filesystem::path data_directory{"/var/lib/uhf-gateway/data"};
     bool data_directory_explicit{false};

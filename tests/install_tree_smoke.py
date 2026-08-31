@@ -2,6 +2,7 @@
 """Verify that CMake installs a self-contained, offline product tree."""
 
 from pathlib import Path
+import json
 import shutil
 import subprocess
 import sys
@@ -63,6 +64,11 @@ def main() -> int:
         for path in required:
             if not path.is_file():
                 fail(f"missing installed file: {path.relative_to(prefix)}")
+        defaults = json.loads(
+            (prefix / "etc/uhf-gateway/defaults.json").read_text(encoding="utf-8")
+        )
+        if defaults.get("modbus_tcp_bind") != "192.168.3.230":
+            fail("product default does not bind Modbus/TCP to eth0")
         if (prefix / "web/index.html").read_text(encoding="utf-8").find("https://") >= 0:
             fail("web tree unexpectedly references a remote asset")
         if (prefix / "libexec/uhf-gateway/uhf-gateway-hook").stat().st_mode & 0o111 == 0:

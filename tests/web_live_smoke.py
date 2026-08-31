@@ -87,6 +87,8 @@ def main() -> int:
                 "--simulate",
                 "--listen",
                 f"127.0.0.1:{port}",
+                "--modbus-tcp-listen",
+                "127.0.0.1:15020",
                 "--iec61850-listen",
                 f"127.0.0.1:{iec_port}",
             ],
