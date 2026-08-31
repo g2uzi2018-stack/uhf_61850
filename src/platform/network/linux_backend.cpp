@@ -161,28 +161,33 @@ bool LinuxNetworkBackend::apply_stage(
     return true;
 }
 
-bool LinuxNetworkBackend::confirm() {
-    if (!staged_) {
+bool LinuxNetworkBackend::confirm(
+    const NetworkConfig& previous, const NetworkConfig& candidate) {
+    if (!validate(previous).valid || !validate(candidate).valid ||
+        (staged_ && (staged_previous_.eth0.address != previous.eth0.address ||
+                     staged_candidate_.eth0.address != candidate.eth0.address))) {
         return false;
     }
-    if (!remove_previous_state(staged_previous_, staged_candidate_)) {
-        (void)restore_previous_state(staged_previous_, staged_candidate_);
+    if (!remove_previous_state(previous, candidate)) {
+        (void)restore_previous_state(previous, candidate);
         return false;
     }
-    if (!save(staged_candidate_)) {
-        (void)restore_previous_state(staged_previous_, staged_candidate_);
+    if (!save(candidate)) {
+        (void)restore_previous_state(previous, candidate);
         return false;
     }
     staged_ = false;
     return true;
 }
 
-bool LinuxNetworkBackend::rollback(const NetworkConfig& previous) {
-    if (!staged_ || previous.eth0.name != staged_previous_.eth0.name ||
-        previous.eth1.name != staged_previous_.eth1.name) {
+bool LinuxNetworkBackend::rollback(
+    const NetworkConfig& previous, const NetworkConfig& candidate) {
+    if (!validate(previous).valid || !validate(candidate).valid ||
+        (staged_ && (previous.eth0.address != staged_previous_.eth0.address ||
+                     candidate.eth0.address != staged_candidate_.eth0.address))) {
         return false;
     }
-    if (!remove_candidate_state(staged_previous_, staged_candidate_)) {
+    if (!remove_candidate_state(previous, candidate)) {
         return false;
     }
     staged_ = false;

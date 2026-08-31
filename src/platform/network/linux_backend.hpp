@@ -28,8 +28,8 @@ public:
 
     bool read_current(NetworkConfig& config) override;
     bool apply_stage(const NetworkConfig& previous, const NetworkConfig& candidate) override;
-    bool confirm() override;
-    bool rollback(const NetworkConfig& previous) override;
+    bool confirm(const NetworkConfig& previous, const NetworkConfig& candidate) override;
+    bool rollback(const NetworkConfig& previous, const NetworkConfig& candidate) override;
 
 private:
     bool load(NetworkConfig& config) const;

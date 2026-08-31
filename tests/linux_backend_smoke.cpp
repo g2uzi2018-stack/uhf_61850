@@ -45,7 +45,7 @@ int main() {
     assert(runner.commands[0U][3U] == "192.168.3.231/24");
     assert(runner.commands[1U][1U] == "route");
     assert(runner.commands[1U][2U] == "add");
-    assert(backend.confirm());
+    assert(backend.confirm(current, candidate));
     assert(runner.commands.size() == 4U);
     assert(runner.commands[2U][2U] == "del");
     uhf::network::NetworkConfig loaded;
@@ -56,7 +56,7 @@ int main() {
     candidate.eth0.gateway = "192.168.3.3";
     const std::size_t before_rollback = runner.commands.size();
     assert(backend.apply_stage(loaded, candidate));
-    assert(backend.rollback(loaded));
+    assert(backend.rollback(loaded, candidate));
     assert(runner.commands.size() == before_rollback + 4U);
     assert(runner.commands.back()[2U] == "del");
 

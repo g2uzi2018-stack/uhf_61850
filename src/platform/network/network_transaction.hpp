@@ -72,8 +72,10 @@ public:
     virtual bool read_current(NetworkConfig& config) = 0;
     virtual bool apply_stage(
         const NetworkConfig& previous, const NetworkConfig& candidate) = 0;
-    virtual bool confirm() = 0;
-    virtual bool rollback(const NetworkConfig& previous) = 0;
+    virtual bool confirm(
+        const NetworkConfig& previous, const NetworkConfig& candidate) = 0;
+    virtual bool rollback(
+        const NetworkConfig& previous, const NetworkConfig& candidate) = 0;
 };
 
 enum class TransactionResult {

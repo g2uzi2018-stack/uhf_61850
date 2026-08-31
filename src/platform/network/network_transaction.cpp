@@ -413,7 +413,7 @@ TransactionResult TransactionManager::stage(const NetworkConfig& candidate) {
         return set_error(TransactionResult::storage_error, "network transaction cannot be persisted");
     }
     if (!backend_.apply_stage(previous, candidate)) {
-        if (!backend_.rollback(previous)) {
+        if (!backend_.rollback(previous, candidate)) {
             return set_error(TransactionResult::backend_error, "stage failed and rollback is pending");
         }
         if (!store_.clear()) {
@@ -448,7 +448,7 @@ TransactionResult TransactionManager::confirm() {
     if (now == 0U || now >= transaction.deadline_boottime_ns) {
         return rollback_loaded(transaction, TransactionResult::expired);
     }
-    if (!backend_.confirm()) {
+    if (!backend_.confirm(transaction.previous, transaction.candidate)) {
         return set_error(TransactionResult::backend_error, "network confirmation failed");
     }
     Transaction confirmed = transaction;
@@ -516,7 +516,7 @@ const std::string& TransactionManager::last_error() const noexcept {
 
 TransactionResult TransactionManager::rollback_loaded(
     const Transaction& transaction, TransactionResult reason) {
-    if (!backend_.rollback(transaction.previous)) {
+    if (!backend_.rollback(transaction.previous, transaction.candidate)) {
         return set_error(TransactionResult::backend_error, "network rollback failed");
     }
     Transaction rolled_back = transaction;

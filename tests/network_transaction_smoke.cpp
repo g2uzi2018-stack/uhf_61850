@@ -35,12 +35,15 @@ public:
         return true;
     }
 
-    bool confirm() override {
+    bool confirm(
+        const uhf::network::NetworkConfig&, const uhf::network::NetworkConfig&) override {
         ++confirm_count;
         return confirm_ok;
     }
 
-    bool rollback(const uhf::network::NetworkConfig& previous) override {
+    bool rollback(
+        const uhf::network::NetworkConfig& previous,
+        const uhf::network::NetworkConfig&) override {
         if (!rollback_ok) {
             return false;
         }
