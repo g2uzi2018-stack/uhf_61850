@@ -59,7 +59,13 @@ def main() -> int:
             if not path.is_file():
                 fail(f"missing {path.relative_to(release)}")
         release_text = (release / "RELEASE").read_text(encoding="utf-8")
-        if "version=smoke-1\n" not in release_text or "password" in release_text.lower():
+        if (
+            "version=smoke-1\n" not in release_text
+            or "source_commit=" not in release_text
+            or "source_root=" in release_text
+            or str(root) in release_text
+            or "password" in release_text.lower()
+        ):
             fail("release metadata is invalid or contains a password")
         if not archive.is_file():
             fail("release archive is missing")

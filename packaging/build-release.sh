@@ -44,6 +44,7 @@ fi
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "${script_dir}/.." && pwd)
+source_commit=$(git -C "$repo_dir" rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')
 temporary_root=$(mktemp -d "${TMPDIR:-/tmp}/uhf-release.XXXXXX")
 trap 'rm -rf -- "$temporary_root"' EXIT
 stage_dir="${temporary_root}/stage"
@@ -65,7 +66,7 @@ cp -p "${repo_dir}/packaging/preflight.sh" "${temporary_release}/preflight.sh"
 cat >"${temporary_release}/RELEASE" <<EOF
 product=uhf-gateway
 version=${version}
-source_root=${repo_dir}
+source_commit=${source_commit}
 EOF
 mv -T "$temporary_release" "$release_dir"
 tar -C "$output_dir" -czf "$archive_path" "$release_name"
