@@ -52,6 +52,9 @@ def main() -> int:
             fail(f"styles.css is missing {marker!r}")
     if any(host in html for host in ("cdn.", "cdnjs.", "unpkg.com")):
         fail("preview must not load assets from a CDN")
+    for page in (html, overview_html):
+        if 'href="#"' in page:
+            fail("navigation contains a placeholder link")
 
     print("web preview smoke: OK")
     return 0
