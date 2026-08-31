@@ -153,6 +153,19 @@ int main() {
         if (!expect(bad_defaults_rejected, "invalid defaults rejected at startup")) {
             return 1;
         }
+        const std::filesystem::path empty_defaults_path = root / "empty-defaults.json";
+        std::ofstream empty_defaults(empty_defaults_path);
+        empty_defaults.close();
+        bool empty_defaults_rejected = false;
+        try {
+            uhf::config::ConfigStore empty_defaults_store(
+                root / "empty.json", empty_defaults_path);
+        } catch (const std::exception&) {
+            empty_defaults_rejected = true;
+        }
+        if (!expect(empty_defaults_rejected, "empty defaults rejected at startup")) {
+            return 1;
+        }
         std::filesystem::remove_all(root, cleanup_error);
         std::cout << "config store smoke: OK\n";
         return 0;

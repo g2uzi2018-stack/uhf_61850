@@ -323,9 +323,9 @@ ConfigStore::ConfigStore(
                 }
             }
         }
-        if (defaults && !defaults->empty()) {
+        if (defaults) {
             Values loaded;
-            if (!parse_values(*defaults, loaded) || !validate(loaded) ||
+            if (defaults->empty() || !parse_values(*defaults, loaded) || !validate(loaded) ||
                 !parse_version(*defaults, snapshot_.version)) {
                 throw std::runtime_error("default configuration is invalid");
             }
