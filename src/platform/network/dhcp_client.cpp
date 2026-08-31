@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <charconv>
 #include <chrono>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <fcntl.h>
@@ -236,6 +237,45 @@ bool read_key_line(
     }
     value = line.substr(key.size());
     return value.find_first_of("\r\n") == std::string::npos && value.size() <= 256U;
+}
+
+std::optional<std::string> read_process_cmdline(pid_t pid) {
+    if (pid <= 0) {
+        return std::nullopt;
+    }
+    const std::filesystem::path path =
+        std::filesystem::path{"/proc"} / std::to_string(pid) / "cmdline";
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(path, error) || error ||
+        std::filesystem::file_size(path, error) > 4096U || error) {
+        return std::nullopt;
+    }
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        return std::nullopt;
+    }
+    std::string contents{
+        std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    if (input.bad() || contents.empty() || contents.size() > 4096U) {
+        return std::nullopt;
+    }
+    return contents;
+}
+
+bool has_cmdline_token(std::string_view cmdline, std::string_view token) {
+    std::size_t begin = 0U;
+    while (begin < cmdline.size()) {
+        const std::size_t end = cmdline.find('\0', begin);
+        const std::size_t token_end = end == std::string_view::npos ? cmdline.size() : end;
+        if (cmdline.substr(begin, token_end - begin) == token) {
+            return true;
+        }
+        if (end == std::string_view::npos) {
+            break;
+        }
+        begin = end + 1U;
+    }
+    return false;
 }
 
 bool parse_prefix(std::string_view mask_text, std::uint8_t& prefix) noexcept {
@@ -551,18 +591,43 @@ pid_t ExecDhcpClient::stored_pid(const InterfaceConfig& config) const noexcept {
     if (!contents || contents->empty()) {
         return -1;
     }
+    std::string_view value_text = *contents;
+    while (!value_text.empty() &&
+           std::isspace(static_cast<unsigned char>(value_text.back())) != 0) {
+        value_text.remove_suffix(1U);
+    }
+    if (value_text.empty()) {
+        return -1;
+    }
     std::uint64_t value = 0U;
     const auto result = std::from_chars(
-        contents->data(), contents->data() + contents->size(), value);
+        value_text.data(), value_text.data() + value_text.size(), value);
     if (result.ec != std::errc{} || value == 0U ||
+        result.ptr != value_text.data() + value_text.size() ||
         value > static_cast<std::uint64_t>(std::numeric_limits<pid_t>::max())) {
         return -1;
     }
     return static_cast<pid_t>(value);
 }
 
-bool ExecDhcpClient::terminate_pid(pid_t pid) const noexcept {
+bool ExecDhcpClient::process_matches(const InterfaceConfig& config, pid_t pid) const noexcept {
+    const std::optional<std::string> cmdline = read_process_cmdline(pid);
+    if (!cmdline) {
+        return false;
+    }
+    const std::string executable = dhclient_path_.string();
+    const std::string executable_name = dhclient_path_.filename().string();
+    return (has_cmdline_token(*cmdline, executable) ||
+            (!executable_name.empty() && has_cmdline_token(*cmdline, executable_name))) &&
+        has_cmdline_token(*cmdline, config.name) &&
+        has_cmdline_token(*cmdline, pid_path(config).string());
+}
+
+bool ExecDhcpClient::terminate_pid(const InterfaceConfig& config, pid_t pid) const noexcept {
     if (pid <= 0) {
+        return true;
+    }
+    if (!process_matches(config, pid)) {
         return true;
     }
     if (::kill(pid, SIGTERM) < 0 && errno != ESRCH) {
@@ -571,10 +636,13 @@ bool ExecDhcpClient::terminate_pid(pid_t pid) const noexcept {
     const auto deadline = std::chrono::steady_clock::now() +
         std::chrono::milliseconds(250);
     while (std::chrono::steady_clock::now() < deadline) {
-        if (::kill(pid, 0) < 0 && errno == ESRCH) {
+        if (!process_matches(config, pid) || (::kill(pid, 0) < 0 && errno == ESRCH)) {
             return true;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    if (!process_matches(config, pid)) {
+        return true;
     }
     if (::kill(pid, SIGKILL) < 0 && errno != ESRCH) {
         return false;
@@ -582,12 +650,12 @@ bool ExecDhcpClient::terminate_pid(pid_t pid) const noexcept {
     const auto kill_deadline = std::chrono::steady_clock::now() +
         std::chrono::milliseconds(250);
     while (std::chrono::steady_clock::now() < kill_deadline) {
-        if (::kill(pid, 0) < 0 && errno == ESRCH) {
+        if (!process_matches(config, pid) || (::kill(pid, 0) < 0 && errno == ESRCH)) {
             return true;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
-    return ::kill(pid, 0) < 0 && errno == ESRCH;
+    return !process_matches(config, pid) || (::kill(pid, 0) < 0 && errno == ESRCH);
 }
 
 bool ExecDhcpClient::start(
@@ -605,12 +673,13 @@ bool ExecDhcpClient::start(
     }
 
     if (running_pids_[static_cast<std::size_t>(index)] > 0 &&
+        process_matches(config, running_pids_[static_cast<std::size_t>(index)]) &&
         ::kill(running_pids_[static_cast<std::size_t>(index)], 0) == 0) {
         return true;
     }
     running_pids_[static_cast<std::size_t>(index)] = -1;
     const pid_t existing = stored_pid(config);
-    if (existing > 0 && ::kill(existing, 0) == 0) {
+    if (existing > 0 && process_matches(config, existing) && ::kill(existing, 0) == 0) {
         running_pids_[static_cast<std::size_t>(index)] = existing;
         return true;
     }
@@ -660,7 +729,7 @@ bool ExecDhcpClient::stop(
     if (pid <= 0) {
         pid = stored_pid(config);
     }
-    const bool stopped = terminate_pid(pid);
+    const bool stopped = terminate_pid(config, pid);
     running_pids_[static_cast<std::size_t>(index)] = -1;
     return stopped && remove_file(result_path(config)) && remove_file(pid_path(config));
 }

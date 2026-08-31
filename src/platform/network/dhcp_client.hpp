@@ -59,7 +59,8 @@ private:
     std::filesystem::path probe_lease_path(const InterfaceConfig& config) const;
     int interface_index(const InterfaceConfig& config) const noexcept;
     pid_t stored_pid(const InterfaceConfig& config) const noexcept;
-    bool terminate_pid(pid_t pid) const noexcept;
+    bool process_matches(const InterfaceConfig& config, pid_t pid) const noexcept;
+    bool terminate_pid(const InterfaceConfig& config, pid_t pid) const noexcept;
 
     std::filesystem::path state_directory_;
     std::filesystem::path dhclient_path_;

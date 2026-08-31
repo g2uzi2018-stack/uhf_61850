@@ -5,7 +5,9 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <signal.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 namespace {
 
@@ -82,6 +84,17 @@ int main() {
     assert(renewed.address == lease.address && renewed.prefix == lease.prefix);
     assert(client.stop(dhcp_config(), lease));
     assert(client.release(dhcp_config(), lease));
+
+    {
+        std::ofstream stale_pid(directory / "eth0.pid");
+        stale_pid << ::getpid() << '\n';
+        std::ofstream stale_result(directory / "eth0.result");
+        stale_result << "stale-result\n";
+        assert(client.stop(dhcp_config(), lease));
+        assert(::kill(::getpid(), 0) == 0);
+        assert(!std::filesystem::exists(directory / "eth0.pid"));
+        assert(!std::filesystem::exists(directory / "eth0.result"));
+    }
 
     write_executable(
         fake_dhclient,
