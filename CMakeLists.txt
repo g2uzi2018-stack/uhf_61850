@@ -19,6 +19,7 @@ configure_file(
 
 add_executable(uhf-gatewayd
     src/main.cpp
+    src/domain/modbus.cpp
     src/web/auth_store.cpp
     src/web/crypto.cpp
     src/web/http_server.cpp
@@ -35,6 +36,24 @@ target_include_directories(uhf-gatewayd PRIVATE
 
 if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(uhf-gatewayd PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
+add_executable(uhf_domain_smoke
+    tests/domain_smoke.cpp
+    src/domain/modbus.cpp
+)
+target_compile_features(uhf_domain_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_domain_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_domain_smoke PRIVATE
         -Wall
         -Wextra
         -Wpedantic
@@ -74,6 +93,11 @@ if(BUILD_TESTING)
     )
     set_tests_properties(uhf_gatewayd_smoke PROPERTIES
         PASS_REGULAR_EXPRESSION "uhf-gatewayd self-test: OK"
+    )
+    add_test(
+        NAME uhf_domain_smoke
+        COMMAND uhf_domain_smoke
+            "${PROJECT_SOURCE_DIR}/tests/fixtures/pd1000_request_plan.txt"
     )
 
     find_package(Python3 COMPONENTS Interpreter QUIET)
