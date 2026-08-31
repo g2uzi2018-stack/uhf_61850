@@ -30,6 +30,7 @@ add_executable(uhf-gatewayd
     src/storage/event_detector.cpp
     src/storage/event_store.cpp
     src/storage/storage_cleaner.cpp
+    src/storage/persistence_runtime.cpp
     src/logging/logger.cpp
     src/health/health.cpp
     src/web/auth_store.cpp
@@ -38,7 +39,8 @@ add_executable(uhf-gatewayd
 )
 
 find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto)
-target_link_libraries(uhf-gatewayd PRIVATE OpenSSL::Crypto)
+find_package(Threads REQUIRED)
+target_link_libraries(uhf-gatewayd PRIVATE OpenSSL::Crypto Threads::Threads)
 
 target_compile_features(uhf-gatewayd PRIVATE cxx_std_17)
 target_include_directories(uhf-gatewayd PRIVATE
@@ -164,7 +166,6 @@ add_executable(uhf_modbus_tcp_smoke
 )
 target_compile_features(uhf_modbus_tcp_smoke PRIVATE cxx_std_17)
 target_include_directories(uhf_modbus_tcp_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
-find_package(Threads REQUIRED)
 target_link_libraries(uhf_modbus_tcp_smoke PRIVATE Threads::Threads)
 if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(uhf_modbus_tcp_smoke PRIVATE
@@ -305,6 +306,33 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+add_executable(uhf_persistence_runtime_smoke
+    tests/persistence_runtime_smoke.cpp
+    src/storage/persistence_runtime.cpp
+    src/storage/frame_store.cpp
+    src/storage/event_detector.cpp
+    src/storage/event_store.cpp
+    src/storage/storage_cleaner.cpp
+    src/acquisition/acquisition.cpp
+    src/domain/modbus.cpp
+    src/domain/snapshot.cpp
+    src/logging/logger.cpp
+)
+target_compile_features(uhf_persistence_runtime_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_persistence_runtime_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+target_link_libraries(uhf_persistence_runtime_smoke PRIVATE Threads::Threads)
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_persistence_runtime_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
 if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(uhf_modbus_rtu_smoke PRIVATE
         -Wall
@@ -415,6 +443,7 @@ if(BUILD_TESTING)
     add_test(NAME uhf_logger_smoke COMMAND uhf_logger_smoke)
     add_test(NAME uhf_health_smoke COMMAND uhf_health_smoke)
     add_test(NAME uhf_storage_cleaner_smoke COMMAND uhf_storage_cleaner_smoke)
+    add_test(NAME uhf_persistence_runtime_smoke COMMAND uhf_persistence_runtime_smoke)
 endif()
 
 if(UHF_BUILD_FORMAT_TARGET)
