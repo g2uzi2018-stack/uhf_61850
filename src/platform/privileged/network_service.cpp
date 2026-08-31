@@ -37,14 +37,16 @@ namespace uhf::privileged {
 NetworkService::NetworkService(
     std::filesystem::path network_file,
     std::filesystem::path transaction_file,
-    MaintenanceRunner* maintenance_runner)
+    MaintenanceRunner* maintenance_runner,
+    bool apply_network_runtime)
     : dhcp_client_(
           network_file.parent_path().empty() ? std::filesystem::path{"."} :
                                                 network_file.parent_path() / "dhcp"),
       backend_(std::move(network_file), command_runner_, &dhcp_client_),
       transaction_store_(std::move(transaction_file)),
       transaction_manager_(transaction_store_, backend_, clock_),
-      maintenance_runner_(maintenance_runner == nullptr ? default_maintenance_runner_ : *maintenance_runner) {}
+      maintenance_runner_(maintenance_runner == nullptr ? default_maintenance_runner_ : *maintenance_runner),
+      apply_network_runtime_(apply_network_runtime) {}
 
 NetworkService::~NetworkService() {
     stop_rollback_monitor();
@@ -109,7 +111,8 @@ Reply NetworkService::handle(std::string_view request, uid_t uid, gid_t gid) {
     }
     if (request == "network.confirm") {
         const network::TransactionResult result = transaction_manager_.confirm();
-        if ((result == network::TransactionResult::ok ||
+        if (apply_network_runtime_ &&
+            (result == network::TransactionResult::ok ||
              result == network::TransactionResult::expired ||
              result == network::TransactionResult::boot_changed) &&
             !backend_.start_runtime()) {
@@ -121,7 +124,8 @@ Reply NetworkService::handle(std::string_view request, uid_t uid, gid_t gid) {
     }
     if (request == "network.rollback") {
         const network::TransactionResult result = transaction_manager_.rollback_now();
-        if (result == network::TransactionResult::ok && !backend_.start_runtime()) {
+        if (apply_network_runtime_ && result == network::TransactionResult::ok &&
+            !backend_.start_runtime()) {
             return result_reply(
                 network::TransactionResult::backend_error,
                 "network rolled back but DHCP runtime could not start");
@@ -153,10 +157,11 @@ network::TransactionResult NetworkService::recover_pending(bool start_runtime) {
             return network::TransactionResult::backend_error;
         }
     }
-    if (start_runtime && (result == network::TransactionResult::no_transaction ||
-                          result == network::TransactionResult::ok ||
-        result == network::TransactionResult::expired ||
-        result == network::TransactionResult::boot_changed)) {
+    if (start_runtime && apply_network_runtime_ &&
+        (result == network::TransactionResult::no_transaction ||
+         result == network::TransactionResult::ok ||
+         result == network::TransactionResult::expired ||
+         result == network::TransactionResult::boot_changed)) {
         if (!backend_.start_runtime()) {
             return network::TransactionResult::backend_error;
         }
@@ -188,8 +193,10 @@ void NetworkService::rollback_loop() {
                 (result == network::TransactionResult::ok ||
                  result == network::TransactionResult::expired ||
                  result == network::TransactionResult::boot_changed)) {
-                (void)backend_.start_runtime();
-                (void)backend_.refresh_runtime();
+                if (apply_network_runtime_) {
+                    (void)backend_.start_runtime();
+                    (void)backend_.refresh_runtime();
+                }
             }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(250));

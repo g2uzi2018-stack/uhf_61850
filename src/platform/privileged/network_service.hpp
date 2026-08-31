@@ -20,7 +20,8 @@ public:
     NetworkService(
         std::filesystem::path network_file,
         std::filesystem::path transaction_file,
-        MaintenanceRunner* maintenance_runner = nullptr);
+        MaintenanceRunner* maintenance_runner = nullptr,
+        bool apply_network_runtime = true);
     ~NetworkService();
 
     NetworkService(const NetworkService&) = delete;
@@ -43,6 +44,7 @@ private:
     network::TransactionManager transaction_manager_;
     ExecMaintenanceRunner default_maintenance_runner_;
     MaintenanceRunner& maintenance_runner_;
+    bool apply_network_runtime_{true};
     std::mutex mutex_;
     std::atomic<bool> stop_requested_{false};
     std::thread rollback_worker_;

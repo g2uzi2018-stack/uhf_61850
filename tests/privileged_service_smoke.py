@@ -57,6 +57,7 @@ def main() -> int:
                 str(transaction_path),
                 "--allowed-uid",
                 str(os.getuid()),
+                "--skip-network-runtime",
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

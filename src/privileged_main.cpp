@@ -18,6 +18,7 @@ struct Options {
     std::string transaction_file{"/var/lib/uhf-privileged/network-transaction.json"};
     uid_t allowed_uid{0U};
     bool allowed_uid_explicit{false};
+    bool skip_network_runtime{false};
 };
 
 bool parse_uid(std::string_view text, uid_t& value) {
@@ -33,7 +34,7 @@ bool parse_uid(std::string_view text, uid_t& value) {
 
 void usage() {
     std::cerr << "usage: uhf-privilegedd [--socket PATH] [--network-config PATH] "
-                 "[--transaction PATH] [--allowed-uid UID]\n";
+                 "[--transaction PATH] [--allowed-uid UID] [--skip-network-runtime]\n";
 }
 
 }  // namespace
@@ -54,6 +55,8 @@ int main(int argc, char* argv[]) {
                 return 2;
             }
             options.allowed_uid_explicit = true;
+        } else if (argument == "--skip-network-runtime") {
+            options.skip_network_runtime = true;
         } else {
             usage();
             return 2;
@@ -65,7 +68,11 @@ int main(int argc, char* argv[]) {
     }
 
     try {
-        uhf::privileged::NetworkService service(options.network_file, options.transaction_file);
+        uhf::privileged::NetworkService service(
+            options.network_file,
+            options.transaction_file,
+            nullptr,
+            !options.skip_network_runtime);
         const uhf::network::TransactionResult recovery = service.recover_pending(true);
         if (recovery == uhf::network::TransactionResult::corrupt ||
             recovery == uhf::network::TransactionResult::backend_error ||
