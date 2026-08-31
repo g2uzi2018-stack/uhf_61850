@@ -217,6 +217,8 @@ def main() -> int:
                     "noise": 240,
                 }:
                     fail(f"unexpected telemetry measurements: {measurements!r}")
+                if snapshot.get("availability") != "fresh":
+                    fail(f"unexpected telemetry availability: {snapshot!r}")
                 if len(snapshot.get("spectrum", [])) != 3600:
                     fail("telemetry spectrum length mismatch")
 

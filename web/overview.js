@@ -33,6 +33,10 @@
         return status === "up" ? "health-up" : status === "degraded" ? "health-degraded" : status === "disabled" ? "health-disabled" : "health-down";
     }
 
+    function availabilityText(availability) {
+        return availability === "fresh" ? "快照新鲜" : availability === "stale" ? "快照已过期" : "快照无效";
+    }
+
     function updateHealth(payload) {
         var overall = document.getElementById("health-overall");
         overall.textContent = statusText(payload.status);
@@ -131,10 +135,15 @@
             if (target) { target.textContent = valueOrDash(measurements[name]); }
         });
         document.getElementById("snapshot-generation").textContent = "generation " + payload.generation;
-        document.getElementById("payload-status").textContent = payload.payload_status || "--";
+        var availability = payload.availability || "invalid";
+        document.getElementById("payload-status").textContent = (payload.payload_status || "--") + " · " + availability;
         document.getElementById("poll-duration").textContent = payload.poll_duration_ms + " ms";
         document.getElementById("spectrum-count").textContent = (payload.spectrum_valid || []).filter(Boolean).length + " / 3600 有效";
-        document.getElementById("snapshot-badge").innerHTML = "<i></i>快照正常";
+        var snapshotBadge = document.getElementById("snapshot-badge");
+        snapshotBadge.className = "heading-badge" + (availability === "fresh" ? "" : " dev-badge");
+        snapshotBadge.textContent = availabilityText(availability);
+        var marker = document.createElement("i");
+        snapshotBadge.insertBefore(marker, snapshotBadge.firstChild);
         document.getElementById("snapshot-time").textContent = new Date().toLocaleTimeString();
         drawPrpd(payload.spectrum || [], payload.spectrum_valid || []);
         drawPrps(payload.spectrum || [], payload.spectrum_valid || []);
