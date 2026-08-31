@@ -82,6 +82,8 @@ def main() -> int:
             fail("systemd unit was not installed")
         if not (target / "usr/lib/uhf-gateway/dhclient-hook").is_file():
             fail("DHCP hook was not installed")
+        if (target / "var/lib/uhf-gateway").stat().st_mode & 0o777 != 0o700:
+            fail("gateway state directory is not private")
         for path in (
             target / "usr/lib/uhf-gateway/legacy-cutover.sh",
             target / "usr/lib/uhf-gateway/legacy-recovery.sh",

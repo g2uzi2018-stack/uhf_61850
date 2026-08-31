@@ -52,6 +52,8 @@ def main() -> int:
             release / "share/uhf-gateway/systemd/uhf-gateway.service",
             release / "share/uhf-gateway/rsyslog/uhf-gateway.conf",
             release / "share/uhf-gateway/logrotate/uhf-gateway",
+            release / "install.sh",
+            release / "preflight.sh",
         )
         for path in required:
             if not path.is_file():

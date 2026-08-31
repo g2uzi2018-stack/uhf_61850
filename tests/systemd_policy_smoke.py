@@ -39,6 +39,8 @@ def main() -> int:
             fail(f"{name}: policy touches protected legacy services")
 
     gateway = units["uhf-gateway.service"]
+    require(gateway, "User=uhfgateway", "uhf-gateway.service")
+    require(gateway, "SupplementaryGroups=dialout", "uhf-gateway.service")
     for fragment in (
         "Type=notify",
         "WatchdogSec=20s",

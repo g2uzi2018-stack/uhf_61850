@@ -71,6 +71,10 @@ root_prefix=${root_dir%/}
 if [[ -z "$root_prefix" ]]; then
     root_prefix=/
 fi
+if [[ "$no_systemd" == false && "$root_prefix" != "/" ]]; then
+    printf '%s\n' '--no-systemd is required when --root is not /' >&2
+    exit 2
+fi
 install_root="${root_prefix}/opt/uhf-gateway"
 releases_root="${install_root}/releases"
 release_dir="${releases_root}/${version}"
@@ -93,6 +97,23 @@ fi
 if [[ -e "$previous_link" && ! -L "$previous_link" ]]; then
     printf 'previous path is not a symbolic link\n' >&2
     exit 1
+fi
+
+ensure_runtime_account() {
+    if ! getent group uhfgateway >/dev/null 2>&1; then
+        groupadd --system uhfgateway
+    fi
+    if ! id -u uhfgateway >/dev/null 2>&1; then
+        local shell_path=/usr/sbin/nologin
+        if [[ ! -x "$shell_path" ]]; then
+            shell_path=/bin/false
+        fi
+        useradd --system --gid uhfgateway --home-dir /nonexistent --shell "$shell_path" uhfgateway
+    fi
+}
+
+if [[ "$no_systemd" == false ]]; then
+    ensure_runtime_account
 fi
 first_install=false
 if [[ -z "$old_current_target" ]]; then
@@ -145,6 +166,10 @@ mkdir -p "${root_prefix}/etc/uhf-gateway" \
     "${root_prefix}/var/log/uhf-gateway"
 chmod 0755 "${root_prefix}/etc/uhf-gateway" "${root_prefix}/usr/lib/uhf-gateway" \
     "$state_dir" "${root_prefix}/var/lib/uhf-privileged"
+chmod 0700 "$state_dir"
+if [[ "$no_systemd" == false ]]; then
+    chown uhfgateway:uhfgateway "$state_dir"
+fi
 install -m 0644 "$release_dir/config/schema.json" "${root_prefix}/etc/uhf-gateway/schema.json"
 install -m 0644 "$release_dir/config/UHFPD1.icd" "${root_prefix}/etc/uhf-gateway/UHFPD1.icd"
 install -m 0755 "$release_dir/libexec/uhf-gateway/uhf-gateway-hook" \
@@ -195,10 +220,6 @@ write_state() {
 
 write_state "$version"
 if [[ "$no_systemd" == false ]]; then
-    if [[ "$root_prefix" != "/" ]]; then
-        printf '%s\n' '--no-systemd is required when --root is not /' >&2
-        exit 2
-    fi
     if [[ "$first_install" == true && -d "${root_prefix}/data" ]]; then
         bash "${root_prefix}/usr/lib/uhf-gateway/legacy-cutover.sh"
         legacy_cutover_done=true

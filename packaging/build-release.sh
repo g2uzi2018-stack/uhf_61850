@@ -60,6 +60,8 @@ if [[ -e "$release_dir" || -e "$archive_path" || -e "$temporary_release" ]]; the
 fi
 mkdir "$temporary_release"
 cp -a "${stage_dir}/." "$temporary_release/"
+cp -p "${repo_dir}/packaging/install.sh" "${temporary_release}/install.sh"
+cp -p "${repo_dir}/packaging/preflight.sh" "${temporary_release}/preflight.sh"
 cat >"${temporary_release}/RELEASE" <<EOF
 product=uhf-gateway
 version=${version}
