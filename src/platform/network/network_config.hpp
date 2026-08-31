@@ -2,6 +2,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -42,6 +43,8 @@ struct ValidationResult {
 
 ValidationResult validate(const NetworkConfig& config);
 std::string mode_name(Mode mode) noexcept;
+bool parse_flat_json(std::string_view json, NetworkConfig& config);
+std::string to_flat_json(const NetworkConfig& config);
 std::string to_json(const NetworkConfig& config);
 
 }  // namespace uhf::network

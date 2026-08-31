@@ -10,6 +10,12 @@ int main() {
     const std::string json = uhf::network::to_json(config);
     assert(json.find("\"eth0\"") != std::string::npos);
     assert(json.find("\"mode\":\"static\"") != std::string::npos);
+    const std::string flat = uhf::network::to_flat_json(config);
+    uhf::network::NetworkConfig round_trip;
+    assert(uhf::network::parse_flat_json(flat, round_trip));
+    assert(round_trip.eth0.address == config.eth0.address);
+    assert(round_trip.eth0.gateway == config.eth0.gateway);
+    assert(round_trip.eth1.address == config.eth1.address);
 
     config.eth0.name = "eno1";
     assert(!uhf::network::validate(config).valid);
@@ -34,5 +40,8 @@ int main() {
     config = uhf::network::NetworkConfig{};
     config.eth1.hostname = "bad host";
     assert(!uhf::network::validate(config).valid);
+    assert(!uhf::network::parse_flat_json("{\"eth0_mode\":\"static\"}", round_trip));
+    assert(!uhf::network::parse_flat_json(
+        flat.substr(0U, flat.size() - 1U) + ",\"eth0_mode\":\"dhcp\"}", round_trip));
     return 0;
 }

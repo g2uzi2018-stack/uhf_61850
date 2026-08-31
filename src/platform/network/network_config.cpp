@@ -2,10 +2,15 @@
 #include "platform/network/network_config.hpp"
 
 #include <arpa/inet.h>
+#include <charconv>
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <string>
 #include <string_view>
+#include <unordered_set>
+#include <utility>
 
 namespace {
 
@@ -94,11 +99,255 @@ std::string interface_json(const uhf::network::InterfaceConfig& config) {
         }
         result += "\"" + json_escape(config.dns[index]) + "\"";
     }
-    result += "] ,\"hostname\":\"";
+    result += "],\"hostname\":\"";
     result += json_escape(config.hostname);
     result += "\",\"dhcp_timeout_seconds\":" +
         std::to_string(config.dhcp_timeout_seconds) + "}";
     return result;
+}
+
+class FlatJsonParser {
+public:
+    explicit FlatJsonParser(std::string_view input) : input_(input) {
+        eth0_.name = "eth0";
+        eth1_.name = "eth1";
+    }
+
+    bool parse(uhf::network::NetworkConfig& config) {
+        skip_space();
+        if (!consume('{')) {
+            return false;
+        }
+        skip_space();
+        if (consume('}')) {
+            return false;
+        }
+        while (position_ < input_.size()) {
+            std::string key;
+            if (!parse_string(key)) {
+                return false;
+            }
+            skip_space();
+            if (!consume(':') || !parse_field(key, config)) {
+                return false;
+            }
+            skip_space();
+            if (consume('}')) {
+                skip_space();
+                return position_ == input_.size() && seen_.size() == kFieldCount &&
+                    apply_string_values(config);
+            }
+            if (!consume(',')) {
+                return false;
+            }
+            skip_space();
+        }
+        return false;
+    }
+
+private:
+    static constexpr std::size_t kFieldCount = 16U;
+
+    void skip_space() noexcept {
+        while (position_ < input_.size()) {
+            const unsigned char character = static_cast<unsigned char>(input_[position_]);
+            if (character != ' ' && character != '\t' && character != '\r' && character != '\n') {
+                break;
+            }
+            ++position_;
+        }
+    }
+
+    bool consume(char expected) noexcept {
+        if (position_ >= input_.size() || input_[position_] != expected) {
+            return false;
+        }
+        ++position_;
+        skip_space();
+        return true;
+    }
+
+    bool parse_string(std::string& result) {
+        if (position_ >= input_.size() || input_[position_++] != '"') {
+            return false;
+        }
+        result.clear();
+        while (position_ < input_.size()) {
+            const char character = input_[position_++];
+            if (character == '"') {
+                return result.size() <= 256U;
+            }
+            if (static_cast<unsigned char>(character) < 0x20U) {
+                return false;
+            }
+            if (character != '\\') {
+                result.push_back(character);
+                continue;
+            }
+            if (position_ >= input_.size()) {
+                return false;
+            }
+            const char escaped = input_[position_++];
+            if (escaped != '"' && escaped != '\\') {
+                return false;
+            }
+            result.push_back(escaped);
+        }
+        return false;
+    }
+
+    bool parse_unsigned(std::uint64_t& value) {
+        const std::size_t begin = position_;
+        while (position_ < input_.size() && input_[position_] >= '0' && input_[position_] <= '9') {
+            ++position_;
+        }
+        if (begin == position_) {
+            return false;
+        }
+        const auto result = std::from_chars(
+            input_.data() + begin, input_.data() + position_, value);
+        return result.ec == std::errc{} && result.ptr == input_.data() + position_;
+    }
+
+    template <typename Integer>
+    static bool assign_unsigned(
+        std::uint64_t value, Integer minimum, Integer maximum, Integer& output) {
+        if (value < static_cast<std::uint64_t>(minimum) ||
+            value > static_cast<std::uint64_t>(maximum)) {
+            return false;
+        }
+        output = static_cast<Integer>(value);
+        return true;
+    }
+
+    uhf::network::InterfaceConfig* interface_for(
+        std::string_view key, std::string_view suffix) {
+        if (key.size() == suffix.size() + 5U && key.compare(0U, 5U, "eth0_") == 0 &&
+            key.compare(5U, suffix.size(), suffix) == 0) {
+            return &eth0_;
+        }
+        if (key.size() == suffix.size() + 5U && key.compare(0U, 5U, "eth1_") == 0 &&
+            key.compare(5U, suffix.size(), suffix) == 0) {
+            return &eth1_;
+        }
+        return nullptr;
+    }
+
+    std::string* string_field(const std::string& key, std::string_view suffix) {
+        if (uhf::network::InterfaceConfig* config = interface_for(key, suffix); config != nullptr) {
+            if (suffix == "mode") {
+                return &mode_storage_[config == &eth0_ ? 0U : 1U];
+            }
+            if (suffix == "address") {
+                return &config->address;
+            }
+            if (suffix == "gateway") {
+                return &config->gateway;
+            }
+            if (suffix == "hostname") {
+                return &config->hostname;
+            }
+            if (suffix == "dns1") {
+                return &dns_storage_[config == &eth0_ ? 0U : 1U][0U];
+            }
+            if (suffix == "dns2") {
+                return &dns_storage_[config == &eth0_ ? 0U : 1U][1U];
+            }
+        }
+        return nullptr;
+    }
+
+    bool parse_field(const std::string& key, uhf::network::NetworkConfig& config) {
+        static_cast<void>(config);
+        if (!seen_.insert(key).second) {
+            return false;
+        }
+        std::string* string_output = nullptr;
+        for (const std::string_view suffix : {"mode", "address", "gateway", "hostname", "dns1", "dns2"}) {
+            string_output = string_field(key, suffix);
+            if (string_output != nullptr) {
+                break;
+            }
+        }
+        if (string_output != nullptr) {
+            if (!parse_string(*string_output)) {
+                return false;
+            }
+            return true;
+        }
+        std::uint64_t value = 0U;
+        if (!parse_unsigned(value)) {
+            return false;
+        }
+        for (const std::string_view suffix : {"prefix", "dhcp_timeout_seconds"}) {
+            if (interface_for(key, suffix) == nullptr) {
+                continue;
+            }
+            uhf::network::InterfaceConfig* output = interface_for(key, suffix);
+            if (suffix == "prefix") {
+                return assign_unsigned(value, std::uint8_t{1U}, std::uint8_t{32U}, output->prefix);
+            }
+            return assign_unsigned(
+                value, std::uint16_t{1U}, std::numeric_limits<std::uint16_t>::max(),
+                output->dhcp_timeout_seconds);
+        }
+        return false;
+    }
+
+    bool apply_string_values(uhf::network::NetworkConfig& config) {
+        config.eth0 = eth0_;
+        config.eth1 = eth1_;
+        config.eth0.name = "eth0";
+        config.eth1.name = "eth1";
+        config.eth0.mode = mode_storage_[0U] == "dhcp"
+            ? uhf::network::Mode::dhcp
+            : mode_storage_[0U] == "static" ? uhf::network::Mode::static_address :
+                                                 uhf::network::Mode::static_address;
+        config.eth1.mode = mode_storage_[1U] == "dhcp"
+            ? uhf::network::Mode::dhcp
+            : mode_storage_[1U] == "static" ? uhf::network::Mode::static_address :
+                                                 uhf::network::Mode::static_address;
+        if (mode_storage_[0U] != "dhcp" && mode_storage_[0U] != "static") {
+            return false;
+        }
+        if (mode_storage_[1U] != "dhcp" && mode_storage_[1U] != "static") {
+            return false;
+        }
+        config.eth0.dns_count = 0U;
+        config.eth1.dns_count = 0U;
+        for (std::size_t interface = 0U; interface < 2U; ++interface) {
+            uhf::network::InterfaceConfig* output = interface == 0U ? &config.eth0 : &config.eth1;
+            for (std::size_t index = 0U; index < uhf::network::kMaxDnsServers; ++index) {
+                if (!dns_storage_[interface][index].empty()) {
+                    output->dns[output->dns_count++] = dns_storage_[interface][index];
+                }
+            }
+        }
+        return uhf::network::validate(config).valid;
+    }
+
+    std::string_view input_;
+    std::size_t position_{0U};
+    std::unordered_set<std::string> seen_;
+    uhf::network::InterfaceConfig eth0_{};
+    uhf::network::InterfaceConfig eth1_{};
+    std::array<std::string, 2U> mode_storage_{};
+    std::array<std::array<std::string, 2U>, 2U> dns_storage_{};
+};
+
+std::string flat_interface_fields(
+    const uhf::network::InterfaceConfig& config, std::string_view prefix) {
+    const std::string first_dns = config.dns_count > 0U ? config.dns[0U] : "";
+    const std::string second_dns = config.dns_count > 1U ? config.dns[1U] : "";
+    return "\"" + std::string(prefix) + "mode\":\"" + uhf::network::mode_name(config.mode) +
+        "\",\"" + std::string(prefix) + "address\":\"" + json_escape(config.address) +
+        "\",\"" + std::string(prefix) + "prefix\":" + std::to_string(config.prefix) +
+        ",\"" + std::string(prefix) + "gateway\":\"" + json_escape(config.gateway) +
+        "\",\"" + std::string(prefix) + "dns1\":\"" + json_escape(first_dns) +
+        "\",\"" + std::string(prefix) + "dns2\":\"" + json_escape(second_dns) +
+        "\",\"" + std::string(prefix) + "hostname\":\"" + json_escape(config.hostname) +
+        "\",\"" + std::string(prefix) + "dhcp_timeout_seconds\":" +
+        std::to_string(config.dhcp_timeout_seconds);
 }
 
 uhf::network::ValidationResult validate_interface(
@@ -169,6 +418,24 @@ ValidationResult validate(const NetworkConfig& config) {
 
 std::string mode_name(Mode mode) noexcept {
     return mode == Mode::dhcp ? "dhcp" : "static";
+}
+
+bool parse_flat_json(std::string_view json, NetworkConfig& config) {
+    if (json.size() > 16U * 1024U) {
+        return false;
+    }
+    NetworkConfig candidate;
+    FlatJsonParser parser(json);
+    if (!parser.parse(candidate)) {
+        return false;
+    }
+    config = candidate;
+    return true;
+}
+
+std::string to_flat_json(const NetworkConfig& config) {
+    return "{" + flat_interface_fields(config.eth0, "eth0_") + "," +
+        flat_interface_fields(config.eth1, "eth1_") + "}";
 }
 
 std::string to_json(const NetworkConfig& config) {
