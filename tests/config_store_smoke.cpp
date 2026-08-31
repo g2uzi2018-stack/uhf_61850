@@ -99,6 +99,22 @@ int main() {
         if (!expect(insecure == uhf::config::UpdateResult::invalid, "HTTP-only config rejected")) {
             return 1;
         }
+        const std::string conflicting_ports = [] {
+            std::string value = valid_object();
+            const std::string port = "\"modbus_tcp_port\":15021";
+            const std::size_t position = value.find(port);
+            if (position != std::string::npos) {
+                value.replace(position, port.size(), "\"modbus_tcp_port\":8081");
+            }
+            return value;
+        }();
+        const uhf::config::UpdateResult conflict_ports =
+            store.update(1U, conflicting_ports);
+        if (!expect(
+                conflict_ports == uhf::config::UpdateResult::invalid,
+                "conflicting service ports accepted")) {
+            return 1;
+        }
         const uhf::config::UpdateResult updated = store.update(1U, valid_object());
         const uhf::config::Snapshot changed = store.snapshot();
         if (!expect(updated == uhf::config::UpdateResult::updated, "valid update") ||

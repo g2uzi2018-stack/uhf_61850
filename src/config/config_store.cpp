@@ -380,7 +380,15 @@ bool ConfigStore::parse_values(std::string_view json, Values& values) {
 
 bool ConfigStore::validate(const Values& values) noexcept {
     in_addr address{};
-    return values.tls_enabled && valid_device(values.acquisition_device, "/dev/ttyS1") &&
+    const bool web_port_conflicts_with_modbus =
+        values.web_port == values.modbus_tcp_port;
+    const bool web_port_conflicts_with_iec =
+        values.iec_enabled && values.web_port == values.iec_port;
+    const bool modbus_port_conflicts_with_iec =
+        values.iec_enabled && values.modbus_tcp_port == values.iec_port;
+    return values.tls_enabled && !web_port_conflicts_with_modbus &&
+        !web_port_conflicts_with_iec && !modbus_port_conflicts_with_iec &&
+        valid_device(values.acquisition_device, "/dev/ttyS1") &&
         valid_device(values.rtu_device, "/dev/ttyS4") &&
         ::inet_pton(AF_INET, values.modbus_tcp_bind.c_str(), &address) == 1 &&
         valid_ied_name(values.iec_ied_name) && values.acquisition_slave_id >= 1U &&
