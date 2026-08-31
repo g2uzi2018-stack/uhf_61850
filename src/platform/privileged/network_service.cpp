@@ -58,7 +58,20 @@ Reply NetworkService::handle(std::string_view request, uid_t uid, gid_t gid) {
             transaction.status == network::LoadStatus::io_error) {
             return {false, "transaction_error", {}};
         }
-        std::string body = "{\"config\":" + network::to_json(current) + ",\"transaction\":";
+        network::NetworkStatus actual;
+        if (!status_reader_.read(actual)) {
+            return {false, "status_error", {}};
+        }
+        const auto status_json = [](const network::InterfaceStatus& status) {
+            return "{\"exists\":" + std::string(status.exists ? "true" : "false") +
+                ",\"carrier_known\":" + std::string(status.carrier_known ? "true" : "false") +
+                ",\"link_up\":" + std::string(status.link_up ? "true" : "false") +
+                ",\"address\":\"" + json_escape(status.address) +
+                "\",\"prefix\":" + std::to_string(status.prefix) + "}";
+        };
+        std::string body = "{\"config\":" + network::to_json(current) +
+            ",\"actual\":{\"eth0\":" + status_json(actual.eth0) +
+            ",\"eth1\":" + status_json(actual.eth1) + "},\"transaction\":";
         if (!transaction.transaction) {
             body += "null";
         } else {

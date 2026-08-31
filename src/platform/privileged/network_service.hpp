@@ -2,6 +2,7 @@
 #pragma once
 
 #include "platform/network/linux_backend.hpp"
+#include "platform/network/linux_status.hpp"
 #include "platform/network/network_transaction.hpp"
 #include "platform/privileged/unix_socket.hpp"
 
@@ -31,6 +32,7 @@ private:
 
     network::ExecCommandRunner command_runner_;
     network::LinuxNetworkBackend backend_;
+    network::LinuxStatusReader status_reader_;
     network::TransactionStore transaction_store_;
     network::SystemClock clock_;
     network::TransactionManager transaction_manager_;
