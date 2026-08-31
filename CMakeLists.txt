@@ -22,6 +22,7 @@ add_executable(uhf-gatewayd
     src/acquisition/acquisition.cpp
     src/domain/modbus.cpp
     src/domain/snapshot.cpp
+    src/modbus/tcp_server.cpp
     src/web/auth_store.cpp
     src/web/crypto.cpp
     src/web/http_server.cpp
@@ -124,6 +125,29 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+add_executable(uhf_modbus_tcp_smoke
+    tests/modbus_tcp_smoke.cpp
+    src/modbus/tcp_server.cpp
+    src/acquisition/acquisition.cpp
+    src/domain/modbus.cpp
+    src/domain/snapshot.cpp
+)
+target_compile_features(uhf_modbus_tcp_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_modbus_tcp_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+find_package(Threads REQUIRED)
+target_link_libraries(uhf_modbus_tcp_smoke PRIVATE Threads::Threads)
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_modbus_tcp_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
 if(UHF_ENABLE_ASAN OR UHF_ENABLE_UBSAN)
     if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         message(FATAL_ERROR "Sanitizers require a GNU or Clang compiler")
@@ -191,8 +215,9 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}/tools/pd1000-sim/pd1000_sim.py"
                 "${PROJECT_SOURCE_DIR}/tests/fixtures/pd1000_request_plan.txt"
         )
-        add_test(NAME uhf_acquisition_fault_smoke COMMAND uhf_acquisition_fault_smoke)
     endif()
+    add_test(NAME uhf_acquisition_fault_smoke COMMAND uhf_acquisition_fault_smoke)
+    add_test(NAME uhf_modbus_tcp_smoke COMMAND uhf_modbus_tcp_smoke)
 endif()
 
 if(UHF_BUILD_FORMAT_TARGET)
