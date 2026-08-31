@@ -58,12 +58,13 @@ add_executable(uhf-gatewayd
     src/health/health.cpp
     src/web/auth_store.cpp
     src/web/crypto.cpp
+    src/web/tls_context.cpp
     src/web/http_server.cpp
 )
 
-find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto)
+find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto SSL)
 find_package(Threads REQUIRED)
-target_link_libraries(uhf-gatewayd PRIVATE OpenSSL::Crypto Threads::Threads)
+target_link_libraries(uhf-gatewayd PRIVATE OpenSSL::Crypto OpenSSL::SSL Threads::Threads)
 
 if(UHF_ENABLE_IEC61850)
     target_link_libraries(uhf-gatewayd PRIVATE iec61850)
@@ -371,7 +372,7 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-add_executable(uhf_config_store_smoke
+    add_executable(uhf_config_store_smoke
     tests/config_store_smoke.cpp
     src/config/config_store.cpp
 )
@@ -444,6 +445,25 @@ if(UHF_ENABLE_IEC61850)
     target_link_libraries(uhf_iec61850_server_smoke PRIVATE iec61850)
     if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(uhf_iec61850_server_smoke PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Wconversion
+            -Wsign-conversion
+            -Wshadow
+            -Werror
+        )
+    endif()
+
+    add_executable(uhf_tls_context_smoke
+        tests/tls_context_smoke.cpp
+        src/web/tls_context.cpp
+    )
+    target_compile_features(uhf_tls_context_smoke PRIVATE cxx_std_17)
+    target_include_directories(uhf_tls_context_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+    target_link_libraries(uhf_tls_context_smoke PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+    if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(uhf_tls_context_smoke PRIVATE
             -Wall
             -Wextra
             -Wpedantic
@@ -581,6 +601,7 @@ if(BUILD_TESTING)
     add_test(NAME uhf_storage_cleaner_smoke COMMAND uhf_storage_cleaner_smoke)
     add_test(NAME uhf_persistence_runtime_smoke COMMAND uhf_persistence_runtime_smoke)
     add_test(NAME uhf_config_store_smoke COMMAND uhf_config_store_smoke)
+    add_test(NAME uhf_tls_context_smoke COMMAND uhf_tls_context_smoke)
     if(UHF_ENABLE_IEC61850)
         add_test(NAME uhf_iec61850_model_smoke COMMAND uhf_iec61850_model_smoke)
         add_test(NAME uhf_iec61850_server_smoke COMMAND uhf_iec61850_server_smoke)
