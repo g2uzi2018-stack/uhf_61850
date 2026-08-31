@@ -88,6 +88,12 @@ def main() -> int:
         auth = target / "var/lib/uhf-gateway/auth.json"
         if not bootstrap.is_file() or not auth.is_file():
             fail("authentication state was not provisioned")
+        certificate = target / "var/lib/uhf-gateway/tls/server.crt"
+        private_key = target / "var/lib/uhf-gateway/tls/server.key"
+        if not certificate.is_file() or not private_key.is_file():
+            fail("TLS state was not provisioned")
+        if certificate.stat().st_mode & 0o777 != 0o600 or private_key.stat().st_mode & 0o777 != 0o600:
+            fail("TLS state is not private")
         if bootstrap.stat().st_mode & 0o777 != 0o600 or auth.stat().st_mode & 0o777 != 0o600:
             fail("authentication state is not private")
         if bootstrap.read_text(encoding="utf-8").strip() in auth.read_text(encoding="utf-8"):

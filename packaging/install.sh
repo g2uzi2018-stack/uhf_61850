@@ -171,10 +171,12 @@ if [[ "$no_systemd" == false ]]; then
     chown uhfgateway:uhfgateway "$state_dir"
 fi
 "$release_dir/bin/uhf-auth-init" --state-dir "$state_dir"
+"$release_dir/bin/uhf-tls-init" --state-dir "$state_dir"
 if [[ "$no_systemd" == false ]]; then
     chown uhfgateway:uhfgateway "$state_dir/auth.json"
     chown root:root "$state_dir/initial-password"
     chmod 0600 "$state_dir/initial-password"
+    chown -R uhfgateway:uhfgateway "$state_dir/tls"
 fi
 install -m 0644 "$release_dir/config/schema.json" "${root_prefix}/etc/uhf-gateway/schema.json"
 install -m 0644 "$release_dir/config/defaults.json" "${root_prefix}/etc/uhf-gateway/defaults.json"

@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "web/tls_context.hpp"
 
+#include <algorithm>
+#include <arpa/inet.h>
 #include <cerrno>
+#include <cctype>
 #include <cstddef>
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
+#include <ifaddrs.h>
+#include <netinet/in.h>
 #include <openssl/bio.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
@@ -19,6 +24,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -262,7 +268,37 @@ void add_extension(X509* certificate, int nid, const char* value) {
     X509_EXTENSION_free(extension);
 }
 
-void generate_certificate(const uhf::web::TlsFiles& files) {
+bool valid_dns_name(std::string_view value) noexcept {
+    if (value.empty() || value.size() > 253U) {
+        return false;
+    }
+    std::size_t label_begin = 0U;
+    for (std::size_t index = 0U; index <= value.size(); ++index) {
+        if (index == value.size() || value[index] == '.') {
+            const std::size_t label_size = index - label_begin;
+            if (label_size == 0U || label_size > 63U ||
+                value[label_begin] == '-' || value[index - 1U] == '-') {
+                return false;
+            }
+            label_begin = index + 1U;
+            continue;
+        }
+        const unsigned char character = static_cast<unsigned char>(value[index]);
+        if (std::isalnum(character) == 0 && value[index] != '-') {
+            return false;
+        }
+    }
+    return true;
+}
+
+void append_san(std::vector<std::string>& names, std::string value) {
+    if (std::find(names.begin(), names.end(), value) == names.end()) {
+        names.push_back(std::move(value));
+    }
+}
+
+void generate_certificate(
+    const uhf::web::TlsFiles& files, std::string_view subject_alt_names) {
     EVP_PKEY_CTX* key_context = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
     if (key_context == nullptr || EVP_PKEY_keygen_init(key_context) != 1 ||
         EVP_PKEY_CTX_set_rsa_keygen_bits(key_context, 2048) != 1) {
@@ -298,7 +334,8 @@ void generate_certificate(const uhf::web::TlsFiles& files) {
     add_extension(certificate, NID_basic_constraints, "critical,CA:FALSE");
     add_extension(certificate, NID_key_usage, "critical,digitalSignature,keyEncipherment");
     add_extension(certificate, NID_ext_key_usage, "serverAuth");
-    add_extension(certificate, NID_subject_alt_name, "DNS:localhost,IP:127.0.0.1");
+    const std::string san_text(subject_alt_names);
+    add_extension(certificate, NID_subject_alt_name, san_text.c_str());
     if (X509_sign(certificate, key_guard.get(), EVP_sha256()) <= 0) {
         throw std::runtime_error(openssl_error("unable to sign TLS certificate"));
     }
@@ -345,7 +382,7 @@ void ensure_certificate(const uhf::web::TlsFiles& files) {
         throw std::runtime_error("TLS certificate and private key must be provided together");
     }
     if (!certificate_exists) {
-        generate_certificate(files);
+        generate_certificate(files, uhf::web::local_subject_alt_names());
     }
     if (::chmod(files.certificate.c_str(), kPrivateFileMode) < 0 ||
         ::chmod(files.private_key.c_str(), kPrivateFileMode) < 0) {
@@ -357,15 +394,64 @@ void ensure_certificate(const uhf::web::TlsFiles& files) {
 
 namespace uhf::web {
 
-TlsContext::TlsContext(TlsFiles files) : files_(std::move(files)) {
-    if (files_.certificate.empty() || files_.private_key.empty() ||
-        files_.certificate.parent_path() != files_.private_key.parent_path()) {
+std::string local_subject_alt_names() {
+    std::vector<std::string> names;
+    names.emplace_back("DNS:localhost");
+    names.emplace_back("IP:127.0.0.1");
+
+    char hostname[256]{};
+    if (::gethostname(hostname, sizeof(hostname) - 1U) == 0 &&
+        valid_dns_name(hostname)) {
+        append_san(names, "DNS:" + std::string(hostname));
+    }
+
+    ifaddrs* interfaces = nullptr;
+    if (::getifaddrs(&interfaces) == 0) {
+        std::size_t address_count = 0U;
+        for (const ifaddrs* current = interfaces;
+             current != nullptr && address_count < 16U;
+             current = current->ifa_next) {
+            if (current->ifa_addr == nullptr ||
+                current->ifa_addr->sa_family != AF_INET) {
+                continue;
+            }
+            char address_text[INET_ADDRSTRLEN]{};
+            const auto* address = reinterpret_cast<const sockaddr_in*>(
+                current->ifa_addr);
+            if (::inet_ntop(
+                    AF_INET, &address->sin_addr, address_text,
+                    sizeof(address_text)) == nullptr) {
+                continue;
+            }
+            append_san(names, "IP:" + std::string(address_text));
+            ++address_count;
+        }
+        ::freeifaddrs(interfaces);
+    }
+
+    std::string result;
+    for (const std::string& name : names) {
+        if (!result.empty()) {
+            result.push_back(',');
+        }
+        result += name;
+    }
+    return result;
+}
+
+void ensure_tls_files(const TlsFiles& files) {
+    if (files.certificate.empty() || files.private_key.empty() ||
+        files.certificate.parent_path() != files.private_key.parent_path()) {
         throw std::invalid_argument("TLS certificate paths are invalid");
     }
     ensure_private_directory(
-        files_.certificate.parent_path().empty() ? std::filesystem::path{"."} :
-                                                   files_.certificate.parent_path());
-    ensure_certificate(files_);
+        files.certificate.parent_path().empty() ? std::filesystem::path{"."} :
+                                                   files.certificate.parent_path());
+    ensure_certificate(files);
+}
+
+TlsContext::TlsContext(TlsFiles files) : files_(std::move(files)) {
+    ensure_tls_files(files_);
 
     context_ = context_from_files(files_);
     if (context_ == nullptr) {

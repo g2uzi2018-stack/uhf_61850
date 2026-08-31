@@ -26,6 +26,15 @@ int main() {
     std::error_code cleanup_error;
     std::filesystem::remove_all(root, cleanup_error);
     try {
+        const std::string sans = uhf::web::local_subject_alt_names();
+        if (!expect(
+                sans.find("DNS:localhost") != std::string::npos,
+                "localhost is included in certificate SANs") ||
+            !expect(
+                sans.find("IP:127.0.0.1") != std::string::npos,
+                "loopback is included in certificate SANs")) {
+            return 1;
+        }
         const uhf::web::TlsFiles files{root / "tls" / "server.crt", root / "tls" / "server.key"};
         {
             uhf::web::TlsContext context(files);

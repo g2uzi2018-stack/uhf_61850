@@ -424,6 +424,25 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+add_executable(uhf-tls-init
+    src/tls_init_main.cpp
+    src/web/tls_context.cpp
+)
+target_compile_features(uhf-tls-init PRIVATE cxx_std_17)
+target_include_directories(uhf-tls-init PRIVATE "${PROJECT_SOURCE_DIR}/src")
+target_link_libraries(uhf-tls-init PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf-tls-init PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
 add_executable(uhf_systemd_notify_smoke
     tests/systemd_notify_smoke.cpp
     src/platform/systemd/notify.cpp
@@ -877,6 +896,12 @@ if(BUILD_TESTING)
                 "$<TARGET_FILE:uhf-network-recovery>"
         )
         add_test(
+            NAME uhf_tls_init_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/tls_init_smoke.py"
+                "$<TARGET_FILE:uhf-tls-init>"
+        )
+        add_test(
             NAME uhf_systemd_policy_smoke
             COMMAND "${Python3_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/tests/systemd_policy_smoke.py"
@@ -969,7 +994,7 @@ if(UHF_BUILD_FORMAT_TARGET)
     endif()
 endif()
 
-install(TARGETS uhf-gatewayd uhf-privilegedd uhf-network-recovery uhf-auth-init
+install(TARGETS uhf-gatewayd uhf-privilegedd uhf-network-recovery uhf-auth-init uhf-tls-init
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(FILES LICENSE DESTINATION "${CMAKE_INSTALL_DOCDIR}")
 install(FILES

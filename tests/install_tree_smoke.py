@@ -36,6 +36,7 @@ def main() -> int:
             prefix / "bin/uhf-privilegedd",
             prefix / "bin/uhf-network-recovery",
             prefix / "bin/uhf-auth-init",
+            prefix / "bin/uhf-tls-init",
             prefix / "web/index.html",
             prefix / "web/login.js",
             prefix / "etc/uhf-gateway/defaults.json",

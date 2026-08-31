@@ -2,6 +2,7 @@
 #pragma once
 
 #include <filesystem>
+#include <string>
 #include <string_view>
 
 typedef struct ssl_ctx_st SSL_CTX;
@@ -13,6 +14,9 @@ struct TlsFiles {
     std::filesystem::path certificate;
     std::filesystem::path private_key;
 };
+
+std::string local_subject_alt_names();
+void ensure_tls_files(const TlsFiles& files);
 
 enum class TlsReplaceResult {
     replaced,
