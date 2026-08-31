@@ -27,6 +27,7 @@ add_executable(uhf-gatewayd
     src/storage/frame_store.cpp
     src/storage/event_detector.cpp
     src/storage/event_store.cpp
+    src/logging/logger.cpp
     src/web/auth_store.cpp
     src/web/crypto.cpp
     src/web/http_server.cpp
@@ -224,6 +225,24 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         -Werror
     )
 endif()
+
+add_executable(uhf_logger_smoke
+    tests/logger_smoke.cpp
+    src/logging/logger.cpp
+)
+target_compile_features(uhf_logger_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_logger_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_logger_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
 if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(uhf_modbus_rtu_smoke PRIVATE
         -Wall
@@ -310,6 +329,7 @@ if(BUILD_TESTING)
     add_test(NAME uhf_frame_store_smoke COMMAND uhf_frame_store_smoke)
     add_test(NAME uhf_event_detector_smoke COMMAND uhf_event_detector_smoke)
     add_test(NAME uhf_event_store_smoke COMMAND uhf_event_store_smoke)
+    add_test(NAME uhf_logger_smoke COMMAND uhf_logger_smoke)
 endif()
 
 if(UHF_BUILD_FORMAT_TARGET)

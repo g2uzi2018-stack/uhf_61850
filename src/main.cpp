@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "app/build_info.hpp"
+#include "logging/logger.hpp"
 #include "web/http_server.hpp"
 
 #include <charconv>
@@ -94,12 +95,26 @@ int main(int argc, char* argv[]) {
         }
 
         try {
+            uhf::logging::Logger logger;
+            logger.log(
+                uhf::logging::Level::info,
+                uhf::logging::Component::system,
+                "process.start",
+                "uhf-gatewayd web service starting",
+                {uhf::logging::Field{"listen", options.bind_address + ":" +
+                        std::to_string(options.port)}});
             uhf::web::HttpServer server(
                 std::move(options.document_root),
                 std::move(options.bind_address),
                 options.port,
                 std::move(options.state_directory));
-            return server.run();
+            const int result = server.run();
+            logger.log(
+                uhf::logging::Level::info,
+                uhf::logging::Component::system,
+                "process.stop",
+                "uhf-gatewayd web service stopped");
+            return result;
         } catch (const std::exception& error) {
             std::cerr << "unable to start web server: " << error.what() << '\n';
             return 1;
