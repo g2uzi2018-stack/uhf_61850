@@ -53,7 +53,7 @@ public:
             skip_space();
             if (consume('}')) {
                 skip_space();
-                return position_ == input_.size() && (keys_.size() == 15U || keys_.size() == 16U);
+                return position_ == input_.size() && (keys_.size() == 16U || keys_.size() == 17U);
             }
             if (!consume(',')) {
                 return false;
@@ -186,6 +186,10 @@ private:
         }
         if (key == "rtu_unit_id") {
             return assign_unsigned(value, std::uint8_t{1U}, std::uint8_t{247U}, values.rtu_unit_id);
+        }
+        if (key == "modbus_tcp_unit_id") {
+            return assign_unsigned(
+                value, std::uint8_t{1U}, std::uint8_t{247U}, values.modbus_tcp_unit_id);
         }
         if (key == "modbus_tcp_port") {
             return assign_unsigned(value, std::uint16_t{1U}, std::uint16_t{65535U}, values.modbus_tcp_port);
@@ -343,7 +347,8 @@ bool ConfigStore::validate(const Values& values) noexcept {
         ::inet_pton(AF_INET, values.modbus_tcp_bind.c_str(), &address) == 1 &&
         valid_ied_name(values.iec_ied_name) && values.acquisition_slave_id >= 1U &&
         values.acquisition_slave_id <= 247U && values.rtu_unit_id >= 1U &&
-        values.rtu_unit_id <= 247U && values.modbus_tcp_port != 0U &&
+        values.rtu_unit_id <= 247U && values.modbus_tcp_unit_id >= 1U &&
+        values.modbus_tcp_unit_id <= 247U && values.modbus_tcp_port != 0U &&
         values.web_port >= 1024U && values.storage_period_seconds >= 60U &&
         values.storage_retention_days >= 1U && values.storage_retention_days <= 30U &&
         values.storage_min_free_bytes >= 268435456U;
@@ -361,6 +366,7 @@ std::string ConfigStore::serialize(const Snapshot& snapshot) {
         "  \"rtu_device\": \"" + json_escape(values.rtu_device) + "\",\n"
         "  \"rtu_unit_id\": " + std::to_string(values.rtu_unit_id) + ",\n"
         "  \"modbus_tcp_bind\": \"" + json_escape(values.modbus_tcp_bind) + "\",\n"
+        "  \"modbus_tcp_unit_id\": " + std::to_string(values.modbus_tcp_unit_id) + ",\n"
         "  \"modbus_tcp_port\": " + std::to_string(values.modbus_tcp_port) + ",\n"
         "  \"web_port\": " + std::to_string(values.web_port) + ",\n"
         "  \"tls_enabled\": " + std::string(values.tls_enabled ? "true" : "false") + ",\n"

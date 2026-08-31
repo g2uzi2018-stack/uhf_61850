@@ -28,6 +28,7 @@ const char* valid_object() {
         "rtu_device":"/dev/ttyS4",
         "rtu_unit_id":3,
         "modbus_tcp_bind":"127.0.0.1",
+        "modbus_tcp_unit_id":4,
         "modbus_tcp_port":15021,
         "web_port":8081,
         "tls_enabled":false,
@@ -68,6 +69,7 @@ int main() {
         if (!expect(updated == uhf::config::UpdateResult::updated, "valid update") ||
             !expect(changed.version == 2U, "version increment") ||
             !expect(changed.values.rtu_unit_id == 3U, "updated RTU unit") ||
+            !expect(changed.values.modbus_tcp_unit_id == 4U, "updated TCP unit") ||
             !expect(changed.values.tls_enabled == false, "updated TLS flag") ||
             !expect(std::filesystem::file_size(path) < 16U * 1024U, "updated file bound")) {
             return 1;
@@ -82,7 +84,8 @@ int main() {
         uhf::config::ConfigStore reopened(path);
         const uhf::config::Snapshot reopened_snapshot = reopened.snapshot();
         if (!expect(reopened_snapshot.version == 2U, "version survives restart") ||
-            !expect(reopened_snapshot.values.rtu_unit_id == 3U, "values survive restart")) {
+            !expect(reopened_snapshot.values.rtu_unit_id == 3U, "values survive restart") ||
+            !expect(reopened_snapshot.values.modbus_tcp_unit_id == 4U, "TCP unit survives restart")) {
             return 1;
         }
 

@@ -21,12 +21,15 @@ namespace uhf::app {
 struct GatewayRuntimeOptions {
     bool simulate{false};
     std::string acquisition_device{"/dev/ttyS1"};
-    std::chrono::seconds poll_interval{6};
+    acquisition::AcquisitionOptions acquisition_options{};
+    std::chrono::milliseconds poll_interval{std::chrono::seconds(6)};
     bool start_modbus_tcp{true};
     std::string modbus_tcp_bind{"127.0.0.1"};
     std::uint16_t modbus_tcp_port{502};
+    std::uint8_t modbus_tcp_unit_id{1U};
     bool start_modbus_rtu{true};
     std::string modbus_rtu_device{"/dev/ttyS4"};
+    modbus::ModbusRtuOptions modbus_rtu_options{};
     bool start_persistence{true};
     storage::PersistenceOptions persistence_options{};
 };

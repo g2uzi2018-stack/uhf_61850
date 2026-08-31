@@ -18,18 +18,21 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
         serial_port_ = std::make_unique<acquisition::PosixSerialPort>(options_.acquisition_device);
     }
     acquisition_engine_ = std::make_unique<acquisition::AcquisitionEngine>(
-        *serial_port_, snapshot_store_);
+        *serial_port_, snapshot_store_, options_.acquisition_options);
     if (options_.start_modbus_tcp) {
         modbus_tcp_server_ = std::make_unique<modbus::ModbusTcpServer>(
             snapshot_store_,
             modbus::ModbusTcpOptions{
-                options_.modbus_tcp_bind, options_.modbus_tcp_port, 1U, 16U});
+                options_.modbus_tcp_bind,
+                options_.modbus_tcp_port,
+                options_.modbus_tcp_unit_id,
+                16U});
     }
     if (options_.start_modbus_rtu) {
         modbus_rtu_serial_port_ =
             std::make_unique<acquisition::PosixSerialPort>(options_.modbus_rtu_device);
         modbus_rtu_server_ = std::make_unique<modbus::ModbusRtuServer>(
-            *modbus_rtu_serial_port_, snapshot_store_);
+            *modbus_rtu_serial_port_, snapshot_store_, options_.modbus_rtu_options);
     }
     if (options_.start_persistence) {
         persistence_worker_ = std::make_unique<storage::PersistenceWorker>(

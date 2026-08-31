@@ -438,6 +438,13 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}/web"
         )
         add_test(
+            NAME uhf_config_runtime_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/config_runtime_smoke.py"
+                "$<TARGET_FILE:uhf-gatewayd>"
+                "${PROJECT_SOURCE_DIR}/web"
+        )
+        add_test(
             NAME uhf_pd1000_sim_smoke
             COMMAND "${Python3_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/tests/pd1000_sim_smoke.py"

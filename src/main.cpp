@@ -26,9 +26,11 @@ struct WebOptions {
     std::filesystem::path state_directory{"/var/lib/uhf-gateway"};
     std::string bind_address{"127.0.0.1"};
     std::uint16_t port{8080};
+    bool listen_explicit{false};
     bool start_acquisition{true};
     bool simulate{false};
     std::string acquisition_device{"/dev/ttyS1"};
+    bool acquisition_device_explicit{false};
     bool modbus_tcp_explicit{false};
     std::string modbus_tcp_bind{"127.0.0.1"};
     std::uint16_t modbus_tcp_port{502};
@@ -108,12 +110,14 @@ int main(int argc, char* argv[]) {
                     std::cerr << "invalid --listen value\n";
                     return 2;
                 }
+                options.listen_explicit = true;
             } else if (option == "--simulate") {
                 options.simulate = true;
             } else if (option == "--no-acquisition") {
                 options.start_acquisition = false;
             } else if (option == "--acquisition-device" && index + 1 < argc) {
                 options.acquisition_device = argv[++index];
+                options.acquisition_device_explicit = true;
             } else if (option == "--modbus-tcp-listen" && index + 1 < argc) {
                 if (!parse_listen(argv[++index], options.modbus_tcp_bind, options.modbus_tcp_port)) {
                     std::cerr << "invalid --modbus-tcp-listen value\n";
@@ -162,18 +166,47 @@ int main(int argc, char* argv[]) {
                         std::to_string(options.port)}});
             std::unique_ptr<uhf::config::ConfigStore> config_store =
                 std::make_unique<uhf::config::ConfigStore>(options.config_file);
+            const uhf::config::Snapshot configured = config_store->snapshot();
+            if (!options.listen_explicit) {
+                options.port = configured.values.web_port;
+            }
+            if (!options.modbus_tcp_explicit) {
+                options.modbus_tcp_bind = configured.values.modbus_tcp_bind;
+                options.modbus_tcp_port = options.simulate
+                    ? 15020U
+                    : configured.values.modbus_tcp_port;
+            }
+            if (!options.acquisition_device_explicit) {
+                options.acquisition_device = configured.values.acquisition_device;
+            }
+            if (!options.modbus_rtu_explicit) {
+                options.modbus_rtu_device = configured.values.rtu_device;
+            }
             std::unique_ptr<uhf::app::GatewayRuntime> runtime;
             if (options.start_acquisition) {
                 uhf::app::GatewayRuntimeOptions runtime_options;
                 runtime_options.simulate = options.simulate;
                 runtime_options.acquisition_device = options.acquisition_device;
-                runtime_options.poll_interval = std::chrono::seconds(6);
+                runtime_options.acquisition_options.slave_id = configured.values.acquisition_slave_id;
+                runtime_options.acquisition_options.response_timeout = std::chrono::milliseconds(
+                    configured.values.acquisition_response_timeout_ms);
+                runtime_options.acquisition_options.max_retries = configured.values.acquisition_max_retries;
+                runtime_options.poll_interval = std::chrono::milliseconds(
+                    configured.values.acquisition_period_ms);
                 runtime_options.start_modbus_tcp = true;
                 runtime_options.modbus_tcp_bind = options.modbus_tcp_bind;
                 runtime_options.modbus_tcp_port = options.modbus_tcp_port;
+                runtime_options.modbus_tcp_unit_id = configured.values.modbus_tcp_unit_id;
                 runtime_options.start_modbus_rtu = options.start_modbus_rtu;
                 runtime_options.modbus_rtu_device = options.modbus_rtu_device;
+                runtime_options.modbus_rtu_options.unit_id = configured.values.rtu_unit_id;
                 runtime_options.persistence_options.data_root = options.data_directory;
+                runtime_options.persistence_options.periodic_period = std::chrono::seconds(
+                    configured.values.storage_period_seconds);
+                runtime_options.persistence_options.cleaner_options.retention =
+                    std::chrono::hours(24U * configured.values.storage_retention_days);
+                runtime_options.persistence_options.cleaner_options.min_free_bytes =
+                    configured.values.storage_min_free_bytes;
                 runtime = std::make_unique<uhf::app::GatewayRuntime>(
                     std::move(runtime_options), logger);
                 runtime->start();
