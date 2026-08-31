@@ -35,10 +35,13 @@ uhf::privileged::Reply result_reply(
 namespace uhf::privileged {
 
 NetworkService::NetworkService(
-    std::filesystem::path network_file, std::filesystem::path transaction_file)
+    std::filesystem::path network_file,
+    std::filesystem::path transaction_file,
+    MaintenanceRunner* maintenance_runner)
     : backend_(std::move(network_file), command_runner_),
       transaction_store_(std::move(transaction_file)),
-      transaction_manager_(transaction_store_, backend_, clock_) {}
+      transaction_manager_(transaction_store_, backend_, clock_),
+      maintenance_runner_(maintenance_runner == nullptr ? default_maintenance_runner_ : *maintenance_runner) {}
 
 NetworkService::~NetworkService() {
     stop_rollback_monitor();
@@ -108,6 +111,16 @@ Reply NetworkService::handle(std::string_view request, uid_t uid, gid_t gid) {
     if (request == "network.rollback") {
         const network::TransactionResult result = transaction_manager_.rollback_now();
         return result_reply(result, transaction_manager_.last_error());
+    }
+    if (request == "maintenance.restart-service") {
+        return maintenance_runner_.restart_service()
+            ? Reply{true, "ok", "{\"result\":\"ok\"}\n"}
+            : Reply{false, "maintenance_error", {}};
+    }
+    if (request == "maintenance.reboot") {
+        return maintenance_runner_.reboot()
+            ? Reply{true, "ok", "{\"result\":\"ok\"}\n"}
+            : Reply{false, "maintenance_error", {}};
     }
     return {false, "unknown_operation", {}};
 }

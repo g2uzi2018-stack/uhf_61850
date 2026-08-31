@@ -33,6 +33,8 @@ public:
     Reply network_stage(const uhf::network::NetworkConfig& candidate) const;
     Reply network_confirm() const;
     Reply network_rollback() const;
+    Reply maintenance_restart_service() const;
+    Reply maintenance_reboot() const;
 
 private:
     std::filesystem::path socket_path_;

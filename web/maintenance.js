@@ -1,0 +1,14 @@
+(function () {
+    "use strict";
+    var csrf = "";
+    var error = document.getElementById("maintenance-error");
+    var saved = document.getElementById("maintenance-saved");
+    function redirect() { window.location.replace("/login"); }
+    function message(text, ok) { (ok ? saved : error).textContent = text; (ok ? error : saved).textContent = ""; }
+    function post(path, password) { return fetch(path, {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({current_password: password})}).then(function (response) { if (response.status === 401) { redirect(); throw new Error("auth"); } return response.json().then(function (payload) { if (!response.ok) { throw new Error(payload.error || "维护动作失败"); } return payload; }); }); }
+    function action(button, path, input, confirmation) { button.addEventListener("click", function () { var password = document.getElementById(input).value; if (!password) { message("请输入当前密码", false); return; } if (!window.confirm(confirmation)) { return; } button.disabled = true; post(path, password).then(function () { message("动作已提交，服务可能会断开当前页面。", true); }).catch(function (reason) { if (reason.message !== "auth") { message(reason.message, false); } }).then(function () { button.disabled = false; }); }); }
+    document.getElementById("restart-service").addEventListener("click", function () { var button = this; var password = document.getElementById("service-password").value; if (!password) { message("请输入当前密码", false); return; } if (!window.confirm("确认重启 uhf-gateway 服务？")) { return; } button.disabled = true; post("/api/v1/maintenance/restart-service", password).then(function () { message("服务重启已提交。", true); }).catch(function (reason) { if (reason.message !== "auth") { message(reason.message, false); } }).then(function () { button.disabled = false; }); });
+    document.getElementById("reboot-device").addEventListener("click", function () { var button = this; var password = document.getElementById("reboot-password").value; if (!password) { message("请输入当前密码", false); return; } if (!window.confirm("确认重启整台设备？")) { return; } button.disabled = true; post("/api/v1/maintenance/reboot", password).then(function () { message("设备重启已提交。", true); }).catch(function (reason) { if (reason.message !== "auth") { message(reason.message, false); } }).then(function () { button.disabled = false; }); });
+    document.querySelectorAll('[data-action="logout"]').forEach(function (button) { button.addEventListener("click", function () { fetch("/api/v1/session", {method: "DELETE", credentials: "same-origin", headers: {"X-CSRF-Token": csrf}}).then(redirect).catch(redirect); }); });
+    fetch("/api/v1/session", {credentials: "same-origin"}).then(function (response) { if (response.status === 401) { redirect(); throw new Error("auth"); } return response.json(); }).then(function (session) { csrf = session.csrf_token; }).catch(function () {});
+}());

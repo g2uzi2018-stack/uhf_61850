@@ -4,6 +4,7 @@
 #include "platform/network/linux_backend.hpp"
 #include "platform/network/linux_status.hpp"
 #include "platform/network/network_transaction.hpp"
+#include "platform/privileged/maintenance.hpp"
 #include "platform/privileged/unix_socket.hpp"
 
 #include <atomic>
@@ -16,7 +17,10 @@ namespace uhf::privileged {
 
 class NetworkService {
 public:
-    NetworkService(std::filesystem::path network_file, std::filesystem::path transaction_file);
+    NetworkService(
+        std::filesystem::path network_file,
+        std::filesystem::path transaction_file,
+        MaintenanceRunner* maintenance_runner = nullptr);
     ~NetworkService();
 
     NetworkService(const NetworkService&) = delete;
@@ -36,6 +40,8 @@ private:
     network::TransactionStore transaction_store_;
     network::SystemClock clock_;
     network::TransactionManager transaction_manager_;
+    ExecMaintenanceRunner default_maintenance_runner_;
+    MaintenanceRunner& maintenance_runner_;
     std::mutex mutex_;
     std::atomic<bool> stop_requested_{false};
     std::thread rollback_worker_;

@@ -186,6 +186,14 @@ Reply UnixSocketClient::network_rollback() const {
     return request("network.rollback");
 }
 
+Reply UnixSocketClient::maintenance_restart_service() const {
+    return request("maintenance.restart-service");
+}
+
+Reply UnixSocketClient::maintenance_reboot() const {
+    return request("maintenance.reboot");
+}
+
 UnixSocketServer::UnixSocketServer(
     std::filesystem::path socket_path, uid_t allowed_uid, RequestHandler handler)
     : socket_path_(std::move(socket_path)), allowed_uid_(allowed_uid), handler_(std::move(handler)) {

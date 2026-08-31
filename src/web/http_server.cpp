@@ -1727,6 +1727,58 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
         return false;
     }
 
+    if (request_path == "/api/v1/maintenance/restart-service" ||
+        request_path == "/api/v1/maintenance/reboot") {
+        const std::string token = session_cookie(parsed);
+        const auto iterator = sessions_.find(token);
+        if (token.empty() || iterator == sessions_.end() || iterator->second.expires_at <= now) {
+            if (iterator != sessions_.end()) {
+                sessions_.erase(iterator);
+            }
+            send_error(client_fd, tls, 401, "authentication required");
+            return false;
+        }
+        iterator->second.expires_at = now + kSessionLifetime;
+        if (parsed.method != "POST") {
+            send_method_not_allowed(client_fd, tls, "POST");
+            return false;
+        }
+        const std::string_view csrf = header_value(parsed, "x-csrf-token");
+        if (!constant_time_equal(csrf, iterator->second.csrf_token)) {
+            send_error(client_fd, tls, 403, "CSRF token required");
+            return false;
+        }
+        std::string current_password;
+        if (!json_string_field(
+                parsed.body, "current_password", current_password, kMaxPasswordJsonBytes) ||
+            !auth_store_.verify_password("admin", current_password)) {
+            send_error(client_fd, tls, 401, "current password is incorrect");
+            return false;
+        }
+        if (network_client_ == nullptr) {
+            send_error(client_fd, tls, 503, "privileged maintenance service unavailable");
+            return false;
+        }
+        const privileged::Reply reply = request_path == "/api/v1/maintenance/reboot"
+            ? network_client_->maintenance_reboot()
+            : network_client_->maintenance_restart_service();
+        if (!reply.ok) {
+            send_error(
+                client_fd,
+                tls,
+                reply.code == "unavailable" ? 503 : 502,
+                reply.code.empty() ? "maintenance operation failed" : reply.code);
+            return false;
+        }
+        send_json(
+            client_fd,
+            tls,
+            202,
+            reply.body.empty() ? "{\"accepted\":true}\n" : reply.body,
+            "Cache-Control: no-store\r\n");
+        return false;
+    }
+
     if (request_path == "/api/v1/logs") {
         if (parsed.method != "GET") {
             send_method_not_allowed(client_fd, tls, "GET");
@@ -2089,7 +2141,7 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
     } else if (request_path == "/index.html" || request_path == "/overview" ||
                request_path == "/overview.html" || request_path == "/settings.html" ||
                request_path == "/logs.html" || request_path == "/storage.html" ||
-               request_path == "/network.html") {
+               request_path == "/network.html" || request_path == "/maintenance.html") {
         if (parsed.method != "GET") {
             send_method_not_allowed(client_fd, tls, "GET");
             return false;
