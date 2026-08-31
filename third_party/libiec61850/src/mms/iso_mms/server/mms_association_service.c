@@ -382,8 +382,16 @@ parseInitiateRequestPdu(MmsServerConnection self, uint8_t* buffer, int bufPos, i
 
             break;
         case 0x83: /* proposed-data-structure-nesting-level */
-            self->dataStructureNestingLevel = BerDecoder_decodeUint32(buffer, length, bufPos);
+        {
+            uint32_t proposedNestingLevel = BerDecoder_decodeUint32(buffer, length, bufPos);
+
+            if (proposedNestingLevel > CONFIG_MMS_MAX_DATA_STRUCTURE_NESTING_LEVEL)
+                self->dataStructureNestingLevel = CONFIG_MMS_MAX_DATA_STRUCTURE_NESTING_LEVEL;
+            else
+                self->dataStructureNestingLevel = (int) proposedNestingLevel;
+
             break;
+        }
 
         case 0xa4: /* mms-init-request-detail */
 
