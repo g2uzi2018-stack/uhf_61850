@@ -30,6 +30,12 @@
         document.getElementById("https-check-status").classList.remove("pending");
         document.getElementById("https-check-status").textContent = "已完成";
         document.getElementById("https-check-description").textContent = "产品入口已启用 HTTPS；仍需核对设备证书与 SAN";
+        updateChecklistProgress();
+    }
+
+    function updateChecklistProgress() {
+        var completed = document.querySelectorAll(".checklist-item.completed").length;
+        document.getElementById("checklist-progress").textContent = completed + " / 3 已完成";
     }
 
     function showToast(message) {
@@ -75,14 +81,17 @@
         if (mustChange) {
             icon.textContent = "";
             icon.classList.remove("completed");
+            icon.parentElement.classList.remove("completed");
             status.textContent = "去设置";
             status.disabled = false;
         } else {
             icon.textContent = "✓";
             icon.classList.add("completed");
+            icon.parentElement.classList.add("completed");
             status.textContent = "已完成";
             status.disabled = true;
         }
+        updateChecklistProgress();
     }
 
     function loadSession() {

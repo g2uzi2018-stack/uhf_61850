@@ -29,13 +29,13 @@ def main() -> int:
     login_javascript = (web_dir / "login.js").read_text(encoding="utf-8")
     stylesheet = (web_dir / "styles.css").read_text(encoding="utf-8")
 
-    for marker in ("用户管理", "本地开发模式", "HTTPS", "transport-badge", "admin", 'id="password-modal"', 'id="password-form"'):
+    for marker in ("用户管理", "本地开发模式", "HTTPS", "transport-badge", "checklist-progress", "admin", 'id="password-modal"', 'id="password-form"'):
         if marker not in html:
             fail(f"index.html is missing {marker!r}")
     for marker in ("登录控制台", "首次登录", 'id="login-form"'):
         if marker not in login_html:
             fail(f"login.html is missing {marker!r}")
-    for marker in ('data-action="change-password"', "showToast", "password-form"):
+    for marker in ('data-action="change-password"', "showToast", "updateChecklistProgress", "password-form"):
         if marker not in javascript:
             fail(f"app.js is missing {marker!r}")
     for marker in ("实时总览", "prpd-canvas", "prps-canvas"):
