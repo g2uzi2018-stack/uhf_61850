@@ -31,6 +31,9 @@ struct WebOptions {
     bool modbus_tcp_explicit{false};
     std::string modbus_tcp_bind{"127.0.0.1"};
     std::uint16_t modbus_tcp_port{502};
+    bool modbus_rtu_explicit{false};
+    bool start_modbus_rtu{true};
+    std::string modbus_rtu_device{"/dev/ttyS4"};
 };
 
 bool parse_listen(std::string_view value, std::string& address, std::uint16_t& port) {
@@ -59,7 +62,8 @@ void print_usage() {
               << " [--version|--self-test|--web "
                  "[--web-root PATH] [--state-dir PATH] [--listen IPV4:PORT] "
                  "[--simulate|--no-acquisition] [--acquisition-device PATH] "
-                 "[--modbus-tcp-listen IPV4:PORT]]\n";
+                 "[--modbus-tcp-listen IPV4:PORT] [--modbus-rtu-device PATH] "
+                 "[--no-modbus-rtu]]\n";
 }
 
 int run_self_test() {
@@ -111,6 +115,12 @@ int main(int argc, char* argv[]) {
                     return 2;
                 }
                 options.modbus_tcp_explicit = true;
+            } else if (option == "--modbus-rtu-device" && index + 1 < argc) {
+                options.modbus_rtu_device = argv[++index];
+                options.modbus_rtu_explicit = true;
+                options.start_modbus_rtu = true;
+            } else if (option == "--no-modbus-rtu") {
+                options.start_modbus_rtu = false;
             } else {
                 print_usage();
                 return 2;
@@ -119,6 +129,9 @@ int main(int argc, char* argv[]) {
 
         if (options.simulate && !options.modbus_tcp_explicit) {
             options.modbus_tcp_port = 15020U;
+        }
+        if (options.simulate && !options.modbus_rtu_explicit) {
+            options.start_modbus_rtu = false;
         }
 
         try {
@@ -139,7 +152,9 @@ int main(int argc, char* argv[]) {
                         std::chrono::seconds(6),
                         true,
                         options.modbus_tcp_bind,
-                        options.modbus_tcp_port},
+                        options.modbus_tcp_port,
+                        options.start_modbus_rtu,
+                        options.modbus_rtu_device},
                     logger);
                 runtime->start();
             }

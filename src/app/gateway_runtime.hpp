@@ -4,6 +4,7 @@
 #include "acquisition/acquisition.hpp"
 #include "health/health.hpp"
 #include "logging/logger.hpp"
+#include "modbus/rtu_server.hpp"
 #include "modbus/tcp_server.hpp"
 
 #include <atomic>
@@ -23,6 +24,8 @@ struct GatewayRuntimeOptions {
     bool start_modbus_tcp{true};
     std::string modbus_tcp_bind{"127.0.0.1"};
     std::uint16_t modbus_tcp_port{502};
+    bool start_modbus_rtu{true};
+    std::string modbus_rtu_device{"/dev/ttyS4"};
 };
 
 class GatewayRuntime {
@@ -47,10 +50,13 @@ private:
     std::unique_ptr<acquisition::ISerialPort> serial_port_;
     std::unique_ptr<acquisition::AcquisitionEngine> acquisition_engine_;
     std::unique_ptr<modbus::ModbusTcpServer> modbus_tcp_server_;
+    std::unique_ptr<acquisition::ISerialPort> modbus_rtu_serial_port_;
+    std::unique_ptr<modbus::ModbusRtuServer> modbus_rtu_server_;
     acquisition::SnapshotStore snapshot_store_;
     std::atomic<bool> stop_requested_{false};
     std::thread worker_;
     std::thread modbus_tcp_worker_;
+    std::thread modbus_rtu_worker_;
     mutable std::mutex status_mutex_;
     bool last_cycle_ok_{false};
     std::optional<std::chrono::steady_clock::time_point> last_success_;

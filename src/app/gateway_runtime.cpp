@@ -25,6 +25,12 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
             modbus::ModbusTcpOptions{
                 options_.modbus_tcp_bind, options_.modbus_tcp_port, 1U, 16U});
     }
+    if (options_.start_modbus_rtu) {
+        modbus_rtu_serial_port_ =
+            std::make_unique<acquisition::PosixSerialPort>(options_.modbus_rtu_device);
+        modbus_rtu_server_ = std::make_unique<modbus::ModbusRtuServer>(
+            *modbus_rtu_serial_port_, snapshot_store_);
+    }
 }
 
 GatewayRuntime::~GatewayRuntime() {
@@ -49,6 +55,18 @@ void GatewayRuntime::start() {
             }
         });
     }
+    if (modbus_rtu_server_) {
+        modbus_rtu_worker_ = std::thread([this] {
+            const int result = modbus_rtu_server_->run();
+            if (result != 0 && !stop_requested_.load()) {
+                logger_.log(
+                    logging::Level::error,
+                    logging::Component::modbus_rtu,
+                    "server.failed",
+                    "Modbus RTU server stopped unexpectedly");
+            }
+        });
+    }
 }
 
 void GatewayRuntime::stop() noexcept {
@@ -58,6 +76,12 @@ void GatewayRuntime::stop() noexcept {
     }
     if (modbus_tcp_worker_.joinable()) {
         modbus_tcp_worker_.join();
+    }
+    if (modbus_rtu_server_) {
+        modbus_rtu_server_->stop();
+    }
+    if (modbus_rtu_worker_.joinable()) {
+        modbus_rtu_worker_.join();
     }
     if (worker_.joinable()) {
         worker_.join();
@@ -78,6 +102,7 @@ health::Input GatewayRuntime::health_input() const {
     input.storage_writable = true;
     input.modbus_tcp_listening =
         modbus_tcp_server_ != nullptr && modbus_tcp_server_->bound_port() != 0U;
+    input.modbus_rtu_ready = modbus_rtu_server_ != nullptr;
     return input;
 }
 
