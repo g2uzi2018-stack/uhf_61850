@@ -164,6 +164,26 @@ td { padding: 14px 12px; border-top: 1px solid var(--line-soft); color: #62738c;
 body.modal-open { overflow: hidden; }
 noscript { position: fixed; z-index: 30; inset: 0; padding: 35vh 20px; background: var(--bg); color: var(--text); text-align: center; }
 
+.settings-content { max-width: 1080px; }
+.settings-notice { display: flex; margin-bottom: 18px; padding: 13px 16px; border: 1px solid rgb(79 140 255 / 22%); border-radius: 9px; background: #eef5ff; color: #526d96; font-size: 11px; gap: 12px; }
+.settings-notice strong { color: #3568b8; white-space: nowrap; }
+.settings-panel { margin-bottom: 18px; }
+.settings-grid { display: grid; padding: 0 23px 22px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px 22px; }
+.settings-grid label { display: flex; flex-direction: column; gap: 6px; color: #5e6e85; font-size: 11px; }
+.settings-grid input { width: 100%; box-sizing: border-box; padding: 10px 11px; border: 1px solid #cbd8e9; border-radius: 6px; outline: none; background: #f8fafd; color: var(--text); font: inherit; font-size: 12px; }
+.settings-grid input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb(79 140 255 / 10%); }
+.settings-grid input[type="checkbox"] { width: 18px; height: 18px; margin: 10px 0 2px; accent-color: var(--blue); }
+.settings-grid small { color: var(--muted); font-size: 10px; }
+.settings-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.settings-actions .form-error { margin-right: auto; }
+.settings-saved { color: #277d5d; font-size: 11px; }
+
+@media (max-width: 600px) {
+    .settings-grid { grid-template-columns: 1fr; }
+    .settings-actions { align-items: flex-end; flex-wrap: wrap; }
+    .settings-actions .form-error { flex-basis: 100%; }
+}
+
 .status-dot.up { background: var(--green); box-shadow: 0 0 0 4px rgb(32 157 112 / 12%); }
 .status-dot.degraded { background: var(--orange); box-shadow: 0 0 0 4px rgb(200 121 39 / 12%); }
 .status-dot.down { background: var(--danger); box-shadow: 0 0 0 4px rgb(201 76 99 / 12%); }

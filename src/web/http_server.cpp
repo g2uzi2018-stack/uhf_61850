@@ -1725,7 +1725,8 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             tls,
             200,
             "{\"updated\":true,\"version\":" +
-                std::to_string(config_store_->snapshot().version) + "}\n");
+                std::to_string(config_store_->snapshot().version) +
+                ",\"restart_required\":true}\n");
         return false;
     }
 
@@ -1940,7 +1941,7 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
         }
         request_path = "/login.html";
     } else if (request_path == "/index.html" || request_path == "/overview" ||
-               request_path == "/overview.html") {
+               request_path == "/overview.html" || request_path == "/settings.html") {
         if (parsed.method != "GET") {
             send_method_not_allowed(client_fd, tls, "GET");
             return false;

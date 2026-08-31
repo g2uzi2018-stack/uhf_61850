@@ -183,6 +183,12 @@ def main() -> int:
             assert_status(overview_status, 200, "authenticated overview")
             if "实时总览".encode("utf-8") not in overview_body:
                 fail("authenticated overview page was not served")
+            settings_status, settings_body, _ = request(
+                port, "GET", "/settings.html", headers={"Cookie": cookie}
+            )
+            assert_status(settings_status, 200, "authenticated settings")
+            if "采集与转发".encode("utf-8") not in settings_body:
+                fail("authenticated settings page was not served")
 
             config_status, config_body, _ = request(
                 port, "GET", "/api/v1/config", headers={"Cookie": cookie}
