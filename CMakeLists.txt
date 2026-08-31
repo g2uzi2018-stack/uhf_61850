@@ -417,6 +417,40 @@ if(UHF_ENABLE_IEC61850)
             -Werror
         )
     endif()
+
+    add_executable(uhf_iec61850_server_smoke
+        tests/iec61850_server_smoke.cpp
+        src/iec61850/server.cpp
+        src/iec61850/model.cpp
+        src/acquisition/acquisition.cpp
+        src/domain/modbus.cpp
+        src/domain/snapshot.cpp
+    )
+    target_compile_features(uhf_iec61850_server_smoke PRIVATE cxx_std_17)
+    target_include_directories(uhf_iec61850_server_smoke PRIVATE
+        "${PROJECT_SOURCE_DIR}/src"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/hal/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/common/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/iec61850/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/iec61850/inc_private"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/inc_private"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/iso_mms/asn1c"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/logging"
+        "${PROJECT_BINARY_DIR}/third_party/libiec61850/config"
+    )
+    target_link_libraries(uhf_iec61850_server_smoke PRIVATE iec61850)
+    if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(uhf_iec61850_server_smoke PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Wconversion
+            -Wsign-conversion
+            -Wshadow
+            -Werror
+        )
+    endif()
 endif()
 
 if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -547,6 +581,7 @@ if(BUILD_TESTING)
     add_test(NAME uhf_config_store_smoke COMMAND uhf_config_store_smoke)
     if(UHF_ENABLE_IEC61850)
         add_test(NAME uhf_iec61850_model_smoke COMMAND uhf_iec61850_model_smoke)
+        add_test(NAME uhf_iec61850_server_smoke COMMAND uhf_iec61850_server_smoke)
     endif()
 endif()
 
