@@ -1025,6 +1025,15 @@ std::string json_escape(std::string_view value) {
     return result;
 }
 
+bool configuration_requires_restart(
+    const uhf::config::Values& previous, const uhf::config::Values& current) noexcept {
+    return previous.acquisition_device != current.acquisition_device ||
+        previous.rtu_device != current.rtu_device ||
+        previous.rtu_unit_id != current.rtu_unit_id ||
+        previous.iec_enabled != current.iec_enabled ||
+        previous.iec_ied_name != current.iec_ied_name;
+}
+
 constexpr std::string_view kConfigSchemaJson = R"json({
   "$schema":"https://json-schema.org/draft/2020-12/schema",
   "title":"UHF 61850 gateway configuration",
@@ -2097,6 +2106,7 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             send_error(client_fd, tls, 409, "configuration version required");
             return false;
         }
+        const config::Snapshot previous = config_store_->snapshot();
         const config::UpdateResult result = config_store_->update(expected_version, parsed.body);
         if (result == config::UpdateResult::conflict) {
             send_error(client_fd, tls, 409, "configuration version conflict");
@@ -2110,13 +2120,19 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             send_error(client_fd, tls, 500, "unable to save configuration");
             return false;
         }
+        const config::Snapshot current = config_store_->snapshot();
         send_json(
             client_fd,
             tls,
             200,
             "{\"updated\":true,\"version\":" +
-                std::to_string(config_store_->snapshot().version) +
-                ",\"restart_required\":true}\n");
+                std::to_string(current.version) +
+                ",\"restart_required\":" +
+                std::string(
+                    configuration_requires_restart(previous.values, current.values)
+                        ? "true"
+                        : "false") +
+                "}\n");
         return false;
     }
 

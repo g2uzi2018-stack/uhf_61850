@@ -332,6 +332,7 @@ def main() -> int:
             )
             assert_status(changed_config_status, 200, "config update")
             assert_json(changed_config_body, "version", config_version + 1, "config update")
+            assert_json(changed_config_body, "restart_required", False, "config update")
 
             password_payload = {
                 "current_password": initial_password,

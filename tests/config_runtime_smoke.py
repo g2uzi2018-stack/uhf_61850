@@ -164,6 +164,8 @@ def main() -> int:
                 fail(f"hot reload configuration update returned {update_status}: {update_body!r}")
             if json.loads(update_body).get("version") != 8:
                 fail(f"hot reload configuration version mismatch: {update_body!r}")
+            if json.loads(update_body).get("restart_required") is not False:
+                fail(f"hot reload unexpectedly requires restart: {update_body!r}")
 
             web_reloaded = False
             deadline = time.monotonic() + 3
