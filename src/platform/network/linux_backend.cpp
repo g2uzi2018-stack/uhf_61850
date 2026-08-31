@@ -166,6 +166,13 @@ bool LinuxNetworkBackend::read_current(NetworkConfig& config) {
         }
         return true;
     }
+    std::error_code error;
+    const std::filesystem::file_status status =
+        std::filesystem::symlink_status(persistent_file_, error);
+    if ((error && error != std::make_error_code(std::errc::no_such_file_or_directory)) ||
+        (!error && status.type() != std::filesystem::file_type::not_found)) {
+        return false;
+    }
     config = NetworkConfig{};
     return save(config);
 }

@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -204,7 +205,25 @@ int main() {
     candidate = loaded;
     candidate.eth0.address = "192.168.3.233";
     assert(!backend.apply_stage(loaded, candidate));
+
+    const std::filesystem::path corrupt_path =
+        std::filesystem::temp_directory_path() / "uhf-linux-backend-corrupt" / "network.json";
+    std::filesystem::remove_all(corrupt_path.parent_path(), ignored);
+    std::filesystem::create_directories(corrupt_path.parent_path());
+    {
+        std::ofstream output(corrupt_path);
+        output << "{not-valid-network-config";
+    }
+    uhf::network::LinuxNetworkBackend corrupt_backend(corrupt_path, runner);
+    uhf::network::NetworkConfig ignored_config;
+    assert(!corrupt_backend.read_current(ignored_config));
+    std::ifstream preserved(corrupt_path);
+    const std::string preserved_contents{
+        std::istreambuf_iterator<char>(preserved), std::istreambuf_iterator<char>()};
+    assert(preserved_contents == "{not-valid-network-config");
+
     std::filesystem::remove_all(path.parent_path(), ignored);
     std::filesystem::remove_all(dhcp_path.parent_path(), ignored);
+    std::filesystem::remove_all(corrupt_path.parent_path(), ignored);
     return 0;
 }
