@@ -67,15 +67,6 @@ if [[ -z "$version" || ! "$version" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$ ]]; the
 fi
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-preflight_args=(--release "$package_dir")
-if [[ "$skip_arch" == true ]]; then
-    preflight_args+=(--skip-arch)
-fi
-if [[ "$skip_hardware" == true ]]; then
-    preflight_args+=(--skip-hardware)
-fi
-bash "${script_dir}/preflight.sh" "${preflight_args[@]}"
-
 root_prefix=${root_dir%/}
 if [[ -z "$root_prefix" ]]; then
     root_prefix=/
@@ -88,13 +79,6 @@ current_link="${install_root}/current"
 previous_link="${install_root}/previous"
 state_dir="${root_prefix}/var/lib/uhf-gateway"
 state_file="${state_dir}/release-state.json"
-
-mkdir -p "$releases_root"
-if [[ -e "$release_dir" || -L "$release_dir" || -e "$temporary_release" || -L "$temporary_release" ]]; then
-    printf 'release already exists: %s\n' "$version" >&2
-    exit 1
-fi
-
 old_current_target=
 if [[ -L "$current_link" ]]; then
     old_current_target=$(readlink -f "$current_link")
@@ -110,8 +94,33 @@ if [[ -e "$previous_link" && ! -L "$previous_link" ]]; then
     printf 'previous path is not a symbolic link\n' >&2
     exit 1
 fi
+first_install=false
+if [[ -z "$old_current_target" ]]; then
+    first_install=true
+fi
+preflight_args=(--release "$package_dir")
+if [[ "$skip_arch" == true ]]; then
+    preflight_args+=(--skip-arch)
+fi
+if [[ "$skip_hardware" == true ]]; then
+    preflight_args+=(--skip-hardware)
+fi
+if [[ "$first_install" == true && "$no_systemd" == false ]]; then
+    preflight_args+=(--allow-legacy)
+fi
+bash "${script_dir}/preflight.sh" "${preflight_args[@]}"
 
+mkdir -p "$releases_root"
+if [[ -e "$release_dir" || -L "$release_dir" || -e "$temporary_release" || -L "$temporary_release" ]]; then
+    printf 'release already exists: %s\n' "$version" >&2
+    exit 1
+fi
+
+legacy_cutover_done=false
 cleanup() {
+    if [[ "$legacy_cutover_done" == true ]]; then
+        bash "${root_prefix}/usr/lib/uhf-gateway/legacy-recovery.sh" >/dev/null 2>&1 || true
+    fi
     if [[ -d "$temporary_release" ]]; then
         rm -rf -- "$temporary_release"
     fi
@@ -190,12 +199,25 @@ if [[ "$no_systemd" == false ]]; then
         printf '%s\n' '--no-systemd is required when --root is not /' >&2
         exit 2
     fi
+    if [[ "$first_install" == true && -d "${root_prefix}/data" ]]; then
+        bash "${root_prefix}/usr/lib/uhf-gateway/legacy-cutover.sh"
+        legacy_cutover_done=true
+        postflight_args=(--release "$release_dir")
+        if [[ "$skip_arch" == true ]]; then
+            postflight_args+=(--skip-arch)
+        fi
+        if [[ "$skip_hardware" == true ]]; then
+            postflight_args+=(--skip-hardware)
+        fi
+        bash "${script_dir}/preflight.sh" "${postflight_args[@]}"
+    fi
     systemctl daemon-reload
     systemctl enable --now uhf-network-recovery.service
     systemctl enable --now uhf-network-rollback.timer
     systemctl enable --now uhf-release-guard.timer
     systemctl enable --now uhf-privileged.service
     systemctl restart uhf-gateway.service
+    legacy_cutover_done=false
 else
     write_state ""
 fi

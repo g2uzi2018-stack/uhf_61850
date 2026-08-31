@@ -82,6 +82,14 @@ def main() -> int:
             fail("systemd unit was not installed")
         if not (target / "usr/lib/uhf-gateway/dhclient-hook").is_file():
             fail("DHCP hook was not installed")
+        for path in (
+            target / "usr/lib/uhf-gateway/legacy-cutover.sh",
+            target / "usr/lib/uhf-gateway/legacy-recovery.sh",
+            target / "etc/rsyslog.d/uhf-gateway.conf",
+            target / "etc/logrotate.d/uhf-gateway",
+        ):
+            if not path.is_file():
+                fail(f"missing installed support file: {path.relative_to(target)}")
 
         second = build_release(root, packages, "smoke-2")
         result = install(root, second, target)

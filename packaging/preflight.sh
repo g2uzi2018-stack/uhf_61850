@@ -2,13 +2,14 @@
 set -euo pipefail
 
 usage() {
-    printf 'usage: %s [--root DIR] [--release DIR] [--skip-hardware] [--skip-arch]\n' "$0" >&2
+    printf 'usage: %s [--root DIR] [--release DIR] [--skip-hardware] [--skip-arch] [--allow-legacy]\n' "$0" >&2
 }
 
 root_dir=/
 release_dir=
 skip_hardware=false
 skip_arch=false
+allow_legacy=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --root)
@@ -27,6 +28,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-arch)
             skip_arch=true
+            shift
+            ;;
+        --allow-legacy)
+            allow_legacy=true
             shift
             ;;
         *)
@@ -128,6 +133,10 @@ if [[ "$skip_hardware" == false ]]; then
     fi
     for port in 102 502 8080; do
         if ss -H -ltn "sport = :${port}" | grep -q .; then
+            if [[ "$allow_legacy" == true && "$port" == 502 ]]; then
+                printf 'preflight: allowing legacy port 502 for first cutover\n'
+                continue
+            fi
             printf 'preflight: TCP port %s is occupied\n' "$port" >&2
             exit 1
         fi
