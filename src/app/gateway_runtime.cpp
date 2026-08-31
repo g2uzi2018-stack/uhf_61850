@@ -224,7 +224,12 @@ void GatewayRuntime::apply_runtime_configuration(std::uint64_t& applied_version)
             iec61850_server_->stop();
         } else if (configured.values.iec_enabled && iec61850_server_->running() &&
                    !iec61850_server_->update_endpoint(
-                       configured.values.modbus_tcp_bind, configured.values.iec_port)) {
+                       options_.reload_iec61850_endpoint
+                           ? configured.values.modbus_tcp_bind
+                           : options_.iec61850_bind,
+                       options_.reload_iec61850_endpoint
+                           ? configured.values.iec_port
+                           : options_.iec61850_port)) {
             logger_.log(
                 logging::Level::error,
                 logging::Component::iec61850,

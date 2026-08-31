@@ -33,6 +33,7 @@ struct GatewayRuntimeOptions {
     std::string modbus_rtu_device{"/dev/ttyS4"};
     modbus::ModbusRtuOptions modbus_rtu_options{};
     bool start_iec61850{true};
+    bool reload_iec61850_endpoint{true};
     std::string iec61850_bind{"127.0.0.1"};
     std::uint16_t iec61850_port{102U};
     std::string iec61850_ied_name{"UHFPD1"};

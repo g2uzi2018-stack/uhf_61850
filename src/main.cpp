@@ -267,6 +267,9 @@ int main(int argc, char* argv[]) {
                 runtime_options.modbus_rtu_device = options.modbus_rtu_device;
                 runtime_options.modbus_rtu_options.unit_id = configured.values.rtu_unit_id;
                 runtime_options.start_iec61850 = options.start_iec61850;
+                runtime_options.reload_iec61850_endpoint =
+                    options.iec61850_bind == configured.values.modbus_tcp_bind &&
+                    options.iec61850_port == configured.values.iec_port;
                 runtime_options.iec61850_bind = options.iec61850_bind;
                 runtime_options.iec61850_port = options.iec61850_port;
                 runtime_options.iec61850_ied_name = configured.values.iec_ied_name;
