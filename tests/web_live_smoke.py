@@ -156,6 +156,15 @@ def main() -> int:
             if spectrum[:7] != [-60, -59, -58, -57, -56, -55, -60]:
                 fail(f"unexpected spectrum prefix: {spectrum[:7]!r}")
 
+            frame_directory = state_dir / "data" / "frames"
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                if list(frame_directory.glob("*.bin")):
+                    break
+                time.sleep(0.05)
+            else:
+                fail("simulator frame was not persisted")
+
             modbus_values: list[int] | None = None
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:
@@ -177,6 +186,8 @@ def main() -> int:
                 fail(f"acquisition health is not up: {health_payload!r}")
             if health_payload.get("modbus_tcp", {}).get("status") != "up":
                 fail(f"Modbus TCP health is not up: {health_payload!r}")
+            if health_payload.get("storage", {}).get("status") != "up":
+                fail(f"storage health is not up: {health_payload!r}")
             print("web live smoke: OK")
             return 0
         finally:

@@ -34,6 +34,8 @@ struct WebOptions {
     bool modbus_rtu_explicit{false};
     bool start_modbus_rtu{true};
     std::string modbus_rtu_device{"/dev/ttyS4"};
+    std::filesystem::path data_directory{"/var/lib/uhf-gateway/data"};
+    bool data_directory_explicit{false};
 };
 
 bool parse_listen(std::string_view value, std::string& address, std::uint16_t& port) {
@@ -63,7 +65,7 @@ void print_usage() {
                  "[--web-root PATH] [--state-dir PATH] [--listen IPV4:PORT] "
                  "[--simulate|--no-acquisition] [--acquisition-device PATH] "
                  "[--modbus-tcp-listen IPV4:PORT] [--modbus-rtu-device PATH] "
-                 "[--no-modbus-rtu]]\n";
+                 "[--no-modbus-rtu] [--data-dir PATH]]\n";
 }
 
 int run_self_test() {
@@ -121,6 +123,9 @@ int main(int argc, char* argv[]) {
                 options.start_modbus_rtu = true;
             } else if (option == "--no-modbus-rtu") {
                 options.start_modbus_rtu = false;
+            } else if (option == "--data-dir" && index + 1 < argc) {
+                options.data_directory = argv[++index];
+                options.data_directory_explicit = true;
             } else {
                 print_usage();
                 return 2;
@@ -132,6 +137,9 @@ int main(int argc, char* argv[]) {
         }
         if (options.simulate && !options.modbus_rtu_explicit) {
             options.start_modbus_rtu = false;
+        }
+        if (options.simulate && !options.data_directory_explicit) {
+            options.data_directory = options.state_directory / "data";
         }
 
         try {
@@ -145,17 +153,18 @@ int main(int argc, char* argv[]) {
                         std::to_string(options.port)}});
             std::unique_ptr<uhf::app::GatewayRuntime> runtime;
             if (options.start_acquisition) {
+                uhf::app::GatewayRuntimeOptions runtime_options;
+                runtime_options.simulate = options.simulate;
+                runtime_options.acquisition_device = options.acquisition_device;
+                runtime_options.poll_interval = std::chrono::seconds(6);
+                runtime_options.start_modbus_tcp = true;
+                runtime_options.modbus_tcp_bind = options.modbus_tcp_bind;
+                runtime_options.modbus_tcp_port = options.modbus_tcp_port;
+                runtime_options.start_modbus_rtu = options.start_modbus_rtu;
+                runtime_options.modbus_rtu_device = options.modbus_rtu_device;
+                runtime_options.persistence_options.data_root = options.data_directory;
                 runtime = std::make_unique<uhf::app::GatewayRuntime>(
-                    uhf::app::GatewayRuntimeOptions{
-                        options.simulate,
-                        options.acquisition_device,
-                        std::chrono::seconds(6),
-                        true,
-                        options.modbus_tcp_bind,
-                        options.modbus_tcp_port,
-                        options.start_modbus_rtu,
-                        options.modbus_rtu_device},
-                    logger);
+                    std::move(runtime_options), logger);
                 runtime->start();
             }
             uhf::app::GatewayRuntime* runtime_pointer = runtime.get();

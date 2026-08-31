@@ -6,6 +6,7 @@
 #include "logging/logger.hpp"
 #include "modbus/rtu_server.hpp"
 #include "modbus/tcp_server.hpp"
+#include "storage/persistence_runtime.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -26,6 +27,8 @@ struct GatewayRuntimeOptions {
     std::uint16_t modbus_tcp_port{502};
     bool start_modbus_rtu{true};
     std::string modbus_rtu_device{"/dev/ttyS4"};
+    bool start_persistence{true};
+    storage::PersistenceOptions persistence_options{};
 };
 
 class GatewayRuntime {
@@ -52,6 +55,7 @@ private:
     std::unique_ptr<modbus::ModbusTcpServer> modbus_tcp_server_;
     std::unique_ptr<acquisition::ISerialPort> modbus_rtu_serial_port_;
     std::unique_ptr<modbus::ModbusRtuServer> modbus_rtu_server_;
+    std::unique_ptr<storage::PersistenceWorker> persistence_worker_;
     acquisition::SnapshotStore snapshot_store_;
     std::atomic<bool> stop_requested_{false};
     std::thread worker_;

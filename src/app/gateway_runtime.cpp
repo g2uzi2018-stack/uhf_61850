@@ -31,6 +31,10 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
         modbus_rtu_server_ = std::make_unique<modbus::ModbusRtuServer>(
             *modbus_rtu_serial_port_, snapshot_store_);
     }
+    if (options_.start_persistence) {
+        persistence_worker_ = std::make_unique<storage::PersistenceWorker>(
+            snapshot_store_, logger_, options_.persistence_options);
+    }
 }
 
 GatewayRuntime::~GatewayRuntime() {
@@ -67,6 +71,9 @@ void GatewayRuntime::start() {
             }
         });
     }
+    if (persistence_worker_) {
+        persistence_worker_->start();
+    }
 }
 
 void GatewayRuntime::stop() noexcept {
@@ -86,6 +93,9 @@ void GatewayRuntime::stop() noexcept {
     if (worker_.joinable()) {
         worker_.join();
     }
+    if (persistence_worker_) {
+        persistence_worker_->stop();
+    }
 }
 
 acquisition::SnapshotStore& GatewayRuntime::snapshot_store() noexcept {
@@ -103,6 +113,11 @@ health::Input GatewayRuntime::health_input() const {
     input.modbus_tcp_listening =
         modbus_tcp_server_ != nullptr && modbus_tcp_server_->bound_port() != 0U;
     input.modbus_rtu_ready = modbus_rtu_server_ != nullptr;
+    if (persistence_worker_) {
+        const storage::PersistenceStats stats = persistence_worker_->stats();
+        input.storage_writable = !stats.writes_paused && !stats.cleanup_failed;
+        input.storage_low_watermark = stats.low_watermark_active;
+    }
     return input;
 }
 
