@@ -120,6 +120,11 @@ mmsMsg_createMmsRejectPdu(uint32_t* invokeId, int reason, ByteBuffer* response)
         rejectReason = MMS_REJECT_CONFIRMED_REQUEST_INVALID_ARGUMENT;
         break;
 
+    case MMS_ERROR_REJECT_MAX_SERV_OUTSTANDING_EXCEEDED:
+        rejectType = MMS_REJECT_CONFIRMED_REQUEST;
+        rejectReason = MMS_REJECT_CONFIRMED_REQUEST_MAX_SERV_OUTSTANDING_EXCEEDED;
+        break;
+
     case MMS_ERROR_REJECT_INVALID_PDU:
         rejectType = MMS_REJECT_PDU_ERROR;
         rejectReason = MMS_REJECT_PDU_ERROR_INVALID_PDU;
@@ -703,6 +708,44 @@ handleConfirmedResponsePdu(
 } /* handleConfirmedResponsePdu */
 #endif /* (MMS_OBTAIN_FILE_SERVICE == 1) */
 
+static bool
+getConfirmedRequestInvokeId(uint8_t* buffer, int bufPos, int maxBufPos, uint32_t* invokeId)
+{
+    while (bufPos < maxBufPos)
+    {
+        uint8_t tag = buffer[bufPos++];
+        bool extendedTag = false;
+
+        if ((tag & 0x1f) == 0x1f)
+        {
+            if (bufPos >= maxBufPos)
+                return false;
+
+            extendedTag = true;
+            tag = buffer[bufPos++];
+        }
+
+        int length;
+        bufPos = BerDecoder_decodeLength(buffer, &length, bufPos, maxBufPos);
+
+        if ((bufPos < 0) || (length < 0) || (length > (maxBufPos - bufPos)))
+            return false;
+
+        if (!extendedTag && (tag == 0x02))
+        {
+            if ((length < 1) || (length > 4))
+                return false;
+
+            *invokeId = BerDecoder_decodeUint32(buffer, length, bufPos);
+            return true;
+        }
+
+        bufPos += length;
+    }
+
+    return false;
+}
+
 static inline void
 MmsServerConnection_parseMessage(MmsServerConnection self, ByteBuffer* message, ByteBuffer* response)
 {
@@ -734,8 +777,30 @@ MmsServerConnection_parseMessage(MmsServerConnection self, ByteBuffer* message, 
         break;
 
     case 0xa0: /* Confirmed request PDU */
-        handleConfirmedRequestPdu(self, buffer, bufPos, bufPos + pduLength, response);
+    {
+        uint32_t invokeId = 0;
+        const bool hasInvokeId = getConfirmedRequestInvokeId(
+            buffer,
+            bufPos,
+            bufPos + pduLength,
+            &invokeId);
+
+        if (!hasInvokeId || MmsServerConnection_reserveOutstandingCall(self))
+        {
+            handleConfirmedRequestPdu(self, buffer, bufPos, bufPos + pduLength, response);
+
+            if (hasInvokeId && (response->size > 0))
+                MmsServerConnection_releaseOutstandingCall(self);
+        }
+        else
+        {
+            mmsMsg_createMmsRejectPdu(
+                &invokeId,
+                MMS_ERROR_REJECT_MAX_SERV_OUTSTANDING_EXCEEDED,
+                response);
+        }
         break;
+    }
 
 #if (MMS_OBTAIN_FILE_SERVICE == 1)
     case 0xa1: /* Confirmed response PDU */
@@ -811,6 +876,11 @@ MmsServerConnection_init(MmsServerConnection connection, MmsServer server, IsoCo
         self->dataStructureNestingLevel = 0;
         self->server = server;
         self->isoConnection = isoCon;
+        self->outstandingCalls = 0;
+
+#if (CONFIG_MMS_THREADLESS_STACK != 1)
+        self->outstandingCallsLock = Semaphore_create(1);
+#endif
 
 #if (MMS_DYNAMIC_DATA_SETS == 1)
         self->namedVariableLists = LinkedList_create();
@@ -864,6 +934,11 @@ MmsServerConnection_destroy(MmsServerConnection self)
     LinkedList_destroyDeep(self->namedVariableLists, (LinkedListValueDeleteFunction) MmsNamedVariableList_destroy);
 #endif
 
+#if (CONFIG_MMS_THREADLESS_STACK != 1)
+    if (self->outstandingCallsLock)
+        Semaphore_destroy(self->outstandingCallsLock);
+#endif
+
     GLOBAL_FREEMEM(self);
 }
 
@@ -877,6 +952,48 @@ bool
 MmsServerConnection_sendMessage(MmsServerConnection self, ByteBuffer* message)
 {
     return IsoConnection_sendMessage(self->isoConnection, message);
+}
+
+bool
+MmsServerConnection_reserveOutstandingCall(MmsServerConnection self)
+{
+    bool reserved = false;
+
+#if (CONFIG_MMS_THREADLESS_STACK != 1)
+    if (self->outstandingCallsLock)
+        Semaphore_wait(self->outstandingCallsLock);
+#endif
+
+    if ((self->maxServOutstandingCalled > 0) &&
+        (self->outstandingCalls < self->maxServOutstandingCalled))
+    {
+        self->outstandingCalls++;
+        reserved = true;
+    }
+
+#if (CONFIG_MMS_THREADLESS_STACK != 1)
+    if (self->outstandingCallsLock)
+        Semaphore_post(self->outstandingCallsLock);
+#endif
+
+    return reserved;
+}
+
+void
+MmsServerConnection_releaseOutstandingCall(MmsServerConnection self)
+{
+#if (CONFIG_MMS_THREADLESS_STACK != 1)
+    if (self->outstandingCallsLock)
+        Semaphore_wait(self->outstandingCallsLock);
+#endif
+
+    if (self->outstandingCalls > 0)
+        self->outstandingCalls--;
+
+#if (CONFIG_MMS_THREADLESS_STACK != 1)
+    if (self->outstandingCallsLock)
+        Semaphore_post(self->outstandingCallsLock);
+#endif
 }
 
 #if (MMS_DYNAMIC_DATA_SETS == 1)

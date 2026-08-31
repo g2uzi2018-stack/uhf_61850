@@ -405,6 +405,8 @@ convertRejectCodesToMmsError(int rejectType, int rejectReason)
         return MMS_ERROR_REJECT_UNKNOWN_PDU_TYPE;
     else if ((rejectType == 1) && (rejectReason == 4))
         return MMS_ERROR_REJECT_REQUEST_INVALID_ARGUMENT;
+    else if ((rejectType == 1) && (rejectReason == 6))
+        return MMS_ERROR_REJECT_MAX_SERV_OUTSTANDING_EXCEEDED;
     else if ((rejectType == 5) && (rejectReason == 1))
         return MMS_ERROR_REJECT_INVALID_PDU;
     else

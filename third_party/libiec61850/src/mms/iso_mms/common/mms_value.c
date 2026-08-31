@@ -2589,6 +2589,9 @@ MmsError_toString(MmsError err)
     case MMS_ERROR_REJECT_REQUEST_INVALID_ARGUMENT:
         return "reject-request-invalid-argument";
 
+    case MMS_ERROR_REJECT_MAX_SERV_OUTSTANDING_EXCEEDED:
+        return "reject-max-serv-outstanding-exceeded";
+
     default:
         return "unknown";
     }

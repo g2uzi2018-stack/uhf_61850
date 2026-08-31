@@ -55,6 +55,12 @@ LIB61850_INTERNAL bool
 MmsServerConnection_sendMessage(MmsServerConnection self, ByteBuffer* message);
 
 LIB61850_INTERNAL bool
+MmsServerConnection_reserveOutstandingCall(MmsServerConnection self);
+
+LIB61850_INTERNAL void
+MmsServerConnection_releaseOutstandingCall(MmsServerConnection self);
+
+LIB61850_INTERNAL bool
 MmsServerConnection_addNamedVariableList(MmsServerConnection self, MmsNamedVariableList variableList);
 
 LIB61850_INTERNAL MmsNamedVariableList
@@ -120,5 +126,4 @@ MmsServerConnection_getServer(MmsServerConnection self);
 #endif
 
 #endif /* MMS_SERVER_CONNECTION_H_ */
-
 

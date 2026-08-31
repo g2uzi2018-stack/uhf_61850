@@ -15,6 +15,61 @@ if(UHF_ENABLE_IEC61850)
     add_executable(uhf_iec61850_association_limit_smoke ${UHF_TEST_TARGET_OPTIONS}
         tests/iec61850_association_limit_smoke.cpp
     )
+    add_executable(uhf_iec61850_outstanding_limit_smoke ${UHF_TEST_TARGET_OPTIONS}
+        tests/iec61850_outstanding_limit_smoke.cpp
+    )
+    add_executable(uhf_iec61850_outstanding_network_smoke ${UHF_TEST_TARGET_OPTIONS}
+        tests/iec61850_outstanding_network_smoke.cpp
+        src/iec61850/model.cpp
+    )
+    target_compile_features(uhf_iec61850_outstanding_network_smoke PRIVATE cxx_std_17)
+    target_include_directories(uhf_iec61850_outstanding_network_smoke PRIVATE
+        "${PROJECT_SOURCE_DIR}/src"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/hal/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/common/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/iec61850/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/inc_private"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/iso_mms/asn1c"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/logging"
+        "${PROJECT_BINARY_DIR}/third_party/libiec61850/config"
+    )
+    target_link_libraries(uhf_iec61850_outstanding_network_smoke PRIVATE iec61850)
+    if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(uhf_iec61850_outstanding_network_smoke PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Wconversion
+            -Wsign-conversion
+            -Wshadow
+            -Werror
+        )
+    endif()
+    target_compile_features(uhf_iec61850_outstanding_limit_smoke PRIVATE cxx_std_17)
+    target_include_directories(uhf_iec61850_outstanding_limit_smoke PRIVATE
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/hal/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/common/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/iec61850/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/inc"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/inc_private"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/mms/iso_mms/asn1c"
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/logging"
+        "${PROJECT_BINARY_DIR}/third_party/libiec61850/config"
+    )
+    target_link_libraries(uhf_iec61850_outstanding_limit_smoke PRIVATE iec61850)
+    if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(uhf_iec61850_outstanding_limit_smoke PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Wconversion
+            -Wsign-conversion
+            -Wshadow
+            -Werror
+        )
+    endif()
+
     target_compile_features(uhf_iec61850_association_limit_smoke PRIVATE cxx_std_17)
     target_include_directories(uhf_iec61850_association_limit_smoke PRIVATE
         "${PROJECT_SOURCE_DIR}/third_party/libiec61850/hal/inc"
@@ -1139,6 +1194,8 @@ if(BUILD_TESTING)
     add_test(NAME uhf_tls_context_smoke COMMAND uhf_tls_context_smoke)
     if(UHF_ENABLE_IEC61850)
         add_test(NAME uhf_iec61850_association_limit_smoke COMMAND uhf_iec61850_association_limit_smoke)
+        add_test(NAME uhf_iec61850_outstanding_limit_smoke COMMAND uhf_iec61850_outstanding_limit_smoke)
+        add_test(NAME uhf_iec61850_outstanding_network_smoke COMMAND uhf_iec61850_outstanding_network_smoke)
         add_test(NAME uhf_iec61850_ber_limit_smoke COMMAND uhf_iec61850_ber_limit_smoke)
         add_test(NAME uhf_iec61850_memory_smoke COMMAND uhf_iec61850_memory_smoke)
         add_test(NAME uhf_iec61850_request_limit_smoke COMMAND uhf_iec61850_request_limit_smoke)

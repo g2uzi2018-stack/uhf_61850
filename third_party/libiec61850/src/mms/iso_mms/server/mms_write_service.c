@@ -111,6 +111,7 @@ MmsServerConnection_sendWriteResponse(MmsServerConnection self, uint32_t invokeI
     IsoConnection_sendMessage(self->isoConnection, response);
 
     MmsServer_releaseTransmitBuffer(self->server);
+    MmsServerConnection_releaseOutstandingCall(self);
 
     if (handlerMode == false)
         IsoConnection_unlock(self->isoConnection);

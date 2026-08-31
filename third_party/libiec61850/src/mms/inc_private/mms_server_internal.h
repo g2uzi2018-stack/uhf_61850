@@ -215,6 +215,10 @@ struct sMmsServerConnection {
     IsoConnection isoConnection;
     MmsServer server;
     uint32_t lastInvokeId;
+    int outstandingCalls;
+#if (CONFIG_MMS_THREADLESS_STACK != 1)
+    Semaphore outstandingCallsLock;
+#endif
 
 #if (MMS_OBTAIN_FILE_SERVICE == 1)
     uint32_t lastRequestInvokeId; /* only used by obtainFile service */
