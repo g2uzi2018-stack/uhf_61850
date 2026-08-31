@@ -257,17 +257,47 @@ bool LinuxNetworkBackend::confirm(
         (previous.eth1.mode == Mode::dhcp && !previous_leases[1U])) {
         return false;
     }
+
+    std::array<bool, 2U> stopped_previous{{false, false}};
+    const auto restore_previous_clients = [&]() noexcept {
+        bool success = true;
+        if (dhcp_client_ == nullptr) {
+            return true;
+        }
+        for (std::size_t index = 0U; index < stopped_previous.size(); ++index) {
+            if (!stopped_previous[index]) {
+                continue;
+            }
+            const InterfaceConfig& config = index == 0U ? previous.eth0 : previous.eth1;
+            success = dhcp_client_->start(config, *previous_leases[index]) && success;
+        }
+        return success;
+    };
+    for (std::size_t index = 0U; index < stopped_previous.size(); ++index) {
+        const InterfaceConfig& config = index == 0U ? previous.eth0 : previous.eth1;
+        if (config.mode != Mode::dhcp) {
+            continue;
+        }
+        if (dhcp_client_ == nullptr || !dhcp_client_->stop(config, *previous_leases[index])) {
+            (void)restore_previous_clients();
+            return false;
+        }
+        stopped_previous[index] = true;
+    }
     if (!remove_previous_state(previous, candidate, previous_leases, candidate_leases)) {
         (void)restore_previous_state(previous, candidate, previous_leases, candidate_leases);
+        (void)restore_previous_clients();
         return false;
     }
     if (!save(candidate)) {
         (void)restore_previous_state(previous, candidate, previous_leases, candidate_leases);
+        (void)restore_previous_clients();
         return false;
     }
     if (!lease_store_.save(candidate_leases) || !staged_lease_store_.clear()) {
         (void)save(previous);
         (void)restore_previous_state(previous, candidate, previous_leases, candidate_leases);
+        (void)restore_previous_clients();
         return false;
     }
     staged_ = false;

@@ -185,6 +185,7 @@ int main() {
     static_candidate.eth0.dns_count = 0U;
     assert(dhcp_backend.apply_stage(dhcp_loaded, static_candidate));
     assert(dhcp_backend.confirm(dhcp_loaded, static_candidate));
+    assert(dhcp.stop_count == 1);
     assert(dhcp_backend.read_current(dhcp_loaded));
     assert(dhcp_loaded.eth0.mode == uhf::network::Mode::static_address);
 
