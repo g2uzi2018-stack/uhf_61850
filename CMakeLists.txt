@@ -196,6 +196,30 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+add_executable(uhf_serial_port_smoke
+    tests/serial_port_smoke.cpp
+    src/acquisition/acquisition.cpp
+    src/domain/modbus.cpp
+    src/domain/snapshot.cpp
+)
+target_compile_features(uhf_serial_port_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_serial_port_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+find_library(UHF_SERIAL_UTIL_LIBRARY NAMES util)
+if(UHF_SERIAL_UTIL_LIBRARY)
+    target_link_libraries(uhf_serial_port_smoke PRIVATE "${UHF_SERIAL_UTIL_LIBRARY}")
+endif()
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_serial_port_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
 add_executable(uhf_modbus_tcp_smoke
     tests/modbus_tcp_smoke.cpp
     src/modbus/tcp_server.cpp
@@ -598,6 +622,7 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME uhf_acquisition_fault_smoke COMMAND uhf_acquisition_fault_smoke)
     add_test(NAME uhf_loopback_acquisition_smoke COMMAND uhf_loopback_acquisition_smoke)
+    add_test(NAME uhf_serial_port_smoke COMMAND uhf_serial_port_smoke)
     add_test(NAME uhf_modbus_tcp_smoke COMMAND uhf_modbus_tcp_smoke)
     add_test(NAME uhf_modbus_rtu_smoke COMMAND uhf_modbus_rtu_smoke)
     add_test(NAME uhf_frame_store_smoke COMMAND uhf_frame_store_smoke)

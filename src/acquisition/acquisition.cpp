@@ -54,12 +54,14 @@ PosixSerialPort::PosixSerialPort(const std::string& device) : file_descriptor_(-
         throw std::runtime_error("unable to read serial settings");
     }
     ::cfmakeraw(&attributes);
+    attributes.c_cflag = static_cast<tcflag_t>(
+        (attributes.c_cflag & static_cast<tcflag_t>(~(CSIZE | PARENB | CSTOPB | CRTSCTS))) |
+        CS8 | CLOCAL | CREAD);
     if (::cfsetispeed(&attributes, kSerialSpeed) < 0 ||
         ::cfsetospeed(&attributes, kSerialSpeed) < 0) {
         ::close(file_descriptor_);
         throw std::runtime_error("unable to set serial speed");
     }
-    attributes.c_cflag = static_cast<tcflag_t>(attributes.c_cflag | CLOCAL | CREAD);
     if (::tcsetattr(file_descriptor_, TCSANOW, &attributes) < 0) {
         ::close(file_descriptor_);
         throw std::runtime_error("unable to apply serial settings");
