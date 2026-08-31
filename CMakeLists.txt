@@ -20,6 +20,7 @@ if(UHF_ENABLE_IEC61850)
     set(BUILD_PYTHON_BINDINGS OFF CACHE BOOL "" FORCE)
     set(CONFIG_MMS_MAXIMUM_PDU_SIZE 16384 CACHE STRING "" FORCE)
     set(CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS 4 CACHE STRING "" FORCE)
+    set(CONFIG_IEC61850_MEMORY_LIMIT_BYTES 8388608)
     set(CONFIG_MMS_SINGLE_THREADED ON CACHE BOOL "" FORCE)
     set(CONFIG_MMS_MAX_NUMBER_OF_DATA_SET_MEMBERS 16 CACHE STRING "" FORCE)
     set(CONFIG_DEFAULT_MAX_SERV_OUTSTANDING_CALLING 2)
@@ -727,6 +728,26 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 if(UHF_ENABLE_IEC61850)
+    add_executable(uhf_iec61850_memory_smoke ${UHF_TEST_TARGET_OPTIONS}
+        tests/iec61850_memory_smoke.cpp
+    )
+    target_compile_features(uhf_iec61850_memory_smoke PRIVATE cxx_std_17)
+    target_include_directories(uhf_iec61850_memory_smoke PRIVATE
+        "${PROJECT_SOURCE_DIR}/third_party/libiec61850/hal/inc"
+    )
+    target_link_libraries(uhf_iec61850_memory_smoke PRIVATE iec61850)
+    if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(uhf_iec61850_memory_smoke PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Wconversion
+            -Wsign-conversion
+            -Wshadow
+            -Werror
+        )
+    endif()
+
     add_executable(uhf_iec61850_model_smoke ${UHF_TEST_TARGET_OPTIONS}
         tests/iec61850_model_smoke.cpp
         src/iec61850/model.cpp
@@ -1031,6 +1052,7 @@ if(BUILD_TESTING)
     add_test(NAME uhf_systemd_notify_smoke COMMAND uhf_systemd_notify_smoke)
     add_test(NAME uhf_tls_context_smoke COMMAND uhf_tls_context_smoke)
     if(UHF_ENABLE_IEC61850)
+        add_test(NAME uhf_iec61850_memory_smoke COMMAND uhf_iec61850_memory_smoke)
         add_test(NAME uhf_iec61850_model_smoke COMMAND uhf_iec61850_model_smoke)
         add_test(NAME uhf_iec61850_server_smoke COMMAND uhf_iec61850_server_smoke)
     endif()

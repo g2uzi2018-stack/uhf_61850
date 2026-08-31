@@ -48,6 +48,9 @@
 /* number of concurrent MMS client connections the server accepts, -1 for no limit */
 #cmakedefine CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS @CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS@
 
+/* total memory budget for the bundled IEC 61850 stack */
+#cmakedefine CONFIG_IEC61850_MEMORY_LIMIT_BYTES @CONFIG_IEC61850_MEMORY_LIMIT_BYTES@
+
 /* maximum nested MMS data structures accepted by the server */
 #cmakedefine CONFIG_MMS_MAX_DATA_STRUCTURE_NESTING_LEVEL @CONFIG_MMS_MAX_DATA_STRUCTURE_NESTING_LEVEL@
 
