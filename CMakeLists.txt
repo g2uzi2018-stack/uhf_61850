@@ -1135,6 +1135,12 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}"
         )
         add_test(
+            NAME uhf_auth_store_policy_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/auth_store_policy_smoke.py"
+                "${PROJECT_SOURCE_DIR}"
+        )
+        add_test(
             NAME uhf_privileged_service_smoke
             COMMAND "${Python3_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/tests/privileged_service_smoke.py"

@@ -298,6 +298,13 @@ void ensure_private_directory(const std::filesystem::path& path) {
 }
 
 void ensure_private_file(const std::filesystem::path& path) {
+    struct stat status {};
+    if (::stat(path.c_str(), &status) < 0) {
+        throw std::runtime_error("unable to inspect private authentication file");
+    }
+    if ((status.st_mode & 07777) == kPrivateFileMode) {
+        return;
+    }
     if (::chmod(path.c_str(), kPrivateFileMode) < 0) {
         throw std::runtime_error("unable to protect authentication state");
     }
