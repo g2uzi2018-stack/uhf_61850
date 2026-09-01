@@ -278,7 +278,11 @@ def main() -> int:
             if iec_payload.get("ied_name") != "UHFPD1" or len(iec_payload.get("model", [])) != 7:
                 fail(f"IEC status model is incomplete: {iec_payload!r}")
             counters = iec_payload.get("counters", {})
-            if counters.get("connection_rejections") != 0 or counters.get("max_outstanding_rejections") != 0:
+            if (
+                counters.get("connection_rejections") != 0
+                or counters.get("malformed_pdu_rejections") != 0
+                or counters.get("max_outstanding_rejections") != 0
+            ):
                 fail(f"IEC resource counters are not initialized: {iec_payload!r}")
 
             config_status, config_body, _ = request(

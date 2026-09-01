@@ -926,6 +926,12 @@ MmsServer_getConnectionLimitRejectCount(MmsServer self)
     return count;
 }
 
+uint32_t
+MmsServer_getMalformedPduRejectCount(MmsServer self)
+{
+    return __atomic_load_n(&self->malformedPduRejects, __ATOMIC_RELAXED);
+}
+
 void
 MmsServer_callConnectionHandler(MmsServer self, MmsServerConnection connection)
 {

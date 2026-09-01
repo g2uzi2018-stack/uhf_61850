@@ -746,7 +746,7 @@ getConfirmedRequestInvokeId(uint8_t* buffer, int bufPos, int maxBufPos, uint32_t
     return false;
 }
 
-static inline void
+void
 MmsServerConnection_parseMessage(MmsServerConnection self, ByteBuffer* message, ByteBuffer* response)
 {
     if (self->server->blockRequests)
@@ -754,7 +754,7 @@ MmsServerConnection_parseMessage(MmsServerConnection self, ByteBuffer* message, 
 
     uint8_t* buffer = message->buffer;
 
-    if (message->size < 2)
+    if (message->buffer == NULL || message->size < 2)
         goto parsing_error;
 
     int bufPos = 0;
@@ -764,7 +764,7 @@ MmsServerConnection_parseMessage(MmsServerConnection self, ByteBuffer* message, 
 
     bufPos = BerDecoder_decodeLength(buffer, &pduLength, bufPos, message->size);
 
-    if (bufPos < 0)
+    if (bufPos < 0 || pduLength < 0 || pduLength > (message->size - bufPos))
         goto parsing_error;
 
     if (DEBUG_MMS_SERVER)
@@ -836,6 +836,11 @@ MmsServerConnection_parseMessage(MmsServerConnection self, ByteBuffer* message, 
     return;
 
 parsing_error:
+    __atomic_fetch_add(
+        &self->server->malformedPduRejects,
+        UINT32_C(1),
+        __ATOMIC_RELAXED);
+    mmsMsg_createMmsRejectPdu(NULL, MMS_ERROR_REJECT_INVALID_PDU, response);
     if (DEBUG_MMS_SERVER)
         printf("MMS_SERVER: error parsing message\n");
 

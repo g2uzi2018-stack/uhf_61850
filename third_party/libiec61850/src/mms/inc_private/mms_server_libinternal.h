@@ -200,6 +200,9 @@ MmsServer_getMaxOutstandingRejectCount(MmsServer self);
 LIB61850_INTERNAL uint32_t
 MmsServer_getConnectionLimitRejectCount(MmsServer self);
 
+LIB61850_INTERNAL uint32_t
+MmsServer_getMalformedPduRejectCount(MmsServer self);
+
 /**
  * \brief Stop the server (for non-threaded operation mode)
  *

@@ -51,6 +51,12 @@ MmsServerConnection_destroy(MmsServerConnection connection);
 LIB61850_INTERNAL int
 MmsServerConnection_getMaxMmsPduSize(MmsServerConnection self);
 
+LIB61850_INTERNAL void
+MmsServerConnection_parseMessage(
+    MmsServerConnection self,
+    ByteBuffer* message,
+    ByteBuffer* response);
+
 LIB61850_INTERNAL bool
 MmsServerConnection_sendMessage(MmsServerConnection self, ByteBuffer* message);
 
@@ -126,4 +132,3 @@ MmsServerConnection_getServer(MmsServerConnection self);
 #endif
 
 #endif /* MMS_SERVER_CONNECTION_H_ */
-
