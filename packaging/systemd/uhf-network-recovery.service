@@ -11,12 +11,12 @@ ConditionFileIsExecutable=/opt/uhf-gateway/current/bin/uhf-network-recovery
 Type=oneshot
 User=root
 Group=root
-ExecStart=/opt/uhf-gateway/current/bin/uhf-network-recovery --network-config /etc/uhf-gateway/network.json --transaction /var/lib/uhf-privileged/network-transaction.json
+ExecStart=/opt/uhf-gateway/current/bin/uhf-network-recovery --network-config /etc/uhf-gateway/network.json --transaction /var/lib/uhf-privileged/network-transaction.json --vendor-eth0-config /etc/net.conf --vendor-eth1-config /etc/net2.conf
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/etc/uhf-gateway /var/lib/uhf-privileged
+ReadWritePaths=/etc/uhf-gateway /var/lib/uhf-privileged /etc/htnet /etc/net.conf /etc/net2.conf
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 

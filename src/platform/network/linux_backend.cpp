@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "platform/network/linux_backend.hpp"
 
+#include <arpa/inet.h>
 #include <cerrno>
 #include <array>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <fcntl.h>
@@ -10,6 +12,7 @@
 #include <initializer_list>
 #include <string>
 #include <optional>
+#include <sstream>
 #include <string_view>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -121,6 +124,211 @@ bool write_atomic(const std::filesystem::path& path, std::string_view contents) 
     return result == 0;
 }
 
+struct FileSnapshot {
+    bool exists{false};
+    std::string contents;
+};
+
+std::optional<FileSnapshot> snapshot_file(const std::filesystem::path& path) {
+    std::error_code error;
+    const std::filesystem::file_status status = std::filesystem::symlink_status(path, error);
+    if (error == std::make_error_code(std::errc::no_such_file_or_directory) ||
+        (!error && status.type() == std::filesystem::file_type::not_found)) {
+        return FileSnapshot{};
+    }
+    if (error || status.type() != std::filesystem::file_type::regular) {
+        return std::nullopt;
+    }
+    const std::optional<std::string> contents = read_file(path);
+    if (!contents) {
+        return std::nullopt;
+    }
+    return FileSnapshot{true, *contents};
+}
+
+bool sync_parent_directory(const std::filesystem::path& path) noexcept {
+    const std::filesystem::path parent = path.parent_path().empty() ? "." : path.parent_path();
+    const int descriptor = ::open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (descriptor < 0) {
+        return false;
+    }
+    const int result = ::fsync(descriptor);
+    (void)::close(descriptor);
+    return result == 0;
+}
+
+bool remove_file(const std::filesystem::path& path) noexcept {
+    if (::unlink(path.c_str()) < 0 && errno != ENOENT) {
+        return false;
+    }
+    return sync_parent_directory(path);
+}
+
+bool restore_file(
+    const std::filesystem::path& path, const FileSnapshot& snapshot) noexcept {
+    if (snapshot.exists) {
+        return write_atomic(path, snapshot.contents);
+    }
+    return remove_file(path);
+}
+
+bool prefix_to_netmask(std::uint8_t prefix, std::string& output) noexcept {
+    if (prefix == 0U || prefix > 32U) {
+        return false;
+    }
+    const std::uint32_t host_mask =
+        prefix == 32U ? 0xFFFFFFFFU : (0xFFFFFFFFU << (32U - prefix));
+    in_addr address{htonl(host_mask)};
+    char buffer[INET_ADDRSTRLEN]{};
+    if (::inet_ntop(AF_INET, &address, buffer, sizeof(buffer)) == nullptr) {
+        return false;
+    }
+    output = buffer;
+    return true;
+}
+
+bool netmask_to_prefix(std::string_view value, std::uint8_t& output) noexcept {
+    in_addr address{};
+    if (::inet_pton(AF_INET, std::string(value).c_str(), &address) != 1) {
+        return false;
+    }
+    const std::uint32_t mask = ntohl(address.s_addr);
+    std::uint8_t prefix = 0U;
+    bool zero_seen = false;
+    for (int bit = 31; bit >= 0; --bit) {
+        const bool one = (mask & (static_cast<std::uint32_t>(1U) << bit)) != 0U;
+        if (one && zero_seen) {
+            return false;
+        }
+        if (one) {
+            ++prefix;
+        } else {
+            zero_seen = true;
+        }
+    }
+    if (prefix == 0U) {
+        return false;
+    }
+    output = prefix;
+    return true;
+}
+
+std::string trim(std::string_view value) {
+    std::size_t begin = 0U;
+    while (begin < value.size() &&
+           std::isspace(static_cast<unsigned char>(value[begin])) != 0) {
+        ++begin;
+    }
+    std::size_t end = value.size();
+    while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1U])) != 0) {
+        --end;
+    }
+    return std::string(value.substr(begin, end - begin));
+}
+
+std::string unquote(std::string value) {
+    if (value.size() >= 2U &&
+        ((value.front() == '"' && value.back() == '"') ||
+         (value.front() == '\'' && value.back() == '\''))) {
+        value = value.substr(1U, value.size() - 2U);
+    }
+    return value;
+}
+
+bool parse_vendor_file(
+    const std::filesystem::path& path, uhf::network::InterfaceConfig& config) {
+    const std::optional<std::string> contents = read_file(path);
+    if (!contents || contents->empty()) {
+        return false;
+    }
+    std::string method;
+    std::string address;
+    std::string netmask;
+    std::string gateway;
+    bool method_seen = false;
+    bool address_seen = false;
+    bool netmask_seen = false;
+    bool gateway_seen = false;
+    std::istringstream lines(*contents);
+    std::string line;
+    while (std::getline(lines, line)) {
+        const std::string entry = trim(line);
+        if (entry.empty() || entry.front() == '#') {
+            continue;
+        }
+        const std::size_t separator = entry.find('=');
+        if (separator == std::string::npos) {
+            return false;
+        }
+        const std::string key = trim(entry.substr(0U, separator));
+        const std::string value = unquote(trim(entry.substr(separator + 1U)));
+        if (key == "METHOD") {
+            if (method_seen) {
+                return false;
+            }
+            method = value;
+            method_seen = true;
+        } else if (key == "IPADDR") {
+            if (address_seen) {
+                return false;
+            }
+            address = value;
+            address_seen = true;
+        } else if (key == "NETMASK") {
+            if (netmask_seen) {
+                return false;
+            }
+            netmask = value;
+            netmask_seen = true;
+        } else if (key == "GATEWAY") {
+            if (gateway_seen) {
+                return false;
+            }
+            gateway = value;
+            gateway_seen = true;
+        }
+    }
+    if (!method_seen || !netmask_seen) {
+        return false;
+    }
+    std::uint8_t prefix = 0U;
+    if (!netmask_to_prefix(netmask, prefix)) {
+        return false;
+    }
+    config.prefix = prefix;
+    config.dns = {};
+    config.dns_count = 0U;
+    config.hostname.clear();
+    config.dhcp_timeout_seconds = 15U;
+    if (method == "STATIC") {
+        if (!address_seen) {
+            return false;
+        }
+        config.mode = uhf::network::Mode::static_address;
+        config.address = address;
+        config.gateway = gateway;
+    } else if (method == "DHCP" || method == "DHCP_DNS") {
+        config.mode = uhf::network::Mode::dhcp;
+        config.address.clear();
+        config.gateway.clear();
+    } else {
+        return false;
+    }
+    return true;
+}
+
+std::string vendor_file_contents(const uhf::network::InterfaceConfig& config) {
+    std::string netmask;
+    if (!prefix_to_netmask(config.prefix, netmask)) {
+        return {};
+    }
+    const std::string method = config.mode == uhf::network::Mode::dhcp
+        ? (config.dns_count == 0U ? "DHCP" : "DHCP_DNS")
+        : "STATIC";
+    return "METHOD=" + method + "\nIPADDR=" + config.address +
+        "\nNETMASK=" + netmask + "\nGATEWAY=" + config.gateway + "\n";
+}
+
 }  // namespace
 
 namespace uhf::network {
@@ -210,10 +418,12 @@ bool ExecCommandRunner::run_allow_missing(const std::vector<std::string>& argume
 LinuxNetworkBackend::LinuxNetworkBackend(
     std::filesystem::path persistent_file,
     CommandRunner& command_runner,
-    DhcpClient* dhcp_client)
+    DhcpClient* dhcp_client,
+    VendorNetworkPaths vendor_paths)
     : persistent_file_(std::move(persistent_file)),
       command_runner_(command_runner),
       dhcp_client_(dhcp_client),
+      vendor_paths_(std::move(vendor_paths)),
       lease_store_(persistent_file_.string() + ".leases"),
       staged_lease_store_(persistent_file_.string() + ".staged-leases"),
       previous_lease_store_(persistent_file_.string() + ".previous-leases") {}
@@ -228,6 +438,20 @@ bool LinuxNetworkBackend::read_current(NetworkConfig& config) {
                 return false;
             }
         }
+        if (!vendor_paths_.eth0_config.empty() || !vendor_paths_.eth1_config.empty()) {
+            if (vendor_paths_.eth0_config.empty() || vendor_paths_.eth1_config.empty()) {
+                return false;
+            }
+            std::error_code vendor_error;
+            const bool eth0_exists = std::filesystem::exists(vendor_paths_.eth0_config, vendor_error);
+            const bool eth1_exists = std::filesystem::exists(vendor_paths_.eth1_config, vendor_error);
+            if (vendor_error) {
+                return false;
+            }
+            if (!eth0_exists || !eth1_exists) {
+                return save(config);
+            }
+        }
         return true;
     }
     std::error_code error;
@@ -236,6 +460,31 @@ bool LinuxNetworkBackend::read_current(NetworkConfig& config) {
     if ((error && error != std::make_error_code(std::errc::no_such_file_or_directory)) ||
         (!error && status.type() != std::filesystem::file_type::not_found)) {
         return false;
+    }
+    if (!vendor_paths_.eth0_config.empty() || !vendor_paths_.eth1_config.empty()) {
+        if (vendor_paths_.eth0_config.empty() || vendor_paths_.eth1_config.empty()) {
+            return false;
+        }
+        std::error_code vendor_error;
+        const bool eth0_exists = std::filesystem::exists(vendor_paths_.eth0_config, vendor_error);
+        const bool eth1_exists = std::filesystem::exists(vendor_paths_.eth1_config, vendor_error);
+        if (vendor_error || eth0_exists != eth1_exists) {
+            return false;
+        }
+        if (eth0_exists) {
+            if (!load_vendor(config)) {
+                return false;
+            }
+            if (config.eth0.mode == Mode::dhcp || config.eth1.mode == Mode::dhcp) {
+                std::array<std::optional<DhcpLease>, 2U> leases;
+                if (!load_leases(lease_store_, leases) ||
+                    (config.eth0.mode == Mode::dhcp && !leases[0U]) ||
+                    (config.eth1.mode == Mode::dhcp && !leases[1U])) {
+                    return false;
+                }
+            }
+            return save(config);
+        }
     }
     config = NetworkConfig{};
     return save(config);
@@ -539,6 +788,20 @@ bool LinuxNetworkBackend::load(NetworkConfig& config) const {
     return parse_flat_json(*contents, config);
 }
 
+bool LinuxNetworkBackend::load_vendor(NetworkConfig& config) const {
+    if (vendor_paths_.eth0_config.empty() || vendor_paths_.eth1_config.empty()) {
+        return false;
+    }
+    NetworkConfig parsed;
+    if (!parse_vendor_file(vendor_paths_.eth0_config, parsed.eth0) ||
+        !parse_vendor_file(vendor_paths_.eth1_config, parsed.eth1) ||
+        !validate(parsed).valid) {
+        return false;
+    }
+    config = std::move(parsed);
+    return true;
+}
+
 bool LinuxNetworkBackend::load_leases(
     const LeaseStore& store,
     std::array<std::optional<DhcpLease>, 2U>& leases) const {
@@ -563,7 +826,47 @@ bool LinuxNetworkBackend::save(const NetworkConfig& config) const noexcept {
         ::chmod(directory.c_str(), kDirectoryMode) < 0) {
         return false;
     }
-    return write_atomic(persistent_file_, to_flat_json(config) + "\n");
+    if (!validate(config).valid) {
+        return false;
+    }
+    const std::optional<FileSnapshot> previous = snapshot_file(persistent_file_);
+    if (!previous || !write_atomic(persistent_file_, to_flat_json(config) + "\n")) {
+        if (previous) {
+            (void)restore_file(persistent_file_, *previous);
+        }
+        return false;
+    }
+    if (save_vendor(config)) {
+        return true;
+    }
+    (void)restore_file(persistent_file_, *previous);
+    return false;
+}
+
+bool LinuxNetworkBackend::save_vendor(const NetworkConfig& config) const noexcept {
+    const bool eth0_configured = !vendor_paths_.eth0_config.empty();
+    const bool eth1_configured = !vendor_paths_.eth1_config.empty();
+    if (!eth0_configured && !eth1_configured) {
+        return true;
+    }
+    if (!eth0_configured || !eth1_configured) {
+        return false;
+    }
+    const std::optional<FileSnapshot> previous_eth0 = snapshot_file(vendor_paths_.eth0_config);
+    const std::optional<FileSnapshot> previous_eth1 = snapshot_file(vendor_paths_.eth1_config);
+    if (!previous_eth0 || !previous_eth1) {
+        return false;
+    }
+    const std::string eth0_contents = vendor_file_contents(config.eth0);
+    const std::string eth1_contents = vendor_file_contents(config.eth1);
+    if (eth0_contents.empty() || eth1_contents.empty() ||
+        !write_atomic(vendor_paths_.eth0_config, eth0_contents) ||
+        !write_atomic(vendor_paths_.eth1_config, eth1_contents)) {
+        (void)restore_file(vendor_paths_.eth0_config, *previous_eth0);
+        (void)restore_file(vendor_paths_.eth1_config, *previous_eth1);
+        return false;
+    }
+    return true;
 }
 
 bool LinuxNetworkBackend::apply_address_additions(

@@ -9,6 +9,8 @@ namespace {
 struct Options {
     std::string_view network_file{"/etc/uhf-gateway/network.json"};
     std::string_view transaction_file{"/var/lib/uhf-privileged/network-transaction.json"};
+    std::string_view vendor_eth0_config;
+    std::string_view vendor_eth1_config;
 };
 
 bool parse_options(int argc, char* argv[], Options& options) {
@@ -18,6 +20,10 @@ bool parse_options(int argc, char* argv[], Options& options) {
             options.network_file = argv[++index];
         } else if (argument == "--transaction" && index + 1 < argc) {
             options.transaction_file = argv[++index];
+        } else if (argument == "--vendor-eth0-config" && index + 1 < argc) {
+            options.vendor_eth0_config = argv[++index];
+        } else if (argument == "--vendor-eth1-config" && index + 1 < argc) {
+            options.vendor_eth1_config = argv[++index];
         } else {
             return false;
         }
@@ -30,12 +36,15 @@ bool parse_options(int argc, char* argv[], Options& options) {
 int main(int argc, char* argv[]) {
     Options options;
     if (!parse_options(argc, argv, options)) {
-        std::cerr << "usage: uhf-network-recovery [--network-config PATH] [--transaction PATH]\n";
+        std::cerr << "usage: uhf-network-recovery [--network-config PATH] [--transaction PATH] "
+                     "[--vendor-eth0-config PATH] [--vendor-eth1-config PATH]\n";
         return 2;
     }
     try {
         uhf::privileged::NetworkService service(
-            std::string(options.network_file), std::string(options.transaction_file));
+            std::string(options.network_file), std::string(options.transaction_file), nullptr, true,
+            uhf::network::VendorNetworkPaths{
+                std::string(options.vendor_eth0_config), std::string(options.vendor_eth1_config)});
         const uhf::network::TransactionResult result = service.recover_pending(false);
         if (result == uhf::network::TransactionResult::no_transaction ||
             result == uhf::network::TransactionResult::not_due ||

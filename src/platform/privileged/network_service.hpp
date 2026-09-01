@@ -21,7 +21,8 @@ public:
         std::filesystem::path network_file,
         std::filesystem::path transaction_file,
         MaintenanceRunner* maintenance_runner = nullptr,
-        bool apply_network_runtime = true);
+        bool apply_network_runtime = true,
+        network::VendorNetworkPaths vendor_paths = {});
     ~NetworkService();
 
     NetworkService(const NetworkService&) = delete;

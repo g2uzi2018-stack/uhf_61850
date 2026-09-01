@@ -95,7 +95,7 @@ IEC 许可、通用模型和 V1 事件规则已经确认。实现可以直接使
 - 总览、PRPD/PRPS、通信、网络、IEC、存储、日志、健康、安全维护页面。
 - REST/WS API、schema 版本、`If-Match` 乐观并发、原子配置写和脱敏导出。
 - 独立 root `uhf-privileged.service`：经 peer-credential Unix socket 提供持久化 network stage/confirm/rollback 和固定 maintenance 枚举动作；独立 rollback timer/helper 与早期 boot recovery 不依赖该服务存活；主服务保持 NNP，不调用 sudo/setuid。
-- 网络 schema/MA35D1 backend 同时覆盖 static 和 DHCP；DHCP stage 用受控 `dhclient` hook 在 15 秒内取得候选租约，不替换旧默认路由，页面返回实际候选地址。
+- 网络 schema/MA35D1 backend 同时覆盖 static 和 DHCP；DHCP stage 用受控 `dhclient` hook 在 15 秒内取得候选租约，不替换旧默认路由，页面返回实际候选地址；确认和回滚同步适配板上 `/etc/net.conf`、`/etc/net2.conf`，由现有 `/etc/htnet/ifconfig-*` 脚本继续加载。
 
 验收：
 

@@ -95,6 +95,11 @@ std::filesystem::path config_path() {
     return std::filesystem::temp_directory_path() / "uhf-linux-backend-smoke" / "network.json";
 }
 
+std::string read_text(const std::filesystem::path& path) {
+    std::ifstream input(path);
+    return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
 }  // namespace
 
 int main() {
@@ -144,6 +149,48 @@ int main() {
     assert(backend.read_current(loaded));
     assert(loaded.eth0.address == "192.168.3.231");
 
+    const std::filesystem::path vendor_root =
+        std::filesystem::temp_directory_path() / "uhf-linux-backend-vendor";
+    const std::filesystem::path vendor_network =
+        vendor_root / "etc" / "uhf-gateway" / "network.json";
+    const uhf::network::VendorNetworkPaths vendor_paths{
+        vendor_root / "etc" / "net.conf", vendor_root / "etc" / "net2.conf"};
+    std::filesystem::remove_all(vendor_root, ignored);
+    std::filesystem::create_directories(vendor_paths.eth0_config.parent_path());
+    uhf::network::LinuxNetworkBackend vendor_backend(
+        vendor_network, runner, nullptr, vendor_paths);
+    uhf::network::NetworkConfig vendor_current;
+    assert(vendor_backend.read_current(vendor_current));
+    assert(read_text(vendor_paths.eth0_config).find(
+               "METHOD=STATIC\nIPADDR=192.168.3.230\nNETMASK=255.255.255.0\nGATEWAY=192.168.3.1\n") == 0U);
+    assert(read_text(vendor_paths.eth1_config).find(
+               "METHOD=STATIC\nIPADDR=192.168.0.230\nNETMASK=255.255.255.0\nGATEWAY=\n") == 0U);
+    std::filesystem::remove(vendor_paths.eth1_config);
+    assert(vendor_backend.read_current(vendor_current));
+    assert(std::filesystem::is_regular_file(vendor_paths.eth1_config));
+    uhf::network::NetworkConfig vendor_candidate = vendor_current;
+    vendor_candidate.eth0.address = "192.168.3.232";
+    vendor_candidate.eth0.gateway = "192.168.3.2";
+    assert(vendor_backend.apply_stage(vendor_current, vendor_candidate));
+    assert(vendor_backend.confirm(vendor_current, vendor_candidate));
+    assert(read_text(vendor_paths.eth0_config).find(
+               "METHOD=STATIC\nIPADDR=192.168.3.232\nNETMASK=255.255.255.0\nGATEWAY=192.168.3.2\n") == 0U);
+    std::filesystem::remove(vendor_network);
+    {
+        std::ofstream eth0(vendor_paths.eth0_config);
+        eth0 << "METHOD=STATIC\nIPADDR=192.168.3.233\nNETMASK=255.255.255.0\nGATEWAY=192.168.3.3\n";
+    }
+    {
+        std::ofstream eth1(vendor_paths.eth1_config);
+        eth1 << "METHOD=STATIC\nIPADDR=192.168.0.231\nNETMASK=255.255.255.0\n";
+    }
+    uhf::network::LinuxNetworkBackend imported_backend(
+        vendor_network, runner, nullptr, vendor_paths);
+    uhf::network::NetworkConfig imported;
+    assert(imported_backend.read_current(imported));
+    assert(imported.eth0.address == "192.168.3.233");
+    assert(imported.eth1.address == "192.168.0.231");
+
     candidate = loaded;
     candidate.eth0.mode = uhf::network::Mode::dhcp;
     candidate.eth0.address.clear();
@@ -153,10 +200,13 @@ int main() {
     const std::filesystem::path dhcp_path =
         std::filesystem::temp_directory_path() / "uhf-linux-backend-dhcp" / "network.json";
     std::filesystem::remove_all(dhcp_path.parent_path(), ignored);
+    const uhf::network::VendorNetworkPaths dhcp_vendor_paths{
+        dhcp_path.parent_path() / "net.conf", dhcp_path.parent_path() / "net2.conf"};
     FakeDhcpClient dhcp;
     runner.run_ok = true;
     runner.commands.clear();
-    uhf::network::LinuxNetworkBackend dhcp_backend(dhcp_path, runner, &dhcp);
+    uhf::network::LinuxNetworkBackend dhcp_backend(
+        dhcp_path, runner, &dhcp, dhcp_vendor_paths);
     uhf::network::NetworkConfig dhcp_previous;
     assert(dhcp_backend.read_current(dhcp_previous));
     uhf::network::NetworkConfig dhcp_candidate = dhcp_previous;
@@ -171,6 +221,7 @@ int main() {
     assert(runner.commands[0U][3U] == "192.168.3.240/24");
     assert(runner.commands[1U][1U] == "route");
     assert(dhcp_backend.confirm(dhcp_previous, dhcp_candidate));
+    assert(read_text(dhcp_vendor_paths.eth0_config).find("METHOD=DHCP\n") == 0U);
     uhf::network::NetworkConfig dhcp_loaded;
     assert(dhcp_backend.read_current(dhcp_loaded));
     assert(dhcp_loaded.eth0.mode == uhf::network::Mode::dhcp);
@@ -269,6 +320,7 @@ int main() {
     assert(preserved_contents == "{not-valid-network-config");
 
     std::filesystem::remove_all(path.parent_path(), ignored);
+    std::filesystem::remove_all(vendor_root, ignored);
     std::filesystem::remove_all(dhcp_path.parent_path(), ignored);
     std::filesystem::remove_all(idempotent_path.parent_path(), ignored);
     std::filesystem::remove_all(corrupt_path.parent_path(), ignored);

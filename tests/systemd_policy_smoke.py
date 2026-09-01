@@ -62,12 +62,20 @@ def main() -> int:
         "User=root",
         "ConditionFileIsExecutable=/opt/uhf-gateway/current/bin/uhf-privilegedd",
         "ExecStart=/opt/uhf-gateway/current/bin/uhf-privilegedd",
+        "--vendor-eth0-config /etc/net.conf --vendor-eth1-config /etc/net2.conf",
         "ReadWritePaths=/etc/uhf-gateway /var/lib/uhf-privileged /run/uhf-gateway",
         "CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW",
         "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK",
         "NoNewPrivileges=true",
     ):
         require(privileged, fragment, "uhf-privileged.service")
+    for unit in (
+        "uhf-privileged.service",
+        "uhf-network-rollback.service",
+        "uhf-network-recovery.service",
+    ):
+        for fragment in ("/etc/htnet", "/etc/net.conf", "/etc/net2.conf"):
+            require(units[unit], fragment, unit)
 
     rollback = units["uhf-network-rollback.service"]
     recovery = units["uhf-network-recovery.service"]
@@ -75,6 +83,7 @@ def main() -> int:
         require(text, "DefaultDependencies=no", unit)
         require(text, "uhf-network-recovery", unit)
         require(text, "ConditionFileIsExecutable=", unit)
+        require(text, "--vendor-eth0-config /etc/net.conf --vendor-eth1-config /etc/net2.conf", unit)
         require(text, "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK", unit)
         require(text, "--transaction /var/lib/uhf-privileged/network-transaction.json", unit)
         if "RuntimeDirectory=uhf-gateway" in text or "/run/uhf-gateway" in text:

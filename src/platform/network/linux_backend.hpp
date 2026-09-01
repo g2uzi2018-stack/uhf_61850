@@ -30,12 +30,18 @@ public:
     bool run_allow_missing(const std::vector<std::string>& arguments) override;
 };
 
+struct VendorNetworkPaths {
+    std::filesystem::path eth0_config;
+    std::filesystem::path eth1_config;
+};
+
 class LinuxNetworkBackend final : public Backend {
 public:
     LinuxNetworkBackend(
         std::filesystem::path persistent_file,
         CommandRunner& command_runner,
-        DhcpClient* dhcp_client = nullptr);
+        DhcpClient* dhcp_client = nullptr,
+        VendorNetworkPaths vendor_paths = {});
 
     bool read_current(NetworkConfig& config) override;
     bool apply_stage(const NetworkConfig& previous, const NetworkConfig& candidate) override;
@@ -47,7 +53,9 @@ public:
 
 private:
     bool load(NetworkConfig& config) const;
+    bool load_vendor(NetworkConfig& config) const;
     bool save(const NetworkConfig& config) const noexcept;
+    bool save_vendor(const NetworkConfig& config) const noexcept;
     bool load_leases(
         const LeaseStore& store,
         std::array<std::optional<DhcpLease>, 2U>& leases) const;
@@ -75,6 +83,7 @@ private:
     std::filesystem::path persistent_file_;
     CommandRunner& command_runner_;
     DhcpClient* dhcp_client_{nullptr};
+    VendorNetworkPaths vendor_paths_;
     LeaseStore lease_store_;
     LeaseStore staged_lease_store_;
     LeaseStore previous_lease_store_;

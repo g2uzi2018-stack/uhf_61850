@@ -19,6 +19,8 @@ struct Options {
     uid_t allowed_uid{0U};
     bool allowed_uid_explicit{false};
     bool skip_network_runtime{false};
+    std::string vendor_eth0_config;
+    std::string vendor_eth1_config;
 };
 
 bool parse_uid(std::string_view text, uid_t& value) {
@@ -34,7 +36,8 @@ bool parse_uid(std::string_view text, uid_t& value) {
 
 void usage() {
     std::cerr << "usage: uhf-privilegedd [--socket PATH] [--network-config PATH] "
-                 "[--transaction PATH] [--allowed-uid UID] [--skip-network-runtime]\n";
+                 "[--transaction PATH] [--allowed-uid UID] [--skip-network-runtime] "
+                 "[--vendor-eth0-config PATH] [--vendor-eth1-config PATH]\n";
 }
 
 }  // namespace
@@ -57,6 +60,10 @@ int main(int argc, char* argv[]) {
             options.allowed_uid_explicit = true;
         } else if (argument == "--skip-network-runtime") {
             options.skip_network_runtime = true;
+        } else if (argument == "--vendor-eth0-config" && index + 1 < argc) {
+            options.vendor_eth0_config = argv[++index];
+        } else if (argument == "--vendor-eth1-config" && index + 1 < argc) {
+            options.vendor_eth1_config = argv[++index];
         } else {
             usage();
             return 2;
@@ -72,7 +79,9 @@ int main(int argc, char* argv[]) {
             options.network_file,
             options.transaction_file,
             nullptr,
-            !options.skip_network_runtime);
+            !options.skip_network_runtime,
+            uhf::network::VendorNetworkPaths{
+                options.vendor_eth0_config, options.vendor_eth1_config});
         const uhf::network::TransactionResult recovery = service.recover_pending(true);
         if (recovery == uhf::network::TransactionResult::corrupt ||
             recovery == uhf::network::TransactionResult::backend_error ||
