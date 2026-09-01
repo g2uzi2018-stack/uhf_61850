@@ -104,6 +104,9 @@ def main() -> int:
             assert_status(health_status or 0, 200, "health")
             if b'"web_auth":"ready"' not in health_body:
                 fail(f"authentication is not ready: {health_body!r}")
+            for component in (b'"storage":"', b'"modbus_tcp":"', b'"modbus_rtu":"'):
+                if component not in health_body:
+                    fail(f"health response is missing component status: {health_body!r}")
 
             slow = socket.create_connection(("127.0.0.1", port), timeout=2)
             slow.sendall(f"GET /healthz HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n".encode())

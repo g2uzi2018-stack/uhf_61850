@@ -25,7 +25,18 @@ def write_fake_systemctl(path: Path, active: bool) -> None:
     path.chmod(0o700)
 
 
-def run_guard(script: Path, root: Path, fake_systemctl: Path) -> subprocess.CompletedProcess[str]:
+def write_fake_curl(path: Path, body: str) -> None:
+    path.write_text(
+        "#!/bin/sh\n"
+        f"printf '%s\\n' '{body}'\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o700)
+
+
+def run_guard(
+    script: Path, root: Path, fake_systemctl: Path, fake_curl: Path
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
             "bash",
@@ -34,6 +45,8 @@ def run_guard(script: Path, root: Path, fake_systemctl: Path) -> subprocess.Comp
             str(root),
             "--systemctl",
             str(fake_systemctl),
+            "--curl",
+            str(fake_curl),
             "--no-sleep",
         ],
         cwd=root,
@@ -43,7 +56,7 @@ def run_guard(script: Path, root: Path, fake_systemctl: Path) -> subprocess.Comp
     )
 
 
-def setup(root: Path) -> tuple[Path, Path, Path]:
+def setup(root: Path, health_mode: str = "strict") -> tuple[Path, Path, Path]:
     product = root / "opt/uhf-gateway"
     old = product / "releases/old"
     new = product / "releases/new"
@@ -54,7 +67,7 @@ def setup(root: Path) -> tuple[Path, Path, Path]:
     state_dir = root / "var/lib/uhf-gateway"
     state_dir.mkdir(parents=True)
     (state_dir / "release-state.json").write_text(
-        '{"version":1,"current":"new","previous":"old","pending":"new"}\n',
+        f'{{"version":1,"current":"new","previous":"old","pending":"new","health_mode":"{health_mode}"}}\n',
         encoding="utf-8",
     )
     legacy_dir = state_dir / "legacy"
@@ -75,9 +88,14 @@ def main() -> int:
         healthy_root.mkdir()
         product, _, new = setup(healthy_root)
         fake = healthy_root / "systemctl"
+        fake_curl = healthy_root / "curl"
         write_fake_systemctl(fake, True)
+        write_fake_curl(
+            fake_curl,
+            '{"status":"up","web_auth":"ready","components":{"acquisition":"up","storage":"up","modbus_tcp":"up","modbus_rtu":"up","iec61850":"up"}}',
+        )
         for _ in range(3):
-            result = run_guard(script, healthy_root, fake)
+            result = run_guard(script, healthy_root, fake, fake_curl)
             if result.returncode != 0:
                 fail(f"healthy release was rejected: {result.stderr.strip()}")
         state = json.loads(
@@ -92,9 +110,11 @@ def main() -> int:
         failed_root.mkdir()
         product, old, new = setup(failed_root)
         fake = failed_root / "systemctl"
+        fake_curl = failed_root / "curl"
         write_fake_systemctl(fake, False)
+        write_fake_curl(fake_curl, "not-used")
         for _ in range(3):
-            result = run_guard(script, failed_root, fake)
+            result = run_guard(script, failed_root, fake, fake_curl)
             if result.returncode != 0 and _ < 2:
                 fail(f"failure counter stopped early: {result.stderr.strip()}")
         if product.joinpath("current").resolve() != old.resolve():
@@ -104,8 +124,36 @@ def main() -> int:
         state = json.loads(
             (failed_root / "var/lib/uhf-gateway/release-state.json").read_text(encoding="utf-8")
         )
-        if state != {"version": 1, "current": "old", "previous": "new", "pending": "", "healthy": 0, "failures": 0}:
+        if state != {
+            "version": 1,
+            "current": "old",
+            "previous": "new",
+            "pending": "",
+            "healthy": 0,
+            "failures": 0,
+            "health_mode": "strict",
+        }:
             fail(f"unexpected rollback state: {state!r}")
+
+        relaxed_root = Path(temporary) / "relaxed"
+        relaxed_root.mkdir()
+        product, _, _ = setup(relaxed_root, "relaxed")
+        fake = relaxed_root / "systemctl"
+        fake_curl = relaxed_root / "curl"
+        write_fake_systemctl(fake, True)
+        write_fake_curl(
+            fake_curl,
+            '{"status":"down","web_auth":"ready","components":{"acquisition":"down","storage":"up","modbus_tcp":"up","modbus_rtu":"up","iec61850":"up"}}',
+        )
+        for _ in range(3):
+            result = run_guard(script, relaxed_root, fake, fake_curl)
+            if result.returncode != 0:
+                fail(f"relaxed health mode rejected missing hardware: {result.stderr.strip()}")
+        relaxed_state = json.loads(
+            (relaxed_root / "var/lib/uhf-gateway/release-state.json").read_text(encoding="utf-8")
+        )
+        if relaxed_state["pending"] != "":
+            fail("relaxed health mode did not confirm the release")
     print("release guard smoke: OK")
     return 0
 

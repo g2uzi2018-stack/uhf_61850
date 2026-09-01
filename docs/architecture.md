@@ -146,7 +146,7 @@ V1 不实现 BRCB、控制、写服务、GOOSE、SV、MMS 文件服务、动态�
 | GET | `/login` | 否 | 登录页 |
 | POST | `/api/v1/session` | 否 | 登录，限速并校验同源 Origin |
 | DELETE | `/api/v1/session` | 是+CSRF | 注销 |
-| GET | `/healthz` | 否 | 仅返回 up/degraded/down 与版本，不泄露配置 |
+| GET | `/healthz` | 否 | 返回总体状态、版本和有限组件状态，不泄露配置 |
 | GET | `/api/v1/health` | 是 | 组件、资源、最后轮询、协议客户端数 |
 | GET | `/api/v1/snapshot/latest` | 是 | 最新快照和 3600 点 |
 | GET | `/api/v1/config` | 是 | 脱敏配置和 schema |
@@ -231,7 +231,7 @@ V1 事件检测只读取 ServingView 中 fresh/valid 的 10003。强放电状态
 
 - systemd 使用 `Restart=on-failure`、`RestartSec=2s`、`StartLimitIntervalSec=120s`、`StartLimitBurst=5`、`WatchdogSec=20s`，应用用 `sd_notify` 心跳。
 - 不直接打开 `/dev/watchdog`；板卡已有 `sysrst`/watchdog 机制，本项目不可与其竞争。
-- `/healthz` 状态由采集新鲜度、磁盘水位和关键监听端口聚合；IEC 模型/许可证未启用时可显式显示 `disabled`，不能伪报 healthy。
+- `/healthz` 状态由采集新鲜度、磁盘水位和关键监听端口聚合，并返回有限组件状态供本机发布守护检查；IEC 模型/许可证未启用时可显式显示 `disabled`，不能伪报 healthy。
 - 推荐 systemd 约束：`MemoryMax=128M`、`TasksMax=64`、`NoNewPrivileges=true`、最小读写路径和 capability bounding。
 
 ## 9. 安装、升级与回滚

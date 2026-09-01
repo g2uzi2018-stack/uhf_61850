@@ -1744,7 +1744,18 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
         body.append(health::state_name(report.overall));
         body.append("\",\"version\":\"");
         body.append(uhf::app::kVersion.data(), uhf::app::kVersion.size());
-        body.append("\",\"web_auth\":\"ready\"}\n");
+        body.append(
+            "\",\"web_auth\":\"ready\",\"components\":{\"acquisition\":\"");
+        body.append(health::state_name(report.acquisition));
+        body.append("\",\"storage\":\"");
+        body.append(health::state_name(report.storage));
+        body.append("\",\"modbus_tcp\":\"");
+        body.append(health::state_name(report.modbus_tcp));
+        body.append("\",\"modbus_rtu\":\"");
+        body.append(health::state_name(report.modbus_rtu));
+        body.append("\",\"iec61850\":\"");
+        body.append(health::state_name(report.iec61850));
+        body.append("\"}}\n");
         send_json(client_fd, tls, 200, body);
         return false;
     }

@@ -98,6 +98,10 @@ if ! sh -n "${release_dir}/libexec/uhf-gateway/release-guard.sh"; then
     printf 'preflight: release guard syntax check failed\n' >&2
     exit 1
 fi
+if ! command -v curl >/dev/null 2>&1; then
+    printf 'preflight: curl is required for release health checks\n' >&2
+    exit 1
+fi
 if ! bash -n "${release_dir}/libexec/uhf-gateway/legacy-cutover.sh"; then
     printf 'preflight: legacy cutover syntax check failed\n' >&2
     exit 1

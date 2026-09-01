@@ -79,6 +79,10 @@ if [[ "$no_systemd" == false && "$root_prefix" != "/" ]]; then
     printf '%s\n' '--no-systemd is required when --root is not /' >&2
     exit 2
 fi
+health_mode=strict
+if [[ "$skip_hardware" == true ]]; then
+    health_mode=relaxed
+fi
 install_root="${path_prefix}/opt/uhf-gateway"
 releases_root="${install_root}/releases"
 release_dir="${releases_root}/${version}"
@@ -233,8 +237,8 @@ write_state() {
         previous=$(basename "$old_current_target")
     fi
     local temporary="${state_file}.tmp.$$"
-    printf '{"version":1,"current":"%s","previous":"%s","pending":"%s"}\n' \
-        "$version" "$previous" "$pending" >"$temporary"
+    printf '{"version":1,"current":"%s","previous":"%s","pending":"%s","health_mode":"%s"}\n' \
+        "$version" "$previous" "$pending" "$health_mode" >"$temporary"
     chmod 0600 "$temporary"
     mv -Tf "$temporary" "$state_file"
 }
