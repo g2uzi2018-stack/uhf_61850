@@ -215,7 +215,8 @@ LinuxNetworkBackend::LinuxNetworkBackend(
       command_runner_(command_runner),
       dhcp_client_(dhcp_client),
       lease_store_(persistent_file_.string() + ".leases"),
-      staged_lease_store_(persistent_file_.string() + ".staged-leases") {}
+      staged_lease_store_(persistent_file_.string() + ".staged-leases"),
+      previous_lease_store_(persistent_file_.string() + ".previous-leases") {}
 
 bool LinuxNetworkBackend::read_current(NetworkConfig& config) {
     if (load(config)) {
@@ -249,6 +250,9 @@ bool LinuxNetworkBackend::apply_stage(
     if (!load_leases(lease_store_, previous_leases) ||
         (previous.eth0.mode == Mode::dhcp && !previous_leases[0U]) ||
         (previous.eth1.mode == Mode::dhcp && !previous_leases[1U])) {
+        return false;
+    }
+    if (!previous_lease_store_.clear() || !previous_lease_store_.save(previous_leases)) {
         return false;
     }
 
@@ -374,21 +378,31 @@ bool LinuxNetworkBackend::rollback(
                      to_flat_json(staged_candidate_) != to_flat_json(candidate)))) {
         return false;
     }
-    std::array<std::optional<DhcpLease>, 2U> previous_leases;
-    std::array<std::optional<DhcpLease>, 2U> candidate_leases;
-    if (!load_leases(lease_store_, previous_leases)) {
+    std::array<std::optional<DhcpLease>, 2U> current_leases;
+    if (!load_leases(lease_store_, current_leases)) {
         return false;
     }
+    std::array<std::optional<DhcpLease>, 2U> previous_leases = current_leases;
+    const LeaseLoadResult previous_backup = previous_lease_store_.load();
+    if (previous_backup.status == LeaseLoadStatus::valid) {
+        previous_leases = previous_backup.leases;
+    } else if (previous_backup.status != LeaseLoadStatus::none) {
+        return false;
+    }
+    std::array<std::optional<DhcpLease>, 2U> candidate_leases;
     const LeaseLoadResult staged = staged_lease_store_.load();
     if (staged.status == LeaseLoadStatus::valid) {
         candidate_leases = staged.leases;
     } else if (staged.status == LeaseLoadStatus::none) {
-        candidate_leases = {};
+        candidate_leases = current_leases;
     } else {
         return false;
     }
     if ((candidate.eth0.mode == Mode::dhcp && !candidate_leases[0U]) ||
         (candidate.eth1.mode == Mode::dhcp && !candidate_leases[1U])) {
+        return false;
+    }
+    if (!save(previous) || !lease_store_.save(previous_leases)) {
         return false;
     }
     const bool state_removed = remove_candidate_state(
@@ -403,7 +417,8 @@ bool LinuxNetworkBackend::rollback(
             }
         }
     }
-    if (!state_removed || !leases_released || !staged_lease_store_.clear()) {
+    if (!state_removed || !leases_released || !staged_lease_store_.clear() ||
+        !previous_lease_store_.clear()) {
         return false;
     }
     staged_ = false;

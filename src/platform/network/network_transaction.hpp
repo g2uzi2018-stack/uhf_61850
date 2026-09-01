@@ -26,6 +26,7 @@ public:
 
 enum class TransactionState {
     staged,
+    confirming,
     confirmed,
     rolled_back,
 };

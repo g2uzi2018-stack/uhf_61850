@@ -41,6 +41,11 @@ public:
     bool confirm(
         const uhf::network::NetworkConfig&, const uhf::network::NetworkConfig&) override {
         ++confirm_count;
+        if (store != nullptr) {
+            const uhf::network::LoadResult loaded = store->load();
+            confirming_seen = loaded.transaction.has_value() &&
+                loaded.transaction->state == uhf::network::TransactionState::confirming;
+        }
         return confirm_ok;
     }
 
@@ -64,6 +69,8 @@ public:
     int stage_count{0};
     int confirm_count{0};
     int rollback_count{0};
+    uhf::network::TransactionStore* store{nullptr};
+    bool confirming_seen{false};
 };
 
 std::filesystem::path temporary_path() {
@@ -80,6 +87,7 @@ int main() {
     std::filesystem::remove(path.string() + ".tmp", ignored);
     uhf::network::TransactionStore store(path);
     FakeBackend backend;
+    backend.store = &store;
     TestClock clock;
     uhf::network::TransactionManager manager(store, backend, clock, 60U);
 
@@ -103,6 +111,7 @@ int main() {
     clock.now = 201U;
     assert(manager.confirm() == uhf::network::TransactionResult::ok);
     assert(backend.confirm_count == 1);
+    assert(backend.confirming_seen);
     assert(store.load().status == uhf::network::LoadStatus::none);
     assert(backend.current.eth0.address == "192.168.3.232");
 
@@ -124,14 +133,25 @@ int main() {
     candidate.eth0.address = "192.168.3.234";
     clock.now = 400U;
     assert(manager.stage(candidate) == uhf::network::TransactionResult::ok);
+    uhf::network::Transaction transaction = *store.load().transaction;
+    transaction.state = uhf::network::TransactionState::confirming;
+    assert(store.save(transaction));
+    backend.current = candidate;
+    assert(manager.rollback_if_needed() == uhf::network::TransactionResult::ok);
+    assert(store.load().status == uhf::network::LoadStatus::none);
+    assert(backend.current.eth0.address == "192.168.3.232");
+
+    candidate.eth0.address = "192.168.3.235";
+    clock.now = 500U;
+    assert(manager.stage(candidate) == uhf::network::TransactionResult::ok);
     clock.id = "boot-b";
     assert(manager.rollback_if_needed() == uhf::network::TransactionResult::boot_changed);
     assert(backend.current.eth0.address == "192.168.3.232");
 
     clock.id = "boot-a";
-    candidate.eth0.address = "192.168.3.234";
+    candidate.eth0.address = "192.168.3.236";
     backend.stage_ok = false;
-    clock.now = 400U;
+    clock.now = 600U;
     assert(manager.stage(candidate) == uhf::network::TransactionResult::backend_error);
     assert(store.load().status == uhf::network::LoadStatus::none);
     backend.stage_ok = true;

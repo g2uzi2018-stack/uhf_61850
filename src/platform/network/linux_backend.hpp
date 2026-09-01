@@ -77,6 +77,7 @@ private:
     DhcpClient* dhcp_client_{nullptr};
     LeaseStore lease_store_;
     LeaseStore staged_lease_store_;
+    LeaseStore previous_lease_store_;
     bool staged_{false};
     NetworkConfig staged_previous_;
     NetworkConfig staged_candidate_;

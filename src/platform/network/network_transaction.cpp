@@ -193,6 +193,8 @@ bool parse_transaction(std::string_view input, uhf::network::Transaction& transa
             }
             if (state == "staged") {
                 transaction.state = uhf::network::TransactionState::staged;
+            } else if (state == "confirming") {
+                transaction.state = uhf::network::TransactionState::confirming;
             } else if (state == "confirmed") {
                 transaction.state = uhf::network::TransactionState::confirmed;
             } else if (state == "rolled_back") {
@@ -423,7 +425,9 @@ TransactionResult TransactionManager::stage(const NetworkConfig& candidate) {
     if (existing.status == LoadStatus::io_error) {
         return set_error(TransactionResult::storage_error, "network transaction cannot be read");
     }
-    if (existing.transaction && existing.transaction->state == TransactionState::staged) {
+    if (existing.transaction &&
+        (existing.transaction->state == TransactionState::staged ||
+         existing.transaction->state == TransactionState::confirming)) {
         return set_error(TransactionResult::busy, "another network transaction is pending");
     }
     NetworkConfig previous;
@@ -477,6 +481,9 @@ TransactionResult TransactionManager::confirm() {
     }
     const Transaction& transaction = *loaded.transaction;
     if (transaction.state != TransactionState::staged) {
+        if (transaction.state == TransactionState::confirming) {
+            return set_error(TransactionResult::busy, "network confirmation recovery is pending");
+        }
         return set_error(TransactionResult::no_transaction, "network transaction is no longer pending");
     }
     const std::string boot_id = clock_.boot_id();
@@ -487,10 +494,25 @@ TransactionResult TransactionManager::confirm() {
     if (now == 0U || now >= transaction.deadline_boottime_ns) {
         return rollback_loaded(transaction, TransactionResult::expired);
     }
+    Transaction confirming = transaction;
+    confirming.state = TransactionState::confirming;
+    if (!store_.save(confirming)) {
+        return set_error(TransactionResult::storage_error, "network confirmation cannot be journaled");
+    }
     if (!backend_.confirm(transaction.previous, transaction.candidate)) {
+        if (!backend_.rollback(transaction.previous, transaction.candidate)) {
+            return set_error(
+                TransactionResult::backend_error,
+                "network confirmation failed and rollback is pending");
+        }
+        if (!store_.clear()) {
+            return set_error(
+                TransactionResult::storage_error,
+                "failed network confirmation cannot be cleared");
+        }
         return set_error(TransactionResult::backend_error, "network confirmation failed");
     }
-    Transaction confirmed = transaction;
+    Transaction confirmed = confirming;
     confirmed.state = TransactionState::confirmed;
     if (!store_.save(confirmed) || !store_.clear()) {
         return set_error(TransactionResult::storage_error, "confirmed network transaction cannot be cleared");
@@ -514,7 +536,8 @@ TransactionResult TransactionManager::rollback_now() {
     if (loaded.status == LoadStatus::io_error || !loaded.transaction) {
         return set_error(TransactionResult::storage_error, "network transaction cannot be read");
     }
-    if (loaded.transaction->state != TransactionState::staged) {
+    if (loaded.transaction->state != TransactionState::staged &&
+        loaded.transaction->state != TransactionState::confirming) {
         return set_error(TransactionResult::no_transaction, "network transaction is no longer pending");
     }
     return rollback_loaded(*loaded.transaction, TransactionResult::ok);
@@ -537,6 +560,9 @@ TransactionResult TransactionManager::rollback_if_needed() {
         return set_error(TransactionResult::storage_error, "network transaction cannot be read");
     }
     const Transaction& transaction = *loaded.transaction;
+    if (transaction.state == TransactionState::confirming) {
+        return rollback_loaded(transaction, TransactionResult::ok);
+    }
     if (transaction.state != TransactionState::staged) {
         if (!store_.clear()) {
             return set_error(TransactionResult::storage_error, "completed network transaction cannot be cleared");
@@ -587,6 +613,8 @@ std::string transaction_state_name(TransactionState state) noexcept {
     switch (state) {
     case TransactionState::staged:
         return "staged";
+    case TransactionState::confirming:
+        return "confirming";
     case TransactionState::confirmed:
         return "confirmed";
     case TransactionState::rolled_back:

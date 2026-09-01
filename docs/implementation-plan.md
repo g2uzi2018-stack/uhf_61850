@@ -100,7 +100,7 @@ IEC 许可、通用模型和 V1 事件规则已经确认。实现可以直接使
 验收：
 
 - 未登录、错误密码、过期会话、所有修改路由缺 CSRF、旧配置版本、恶意 IP/端口/IED 名、路径穿越全部失败关闭；证书/私钥不匹配、过期、错误 SAN、超限和热重载失败保持旧 HTTPS 可用且不泄露私钥。
-- 静态/DHCP stage 同时保留旧地址/路由和新辅助地址；DHCP 无服务器、NAK、续租和地址变化均有测试。候选地址应用完成后开始 60 秒 `CLOCK_BOOTTIME` 截止；主服务/特权服务被 kill 或 crash-loop 时，独立 systemd rollback timer 仍按原截止执行，RTC/NTP 跳变不影响，boot ID 改变或事务损坏由早期 recovery 在网络服务前立即回滚；确认后持久化，frpc/4G 进程始终在运行。
+- 静态/DHCP stage 同时保留旧地址/路由和新辅助地址；DHCP 无服务器、NAK、续租和地址变化均有测试。候选地址应用完成后开始 60 秒 `CLOCK_BOOTTIME` 截止；主服务/特权服务被 kill 或 crash-loop 时，独立 systemd rollback timer 仍按原截止执行，RTC/NTP 跳变不影响，boot ID 改变或事务损坏由早期 recovery 在网络服务前立即回滚；confirm 先持久化 `confirming` 状态，断电恢复时连同 DHCP 旧租约回滚到旧配置，完成后才清理事务；frpc/4G 进程始终在运行。
 - 断开 WebSocket 后恢复；跨站 `Origin` 握手被拒绝；4 个 WS 慢客户端只保留最新 generation，队列与 3600 点消息大小有界；页面离线无 CDN 请求。
 
 ### WP6：IEC 61850

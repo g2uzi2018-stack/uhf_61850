@@ -137,9 +137,12 @@ int main() {
     candidate.eth0.gateway = "192.168.3.3";
     const std::size_t before_rollback = runner.commands.size();
     assert(backend.apply_stage(loaded, candidate));
+    assert(backend.confirm(loaded, candidate));
     assert(backend.rollback(loaded, candidate));
-    assert(runner.commands.size() == before_rollback + 4U);
+    assert(runner.commands.size() == before_rollback + 6U);
     assert(runner.commands.back()[2U] == "del");
+    assert(backend.read_current(loaded));
+    assert(loaded.eth0.address == "192.168.3.231");
 
     candidate = loaded;
     candidate.eth0.mode = uhf::network::Mode::dhcp;
@@ -193,6 +196,7 @@ int main() {
     assert(dhcp_backend.refresh_runtime());
     assert(runner.commands.size() == after_refresh);
 
+    const uhf::network::NetworkConfig dhcp_before_static = dhcp_loaded;
     uhf::network::NetworkConfig static_candidate = dhcp_loaded;
     static_candidate.eth0.mode = uhf::network::Mode::static_address;
     static_candidate.eth0.address = "192.168.3.231";
@@ -203,12 +207,21 @@ int main() {
     assert(dhcp.stop_count == 1);
     assert(dhcp_backend.read_current(dhcp_loaded));
     assert(dhcp_loaded.eth0.mode == uhf::network::Mode::static_address);
+    assert(dhcp_backend.rollback(dhcp_before_static, static_candidate));
+    assert(dhcp_backend.read_current(dhcp_loaded));
+    assert(dhcp_loaded.eth0.mode == uhf::network::Mode::dhcp);
+    assert(dhcp_backend.apply_stage(dhcp_loaded, static_candidate));
+    assert(dhcp_backend.confirm(dhcp_loaded, static_candidate));
+    assert(dhcp.stop_count == 2);
+    assert(dhcp_backend.read_current(dhcp_loaded));
+    assert(dhcp_loaded.eth0.mode == uhf::network::Mode::static_address);
 
     dhcp_candidate = dhcp_loaded;
     dhcp_candidate.eth0.mode = uhf::network::Mode::dhcp;
     dhcp_candidate.eth0.address.clear();
     dhcp_candidate.eth0.gateway.clear();
     assert(dhcp_backend.apply_stage(dhcp_loaded, dhcp_candidate));
+    assert(dhcp_backend.confirm(dhcp_loaded, dhcp_candidate));
     assert(dhcp_backend.rollback(dhcp_loaded, dhcp_candidate));
     assert(dhcp.release_count == 1);
     assert(dhcp_backend.read_current(dhcp_loaded));

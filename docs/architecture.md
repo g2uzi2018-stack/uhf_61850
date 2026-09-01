@@ -185,7 +185,7 @@ V1 不实现 BRCB、控制、写服务、GOOSE、SV、MMS 文件服务、动态�
 
 DHCP stage 使用板上已确认存在的 `dhclient` 和随发布包安装的 root-owned 固定 hook；hook 只把 OFFER/BOUND 写入事务服务，不运行发行版任意脚本。15 秒内取租失败则原样回滚；成功后 helper 把租约地址作为辅助地址、候选默认路由使用更差 metric，并在页面返回实际地址/租期。confirm 后才原子写入 `/etc/htnet` 的 DHCP 模式并接管续租；rollback 终止候选 PID、删除候选地址/路由/lease 并恢复旧文件。续租、NAK、地址变化和无 DHCP 服务器都必须故障注入。
 
-特权服务和协议文件为 root 所有、不可由服务用户修改。网络事务包含旧配置、候选配置、Linux boot ID、stage 时 `CLOCK_BOOTTIME`、boottime 截止、状态和校验和；事务文件旁的 root-owned lock 让特权服务、回滚 timer 和早期 recovery 不会并发改动内核状态。同一 boot ID 内只以 boottime 截止为准，RTC/NTP 前后跳均不改变 60 秒；服务重启继续原截止。候选应用成功时同时启动独立的 `uhf-network-rollback.timer`，其固定 root helper 在截止时直接读取事务并回滚，不依赖主守护进程或特权 socket 服务仍存活；主特权服务自身也用 `timerfd(CLOCK_BOOTTIME)` 执行同一幂等动作。boot ID 改变、事务损坏或截止无法证明时，`uhf-network-recovery.service` 在网络服务启动前立即回滚，不在新开机周期继续等待。审计记录旧/新配置摘要、用户、结果和回滚原因，不记录密码或会话令牌。任何动作都不得 stop/restart frpc、4G、sysrst 或硬件 watchdog。
+特权服务和协议文件为 root 所有、不可由服务用户修改。网络事务包含旧配置、候选配置、Linux boot ID、stage 时 `CLOCK_BOOTTIME`、boottime 截止、状态和校验和；事务文件旁的 root-owned lock 让特权服务、回滚 timer 和早期 recovery 不会并发改动内核状态。confirm 先把状态原子写成 `confirming`，后端才写入候选持久配置；重启发现 `confirming` 时只回滚到旧配置，避免把半完成候选配置重新当成正式配置。DHCP 的旧租约也保留在 root-owned journal 中，回滚时与配置一起恢复。同一 boot ID 内只以 boottime 截止为准，RTC/NTP 前后跳均不改变 60 秒；服务重启继续原截止。候选应用成功时同时启动独立的 `uhf-network-rollback.timer`，其固定 root helper 在截止时直接读取事务并回滚，不依赖主守护进程或特权 socket 服务仍存活；主特权服务自身也用 `timerfd(CLOCK_BOOTTIME)` 执行同一幂等动作。boot ID 改变、事务损坏或截止无法证明时，`uhf-network-recovery.service` 在网络服务启动前立即回滚，不在新开机周期继续等待。审计记录旧/新配置摘要、用户、结果和回滚原因，不记录密码或会话令牌。任何动作都不得 stop/restart frpc、4G、sysrst 或硬件 watchdog。
 
 板卡启动使用 `/etc/htnet/ifconfig-eth0`、`ifconfig-eth1` 和 `/etc/net.conf`/`net2.conf`。新 helper 应封装这些板级差异，业务代码不得直接依赖旧 `/data/modify_net*.sh`，因为旧脚本会立即重启且缺少服务端校验。
 
