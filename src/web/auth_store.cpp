@@ -26,6 +26,7 @@ constexpr std::uint32_t kPasswordIterations = 210000;
 constexpr std::size_t kSaltBytes = 16;
 constexpr std::size_t kPasswordHashBytes = 32;
 constexpr std::size_t kMaxPasswordBytes = 256;
+constexpr std::string_view kDefaultBootstrapPassword{"admin"};
 constexpr mode_t kPrivateFileMode = S_IRUSR | S_IWUSR;
 constexpr mode_t kPrivateDirectoryMode = S_IRWXU;
 
@@ -85,6 +86,10 @@ std::string trim(std::string_view value) {
         --end;
     }
     return std::string(value.substr(begin, end - begin));
+}
+
+bool valid_bootstrap_password(std::string_view password) {
+    return password == kDefaultBootstrapPassword || password.size() == kSaltBytes * 2U;
 }
 
 std::optional<std::string> json_string_field(std::string_view json, std::string_view key) {
@@ -373,11 +378,11 @@ AuthStore::AuthStore(std::filesystem::path state_directory)
     if (bootstrap_exists) {
         bootstrap_password = trim(read_file(bootstrap_path_, kMaxPasswordBytes + 1U));
         ensure_private_file(bootstrap_path_);
-        if (bootstrap_password.size() != 32U) {
+        if (!valid_bootstrap_password(bootstrap_password)) {
             throw std::runtime_error("initial authentication state is invalid");
         }
     } else {
-        bootstrap_password = random_hex(kSaltBytes);
+        bootstrap_password = std::string(kDefaultBootstrapPassword);
         write_atomic(bootstrap_path_, bootstrap_password + "\n", kPrivateFileMode);
     }
 

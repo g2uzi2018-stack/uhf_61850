@@ -141,8 +141,8 @@ def main() -> int:
             if stat.S_IMODE(auth_path.stat().st_mode) != 0o600:
                 fail("auth.json is not mode 0600")
             initial_password = bootstrap_path.read_text(encoding="utf-8").strip()
-            if len(initial_password) != 32:
-                fail("initial password does not have the expected length")
+            if initial_password != "admin":
+                fail("initial password does not use the configured default")
 
             root_status, _, root_headers = request(port, "GET", "/")
             assert_status(root_status, 302, "unauthenticated root")
@@ -395,8 +395,11 @@ def main() -> int:
             if bootstrap_path.exists():
                 fail("one-time initial password file was not removed")
             auth_text = auth_path.read_text(encoding="utf-8")
-            if initial_password in auth_text or password_payload["new_password"] in auth_text:
+            auth_record = json.loads(auth_text)
+            if "password" in auth_record or "current_password" in auth_record or "new_password" in auth_record:
                 fail("plaintext password was written to auth.json")
+            if password_payload["new_password"] in auth_text:
+                fail("new plaintext password was written to auth.json")
 
             old_session_status, _, _ = request(
                 port, "GET", "/api/v1/session", headers={"Cookie": cookie}

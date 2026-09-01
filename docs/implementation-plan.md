@@ -129,7 +129,7 @@ IEC 许可、通用模型和 V1 事件规则已经确认。实现可以直接使
 - 版本目录、current/previous/pending、release guard 自动回退、systemd restart/start-limit/watchdog、用户/组、capability、rsyslog/logrotate、配置迁移和回滚。
 - 安装前检查 502/102/8080、ttyS1/ttyS4、磁盘、架构、NTP、受保护进程。
 - 备份 root crontab并只精确禁用 `/data/run.sh` 那一行，验证其他条目未变；只停止工作目录为 `/data` 的旧 Web.py/Main.py；首次切换保留受控 legacy recovery unit，健康确认后清除恢复标记，后续升级只由 release guard 回滚。
-- 首次随机管理员密码安全交付，管理员可在登录后主动改密。
+- 首次默认管理员密码为 `admin`，管理员可在登录后主动改密。
 
 验收：安装、升级失败回滚、损坏配置、连续崩溃、断电后启动、整机重启；新 release 三次快速失败自动回 previous，首次切换可恢复 legacy；frpc、4G、sysrst/watchdog 不受影响。
 

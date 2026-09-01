@@ -50,7 +50,7 @@ format-check 是可选的 CMake 目标；安装 clang-format 后执行：
 
 本机网卡地址可能不同，可用 ip -br addr 查看。开发服务绑定所有接口，页面和 API 使用 HTTP 开发模式，只应在可信的开发网络中使用；看完后在启动终端按 Ctrl-C 停止。若只想本机监听，可设置 UHF_WEB_LISTEN=127.0.0.1:8080。
 
-首次启动会在 `build/dev-state/initial-password` 生成一次性随机密码（文件权限
+首次启动会在 `build/dev-state/initial-password` 写入一次性默认密码 `admin`（文件权限
 0600），登录账号为 `admin`，管理员可在用户管理页主动修改密码；改密成功
 会删除该一次性密码文件。运行时哈希保存在 `build/dev-state/auth.json`（权限
 0600），开发服务停止后可删除整个 `build/` 目录重新初始化。正式发布安装由
