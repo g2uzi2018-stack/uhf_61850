@@ -144,6 +144,13 @@ health::Input GatewayRuntime::health_input() const {
     return input;
 }
 
+iec61850::RuntimeStats GatewayRuntime::iec61850_stats() const noexcept {
+    if (!iec61850_server_) {
+        return {};
+    }
+    return iec61850_server_->stats();
+}
+
 void GatewayRuntime::run() {
     bool previous_cycle_failed = false;
     std::uint64_t applied_config_version = 0U;

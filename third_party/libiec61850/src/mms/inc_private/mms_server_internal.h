@@ -152,6 +152,7 @@ struct sMmsServer
     bool blockRequests;
 
     ByteBuffer* transmitBuffer; /* global buffer for encoding reports, delayed responses... */
+    uint32_t maxOutstandingRejects;
 #if (CONFIG_MMS_THREADLESS_STACK != 1)
     Semaphore transmitBufferMutex;
 #endif

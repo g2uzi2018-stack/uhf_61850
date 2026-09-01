@@ -3,6 +3,10 @@
 
 #include "domain/snapshot.hpp"
 
+extern "C" {
+#include "mms_server_libinternal.h"
+}
+
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
@@ -143,6 +147,15 @@ bool Server::update_endpoint(std::string bind_address, std::uint16_t port) {
 
 bool Server::running() const noexcept {
     return running_.load();
+}
+
+RuntimeStats Server::stats() const noexcept {
+    RuntimeStats result;
+    if (server_ != nullptr) {
+        result.max_outstanding_rejections = static_cast<std::uint64_t>(
+            MmsServer_getMaxOutstandingRejectCount(IedServer_getMmsServer(server_)));
+    }
+    return result;
 }
 
 void Server::update_timestamp(DataAttribute* attribute, std::uint64_t timestamp_ms) {

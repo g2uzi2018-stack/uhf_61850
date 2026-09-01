@@ -900,6 +900,12 @@ MmsServer_getConnectionCounter(MmsServer self)
     return count;
 }
 
+uint32_t
+MmsServer_getMaxOutstandingRejectCount(MmsServer self)
+{
+    return __atomic_load_n(&self->maxOutstandingRejects, __ATOMIC_RELAXED);
+}
+
 void
 MmsServer_callConnectionHandler(MmsServer self, MmsServerConnection connection)
 {

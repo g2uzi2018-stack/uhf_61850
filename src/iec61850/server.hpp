@@ -3,6 +3,7 @@
 
 #include "acquisition/acquisition.hpp"
 #include "iec61850/model.hpp"
+#include "iec61850/stats.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -33,6 +34,7 @@ public:
     bool update_endpoint(std::string bind_address, std::uint16_t port);
     void stop() noexcept;
     bool running() const noexcept;
+    RuntimeStats stats() const noexcept;
 
 private:
     void start_locked();

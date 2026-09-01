@@ -794,6 +794,10 @@ MmsServerConnection_parseMessage(MmsServerConnection self, ByteBuffer* message, 
         }
         else
         {
+            __atomic_fetch_add(
+                &self->server->maxOutstandingRejects,
+                UINT32_C(1),
+                __ATOMIC_RELAXED);
             mmsMsg_createMmsRejectPdu(
                 &invokeId,
                 MMS_ERROR_REJECT_MAX_SERV_OUTSTANDING_EXCEEDED,

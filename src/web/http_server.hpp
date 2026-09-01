@@ -4,6 +4,7 @@
 #include "acquisition/acquisition.hpp"
 #include "config/config_store.hpp"
 #include "health/health.hpp"
+#include "iec61850/stats.hpp"
 #include "logging/logger.hpp"
 #include "platform/privileged/unix_socket.hpp"
 #include "storage/event_store.hpp"
@@ -27,6 +28,7 @@
 namespace uhf::web {
 
 using HealthInputProvider = std::function<health::Input()>;
+using Iec61850StatsProvider = std::function<iec61850::RuntimeStats()>;
 
 class HttpServer {
 public:
@@ -43,7 +45,8 @@ public:
         logging::Logger* logger = nullptr,
         std::filesystem::path data_root = {},
         privileged::UnixSocketClient* network_client = nullptr,
-        bool reload_web_endpoint = false);
+        bool reload_web_endpoint = false,
+        Iec61850StatsProvider iec61850_stats_provider = {});
 
     int run();
 
@@ -79,6 +82,7 @@ private:
     AuthStore auth_store_;
     const acquisition::SnapshotStore* snapshot_store_{nullptr};
     HealthInputProvider health_input_provider_;
+    Iec61850StatsProvider iec61850_stats_provider_;
     config::ConfigStore* config_store_{nullptr};
     bool tls_enabled_{true};
     std::unique_ptr<TlsContext> tls_context_;

@@ -54,6 +54,7 @@ public:
 
     acquisition::SnapshotStore& snapshot_store() noexcept;
     health::Input health_input() const;
+    iec61850::RuntimeStats iec61850_stats() const noexcept;
 
 private:
     void apply_runtime_configuration(std::uint64_t& applied_version);

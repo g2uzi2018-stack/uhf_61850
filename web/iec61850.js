@@ -18,6 +18,7 @@
         setText("iec-status", "IEC · " + statusText(status));
         var badge = document.getElementById("iec-badge"); badge.className = "heading-badge " + (status === "up" ? "" : "dev-badge"); badge.innerHTML = "<i></i>" + statusText(status);
         setText("iec-enabled", payload.enabled ? "已启用" : "未启用"); setText("ied-name", payload.ied_name); setText("iec-listen", (payload.bind_address || "--") + ":" + (payload.port || "--")); setText("iec-service-status", statusText(status));
+        setText("iec-outstanding-rejections", payload.counters && payload.counters.max_outstanding_rejections);
         setText("dataset-reference", payload.dataset && payload.dataset.reference); setText("report-reference", payload.report && payload.report.reference); setText("integrity-period", payload.report ? payload.report.integrity_seconds + " 秒" : "--");
         var snapshotState = document.getElementById("snapshot-state"); snapshotState.textContent = snapshot && snapshot.generation ? "generation " + snapshot.generation : "尚无快照";
         var body = document.getElementById("iec-model-body"); body.textContent = ""; model = payload.model || [];

@@ -277,6 +277,8 @@ def main() -> int:
             iec_payload = json.loads(iec_body)
             if iec_payload.get("ied_name") != "UHFPD1" or len(iec_payload.get("model", [])) != 7:
                 fail(f"IEC status model is incomplete: {iec_payload!r}")
+            if iec_payload.get("counters", {}).get("max_outstanding_rejections") != 0:
+                fail(f"IEC resource counters are not initialized: {iec_payload!r}")
 
             config_status, config_body, _ = request(
                 port, "GET", "/api/v1/config", headers={"Cookie": cookie}

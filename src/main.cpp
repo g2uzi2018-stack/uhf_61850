@@ -303,7 +303,11 @@ int main(int argc, char* argv[]) {
                 &logger,
                 options.data_directory,
                 &network_client,
-                options.port == configured.values.web_port);
+                options.port == configured.values.web_port,
+                runtime_pointer == nullptr
+                    ? uhf::web::Iec61850StatsProvider{}
+                    : uhf::web::Iec61850StatsProvider{
+                          [runtime_pointer] { return runtime_pointer->iec61850_stats(); }});
             const int result = server.run();
             if (runtime) {
                 runtime->stop();

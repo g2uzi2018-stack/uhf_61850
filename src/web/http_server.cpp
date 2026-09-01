@@ -1084,13 +1084,15 @@ HttpServer::HttpServer(
     logging::Logger* logger,
     std::filesystem::path data_root,
     privileged::UnixSocketClient* network_client,
-    bool reload_web_endpoint)
+    bool reload_web_endpoint,
+    Iec61850StatsProvider iec61850_stats_provider)
     : document_root_(std::move(document_root)),
       bind_address_(std::move(bind_address)),
       port_(port),
       auth_store_(std::move(state_directory)),
       snapshot_store_(snapshot_store),
       health_input_provider_(std::move(health_input_provider)),
+      iec61850_stats_provider_(std::move(iec61850_stats_provider)),
       config_store_(config_store),
       tls_enabled_(tls_enabled),
       logger_(logger),
@@ -1135,6 +1137,14 @@ std::string HttpServer::iec61850_json(std::chrono::steady_clock::time_point now)
         values = config_store_->snapshot().values;
     }
     const health::Report report = health_report(now);
+    iec61850::RuntimeStats stats;
+    if (iec61850_stats_provider_) {
+        try {
+            stats = iec61850_stats_provider_();
+        } catch (...) {
+            stats = {};
+        }
+    }
     constexpr std::array<std::string_view, 7U> references = {
         "PDMON/SPDC1.UhfPaDsch.mag.f",
         "PDMON/SPDC1.PaDschAlm.stVal",
@@ -1183,7 +1193,9 @@ std::string HttpServer::iec61850_json(std::chrono::steady_clock::time_point now)
         body.append(references[index]);
         body.push_back('\"');
     }
-    body.append("]},\"report\":{\"reference\":\"PDMON/LLN0.RPMeasurements\",\"buffered\":false,\"integrity_seconds\":60,\"triggers\":[\"data_changed\",\"quality_changed\",\"integrity\"]},\"limits\":{\"max_connections\":4,\"max_pdu_bytes\":16384,\"max_pending_bytes\":65536}}\n");
+    body.append("]},\"report\":{\"reference\":\"PDMON/LLN0.RPMeasurements\",\"buffered\":false,\"integrity_seconds\":60,\"triggers\":[\"data_changed\",\"quality_changed\",\"integrity\"]},\"limits\":{\"max_connections\":4,\"max_pdu_bytes\":16384,\"max_pending_bytes\":65536},\"counters\":{\"max_outstanding_rejections\":");
+    body.append(std::to_string(stats.max_outstanding_rejections));
+    body.append("}}\n");
     return body;
 }
 

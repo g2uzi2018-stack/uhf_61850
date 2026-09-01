@@ -169,6 +169,9 @@ int main()
         ok = expect(
             access_state.calls.load() == kOutstandingLimit,
             "rejected request does not reach read handler") && ok;
+        ok = expect(
+            MmsServer_getMaxOutstandingRejectCount(IedServer_getMmsServer(server)) == 1U,
+            "max-outstanding rejection is counted") && ok;
     }
 
     MmsConnection_close(connection);
