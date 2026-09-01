@@ -64,6 +64,7 @@ def main() -> int:
         "ExecStart=/opt/uhf-gateway/current/bin/uhf-privilegedd",
         "ReadWritePaths=/etc/uhf-gateway /var/lib/uhf-privileged /run/uhf-gateway",
         "CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW",
+        "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK",
         "NoNewPrivileges=true",
     ):
         require(privileged, fragment, "uhf-privileged.service")
@@ -75,6 +76,7 @@ def main() -> int:
         require(text, "uhf-network-recovery", unit)
         require(text, "ConditionFileIsExecutable=", unit)
         require(text, "RuntimeDirectory=uhf-gateway", unit)
+        require(text, "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK", unit)
         require(text, "--transaction /var/lib/uhf-privileged/network-transaction.json", unit)
     require(units["uhf-network-rollback.timer"], "OnUnitActiveSec=5s", "uhf-network-rollback.timer")
     require(units["uhf-network-rollback.timer"], "Persistent=true", "uhf-network-rollback.timer")
