@@ -254,6 +254,7 @@ if [[ "$no_systemd" == false ]]; then
     systemctl enable --now uhf-network-rollback.timer
     systemctl enable --now uhf-release-guard.timer
     systemctl enable --now uhf-privileged.service
+    systemctl enable uhf-gateway.service
     systemctl restart uhf-gateway.service
     legacy_cutover_done=false
 else

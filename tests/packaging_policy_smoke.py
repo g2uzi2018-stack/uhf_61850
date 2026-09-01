@@ -20,6 +20,7 @@ def main() -> int:
     root = Path(sys.argv[1])
     rsyslog = (root / "packaging/rsyslog/uhf-gateway.conf").read_text(encoding="utf-8")
     logrotate = (root / "packaging/logrotate/uhf-gateway").read_text(encoding="utf-8")
+    installer = (root / "packaging/install.sh").read_text(encoding="utf-8")
 
     require(rsyslog, "$programname == 'uhf-gatewayd'", "rsyslog filter")
     require(rsyslog, "$syslogfacility-text == 'local0'", "rsyslog facility")
@@ -31,6 +32,7 @@ def main() -> int:
     require(logrotate, "compress", "logrotate compression")
     require(logrotate, "missingok", "logrotate missingok")
     require(logrotate, "systemctl reload rsyslog.service", "log reopen")
+    require(installer, "systemctl enable uhf-gateway.service", "installer service enable")
     if "/data" in rsyslog or "/data" in logrotate:
         fail("policy must not target the legacy data service")
     print("packaging policy smoke: OK")
