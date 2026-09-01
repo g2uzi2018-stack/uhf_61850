@@ -281,6 +281,7 @@ def main() -> int:
             if (
                 counters.get("connection_rejections") != 0
                 or counters.get("malformed_pdu_rejections") != 0
+                or counters.get("oversized_pdu_rejections") != 0
                 or counters.get("max_outstanding_rejections") != 0
             ):
                 fail(f"IEC resource counters are not initialized: {iec_payload!r}")

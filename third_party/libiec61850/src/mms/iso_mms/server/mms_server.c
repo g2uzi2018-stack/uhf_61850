@@ -932,6 +932,12 @@ MmsServer_getMalformedPduRejectCount(MmsServer self)
     return __atomic_load_n(&self->malformedPduRejects, __ATOMIC_RELAXED);
 }
 
+uint32_t
+MmsServer_getOversizedPduRejectCount(MmsServer self)
+{
+    return __atomic_load_n(&self->oversizedPduRejects, __ATOMIC_RELAXED);
+}
+
 void
 MmsServer_callConnectionHandler(MmsServer self, MmsServerConnection connection)
 {

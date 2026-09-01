@@ -1,3 +1,5 @@
+#include "stack_config.h"
+
 extern "C" {
 #include "byte_buffer.h"
 #include "mms_server_connection.h"
@@ -64,11 +66,19 @@ int main()
     const bool declared_payload_overrun = rejects_malformed(
         &server_storage,
         {0xa0U, 0x02U, 0x00U});
+    const std::vector<std::uint8_t> oversized(
+        static_cast<std::size_t>(CONFIG_MMS_MAXIMUM_PDU_SIZE) + 1U,
+        0U);
+    const bool oversized_pdu = rejects_malformed(&server_storage, oversized);
     bool ok = expect(truncated_length, "truncated BER length is rejected");
     ok = expect(declared_payload_overrun, "declared payload overrun is rejected") && ok;
+    ok = expect(oversized_pdu, "PDU above the configured size is rejected") && ok;
     ok = expect(
         MmsServer_getMalformedPduRejectCount(&server_storage) == 2U,
-        "malformed PDU counter records both rejects") && ok;
+        "malformed PDU counter records both malformed rejects") && ok;
+    ok = expect(
+        MmsServer_getOversizedPduRejectCount(&server_storage) == 1U,
+        "oversized PDU counter records the size reject") && ok;
 
     if (ok)
         std::cout << "IEC 61850 malformed PDU smoke: OK\n";

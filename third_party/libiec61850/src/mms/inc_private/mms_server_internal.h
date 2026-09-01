@@ -154,6 +154,7 @@ struct sMmsServer
     ByteBuffer* transmitBuffer; /* global buffer for encoding reports, delayed responses... */
     uint32_t maxOutstandingRejects;
     uint32_t malformedPduRejects;
+    uint32_t oversizedPduRejects;
 #if (CONFIG_MMS_THREADLESS_STACK != 1)
     Semaphore transmitBufferMutex;
 #endif

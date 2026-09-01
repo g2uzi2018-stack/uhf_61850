@@ -756,6 +756,8 @@ MmsServerConnection_parseMessage(MmsServerConnection self, ByteBuffer* message, 
 
     if (message->buffer == NULL || message->size < 2)
         goto parsing_error;
+    if (message->size > CONFIG_MMS_MAXIMUM_PDU_SIZE)
+        goto oversized_pdu;
 
     int bufPos = 0;
 
@@ -833,6 +835,14 @@ MmsServerConnection_parseMessage(MmsServerConnection self, ByteBuffer* message, 
         break;
     }
 
+    return;
+
+oversized_pdu:
+    __atomic_fetch_add(
+        &self->server->oversizedPduRejects,
+        UINT32_C(1),
+        __ATOMIC_RELAXED);
+    mmsMsg_createMmsRejectPdu(NULL, MMS_ERROR_REJECT_INVALID_PDU, response);
     return;
 
 parsing_error:
