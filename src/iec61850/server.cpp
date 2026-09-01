@@ -161,6 +161,8 @@ RuntimeStats Server::stats() const noexcept {
             MmsServer_getOversizedPduRejectCount(mms_server));
         result.request_element_rejections = static_cast<std::uint64_t>(
             MmsServer_getRequestElementRejectCount(mms_server));
+        result.ber_depth_rejections = static_cast<std::uint64_t>(
+            MmsServer_getBerDepthRejectCount(mms_server));
         result.max_outstanding_rejections = static_cast<std::uint64_t>(
             MmsServer_getMaxOutstandingRejectCount(mms_server));
     }

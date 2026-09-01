@@ -38,7 +38,7 @@ getIndefiniteLength(uint8_t* buffer, int bufPos, int maxBufPos, int depth, int m
     depth++;
 
     if (depth > maxDepth)
-        return -1;
+        return BER_DECODER_ERROR_MAX_DEPTH;
 
     int length = 0;
 
@@ -62,6 +62,9 @@ getIndefiniteLength(uint8_t* buffer, int bufPos, int maxBufPos, int depth, int m
             int subLength = -1;
 
             int newBufPos = BerDecoder_decodeLengthRecursive(buffer, &subLength, bufPos, maxBufPos, depth, maxDepth);
+
+            if (newBufPos == BER_DECODER_ERROR_MAX_DEPTH)
+                return BER_DECODER_ERROR_MAX_DEPTH;
 
             if (newBufPos == -1)
                 return -1;
@@ -118,6 +121,9 @@ BerDecoder_decodeLengthRecursive(uint8_t* buffer, int* length, int bufPos, int m
     {
         *length = len1;
     }
+
+    if (*length == BER_DECODER_ERROR_MAX_DEPTH)
+        return BER_DECODER_ERROR_MAX_DEPTH;
 
     if (*length < 0)
         return -1;

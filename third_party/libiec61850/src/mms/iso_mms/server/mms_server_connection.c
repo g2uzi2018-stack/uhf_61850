@@ -766,6 +766,9 @@ MmsServerConnection_parseMessage(MmsServerConnection self, ByteBuffer* message, 
 
     bufPos = BerDecoder_decodeLength(buffer, &pduLength, bufPos, message->size);
 
+    if (bufPos == BER_DECODER_ERROR_MAX_DEPTH)
+        goto ber_depth_error;
+
     if (bufPos < 0 || pduLength < 0 || pduLength > (message->size - bufPos))
         goto parsing_error;
 
@@ -835,6 +838,14 @@ MmsServerConnection_parseMessage(MmsServerConnection self, ByteBuffer* message, 
         break;
     }
 
+    return;
+
+ber_depth_error:
+    __atomic_fetch_add(
+        &self->server->berDepthRejects,
+        UINT32_C(1),
+        __ATOMIC_RELAXED);
+    mmsMsg_createMmsRejectPdu(NULL, MMS_ERROR_REJECT_INVALID_PDU, response);
     return;
 
 oversized_pdu:

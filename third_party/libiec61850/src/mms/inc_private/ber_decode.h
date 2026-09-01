@@ -26,6 +26,8 @@
 
 #include "libiec61850_platform_includes.h"
 
+#define BER_DECODER_ERROR_MAX_DEPTH (-2)
+
 /**
  * \brief Decode the length field of a BER encoded element.
  *

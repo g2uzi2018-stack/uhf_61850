@@ -7,6 +7,7 @@ extern "C" {
 }
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <vector>
@@ -18,6 +19,25 @@ bool expect(bool condition, const char* message)
     if (!condition)
         std::cerr << "FAIL: " << message << '\n';
     return condition;
+}
+
+std::vector<std::uint8_t> nested_indefinite_pdu(std::size_t depth)
+{
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(depth * 4U + 4U);
+    bytes.push_back(0xa0U);
+    bytes.push_back(0x80U);
+    for (std::size_t level = 1U; level < depth; ++level) {
+        bytes.push_back(0xa0U);
+        bytes.push_back(0x80U);
+    }
+    bytes.push_back(0x04U);
+    bytes.push_back(0x00U);
+    for (std::size_t level = 0U; level < depth; ++level) {
+        bytes.push_back(0x00U);
+        bytes.push_back(0x00U);
+    }
+    return bytes;
 }
 
 bool rejects_malformed(
@@ -70,15 +90,25 @@ int main()
         static_cast<std::size_t>(CONFIG_MMS_MAXIMUM_PDU_SIZE) + 1U,
         0U);
     const bool oversized_pdu = rejects_malformed(&server_storage, oversized);
+    const bool deep_pdu = rejects_malformed(
+        &server_storage,
+        nested_indefinite_pdu(
+            static_cast<std::size_t>(
+                CONFIG_MMS_MAX_DATA_STRUCTURE_NESTING_LEVEL) +
+            1U));
     bool ok = expect(truncated_length, "truncated BER length is rejected");
     ok = expect(declared_payload_overrun, "declared payload overrun is rejected") && ok;
     ok = expect(oversized_pdu, "PDU above the configured size is rejected") && ok;
+    ok = expect(deep_pdu, "PDU above the BER depth limit is rejected") && ok;
     ok = expect(
         MmsServer_getMalformedPduRejectCount(&server_storage) == 2U,
         "malformed PDU counter records both malformed rejects") && ok;
     ok = expect(
         MmsServer_getOversizedPduRejectCount(&server_storage) == 1U,
         "oversized PDU counter records the size reject") && ok;
+    ok = expect(
+        MmsServer_getBerDepthRejectCount(&server_storage) == 1U,
+        "BER depth counter records the depth reject") && ok;
 
     if (ok)
         std::cout << "IEC 61850 malformed PDU smoke: OK\n";

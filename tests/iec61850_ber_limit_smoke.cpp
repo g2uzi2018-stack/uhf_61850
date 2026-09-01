@@ -68,7 +68,7 @@ int main()
         0,
         static_cast<int>(above_limit.size()));
     ok = expect(
-        position < 0,
+        position == BER_DECODER_ERROR_MAX_DEPTH,
         "BER above the configured nesting limit is rejected") && ok;
 
     if (ok)
