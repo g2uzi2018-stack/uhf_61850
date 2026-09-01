@@ -75,9 +75,10 @@ def main() -> int:
         require(text, "DefaultDependencies=no", unit)
         require(text, "uhf-network-recovery", unit)
         require(text, "ConditionFileIsExecutable=", unit)
-        require(text, "RuntimeDirectory=uhf-gateway", unit)
         require(text, "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK", unit)
         require(text, "--transaction /var/lib/uhf-privileged/network-transaction.json", unit)
+        if "RuntimeDirectory=uhf-gateway" in text or "/run/uhf-gateway" in text:
+            fail(f"{unit}: oneshot must not own the shared privileged runtime directory")
     require(units["uhf-network-rollback.timer"], "OnUnitActiveSec=5s", "uhf-network-rollback.timer")
     require(units["uhf-network-rollback.timer"], "Persistent=true", "uhf-network-rollback.timer")
     guard = units["uhf-release-guard.service"]
