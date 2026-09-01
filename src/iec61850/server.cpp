@@ -153,6 +153,8 @@ RuntimeStats Server::stats() const noexcept {
     RuntimeStats result;
     if (server_ != nullptr) {
         const MmsServer mms_server = IedServer_getMmsServer(server_);
+        result.active_connections = static_cast<std::uint32_t>(
+            MmsServer_getConnectionCounter(mms_server));
         result.connection_rejections = static_cast<std::uint64_t>(
             MmsServer_getConnectionLimitRejectCount(mms_server));
         result.malformed_pdu_rejections = static_cast<std::uint64_t>(

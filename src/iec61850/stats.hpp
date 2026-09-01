@@ -6,6 +6,7 @@
 namespace uhf::iec61850 {
 
 struct RuntimeStats {
+    std::uint32_t active_connections{0U};
     std::uint64_t connection_rejections{0U};
     std::uint64_t malformed_pdu_rejections{0U};
     std::uint64_t oversized_pdu_rejections{0U};

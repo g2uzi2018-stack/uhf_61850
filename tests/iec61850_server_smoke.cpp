@@ -83,12 +83,18 @@ int main() {
         IedConnection_destroy(overflow_connection);
         const uhf::iec61850::RuntimeStats stats = server.stats();
         ok = expect(
+            stats.active_connections == 4U,
+            "active MMS connections reach the configured cap") && ok;
+        ok = expect(
             stats.connection_rejections == 1U,
             "connection-limit rejection is counted") && ok;
         for (IedConnection capacity_connection : capacity_connections) {
             IedConnection_close(capacity_connection);
             IedConnection_destroy(capacity_connection);
         }
+        ok = expect(
+            server.stats().active_connections == 1U,
+            "active MMS connections drop after clients close") && ok;
 
         std::this_thread::sleep_for(std::chrono::milliseconds(150));
         MmsValue* value = IedConnection_readObject(

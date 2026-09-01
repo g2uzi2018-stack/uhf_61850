@@ -18,6 +18,7 @@
         setText("iec-status", "IEC · " + statusText(status));
         var badge = document.getElementById("iec-badge"); badge.className = "heading-badge " + (status === "up" ? "" : "dev-badge"); badge.innerHTML = "<i></i>" + statusText(status);
         setText("iec-enabled", payload.enabled ? "已启用" : "未启用"); setText("ied-name", payload.ied_name); setText("iec-listen", (payload.bind_address || "--") + ":" + (payload.port || "--")); setText("iec-service-status", statusText(status));
+        setText("iec-active-connections", payload.active_connections);
         setText("iec-connection-rejections", payload.counters && payload.counters.connection_rejections);
         setText("iec-malformed-pdu-rejections", payload.counters && payload.counters.malformed_pdu_rejections);
         setText("iec-oversized-pdu-rejections", payload.counters && payload.counters.oversized_pdu_rejections);
