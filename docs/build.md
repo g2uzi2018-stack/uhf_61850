@@ -40,7 +40,7 @@ format-check 是可选的 CMake 目标；安装 clang-format 后执行：
 
 ## 界面预览
 
-预览页面由 `uhf-gatewayd` 的 C++ 服务直接提供，不是静态页面截图或 Python 假服务。登录、服务端会话、CSRF、首次改密、登出、总览、实时 WebSocket、配置、网络事务、IEC 61850 状态、日志、存储和维护页面均走实际路由。启动开发服务：
+预览页面由 `uhf-gatewayd` 的 C++ 服务直接提供，不是静态页面截图或 Python 假服务。登录、服务端会话、CSRF、可选改密、登出、总览、实时 WebSocket、配置、网络事务、IEC 61850 状态、日志、存储和维护页面均走实际路由。启动开发服务：
 
     bash tools/run-web-local.sh
 
@@ -51,7 +51,7 @@ format-check 是可选的 CMake 目标；安装 clang-format 后执行：
 本机网卡地址可能不同，可用 ip -br addr 查看。开发服务绑定所有接口，页面和 API 使用 HTTP 开发模式，只应在可信的开发网络中使用；看完后在启动终端按 Ctrl-C 停止。若只想本机监听，可设置 UHF_WEB_LISTEN=127.0.0.1:8080。
 
 首次启动会在 `build/dev-state/initial-password` 生成一次性随机密码（文件权限
-0600），登录账号为 `admin`。浏览器打开登录页后，首次登录必须修改密码；改密成功
+0600），登录账号为 `admin`，管理员可在用户管理页主动修改密码；改密成功
 会删除该一次性密码文件。运行时哈希保存在 `build/dev-state/auth.json`（权限
 0600），开发服务停止后可删除整个 `build/` 目录重新初始化。正式发布安装由
 `uhf-auth-init` 预置认证状态，并将一次性密码保留为 root-only 文件。

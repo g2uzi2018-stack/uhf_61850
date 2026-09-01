@@ -60,7 +60,7 @@
                         <div class="panel-header"><div><h2>管理员账号</h2><p>设备当前只保留一个管理员账号</p></div><span class="count-badge">1 个账号</span></div>
                         <div class="account-row">
                             <div class="large-avatar">A</div>
-                            <div class="account-identity"><div><strong>admin</strong><em>管理员</em></div><span>唯一管理员账号 · 首次登录需修改密码</span></div>
+                            <div class="account-identity"><div><strong>admin</strong><em>管理员</em></div><span>唯一管理员账号 · 可按需要修改密码</span></div>
                             <span class="enabled-status"><i>✓</i>已启用</span>
                             <div class="last-login"><span>最近登录</span><strong>尚未登录</strong></div>
                             <button class="outline-button" type="button" data-action="change-password">修改密码</button>
@@ -94,7 +94,7 @@
                     <div class="panel-header"><div><h2>首次接入检查</h2><p>部署到设备后建议完成以下安全操作</p></div><span class="progress-label" id="checklist-progress">检查项统计中</span></div>
                     <div class="checklist">
                         <div class="checklist-item" id="https-check"><i id="https-check-icon"></i><div><strong>使用 HTTPS 访问</strong><span id="https-check-description">正式产品模式默认启用 HTTPS；本地预览使用显式 HTTP 恢复模式</span></div><em class="pending" id="https-check-status">待完成</em></div>
-                        <div class="checklist-item"><i id="password-check-icon"></i><div><strong>修改初始管理员密码</strong><span>首次登录后必须设置新的强密码</span></div><button class="small-text-button" id="password-check-status" type="button" data-action="change-password">去设置</button></div>
+                        <div class="checklist-item"><i id="password-check-icon"></i><div><strong>修改管理员密码</strong><span>如需更换初始密码，可在此处主动设置新的强密码</span></div><button class="small-text-button" id="password-check-status" type="button" data-action="change-password">可选</button></div>
                         <div class="checklist-item"><i></i><div><strong>确认设备证书</strong><span>替换自签名证书并核对设备名称与 SAN</span></div><em class="pending">待完成</em></div>
                     </div>
                 </section>

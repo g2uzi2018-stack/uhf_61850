@@ -72,26 +72,17 @@
         window.location.replace("/login");
     }
 
-    function updatePasswordChecklist(mustChange) {
+    function updatePasswordChecklist() {
         var icon = document.getElementById("password-check-icon");
         var status = document.getElementById("password-check-status");
         if (!icon || !status) {
             return;
         }
-        if (mustChange) {
-            icon.textContent = "";
-            icon.classList.remove("completed");
-            icon.parentElement.classList.remove("completed");
-            status.textContent = "去设置";
-            status.disabled = false;
-        } else {
-            icon.textContent = "✓";
-            icon.classList.add("completed");
-            icon.parentElement.classList.add("completed");
-            status.textContent = "已完成";
-            status.disabled = true;
-        }
-        updateChecklistProgress();
+        icon.textContent = "";
+        icon.classList.remove("completed");
+        icon.parentElement.classList.remove("completed");
+        status.textContent = "可选";
+        status.disabled = false;
     }
 
     function loadSession() {
@@ -106,11 +97,7 @@
                 return;
             }
             csrfToken = session.csrf_token;
-            updatePasswordChecklist(Boolean(session.must_change));
-            if (session.must_change) {
-                window.setTimeout(openModal, 120);
-                showToast("首次登录必须先修改管理员密码");
-            }
+            updatePasswordChecklist();
         }).catch(function () {
             showToast("无法读取登录会话");
         });

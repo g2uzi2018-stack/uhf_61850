@@ -185,8 +185,8 @@ def main() -> int:
             )
             assert_status(login_status, 200, "initial login")
             session = assert_json(login_body, "authenticated", True, "initial login")
-            if session.get("must_change") is not True or not isinstance(session.get("csrf_token"), str):
-                fail(f"initial login did not require password change: {session!r}")
+            if session.get("must_change") is not False or not isinstance(session.get("csrf_token"), str):
+                fail(f"initial login did not expose optional password change state: {session!r}")
             csrf_token = str(session["csrf_token"])
             set_cookie = login_headers_response.get("Set-Cookie", "")
             if not set_cookie.startswith("uhf_session=") or "HttpOnly" not in set_cookie or "SameSite=Strict" not in set_cookie:
@@ -197,7 +197,7 @@ def main() -> int:
                 port, "GET", "/api/v1/session", headers={"Cookie": cookie}
             )
             assert_status(session_status, 200, "session lookup")
-            assert_json(session_body, "must_change", True, "session lookup")
+            assert_json(session_body, "must_change", False, "session lookup")
             page_status, page_body, _ = request(port, "GET", "/", headers={"Cookie": cookie})
             assert_status(page_status, 200, "authenticated root")
             if "用户管理".encode("utf-8") not in page_body:

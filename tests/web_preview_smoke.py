@@ -36,7 +36,7 @@ def main() -> int:
     for marker in ("certificate-replacement", "tls-certificate", "tls-private-key", "replace-tls", "certificate_pem", "private_key_pem"):
         if marker not in maintenance_javascript:
             fail(f"maintenance.js is missing {marker!r}")
-    for marker in ("登录控制台", "首次登录", 'id="login-form"'):
+    for marker in ("登录控制台", "初始密码", 'id="login-form"'):
         if marker not in login_html:
             fail(f"login.html is missing {marker!r}")
     for marker in ('data-action="change-password"', "showToast", "updateChecklistProgress", "password-form"):

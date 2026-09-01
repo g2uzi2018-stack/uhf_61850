@@ -388,7 +388,7 @@ AuthStore::AuthStore(std::filesystem::path state_directory)
         throw std::runtime_error("unable to initialize authentication state");
     }
     record_.password_hash = pbkdf2_sha256(bootstrap_password, record_.salt, record_.iterations);
-    record_.must_change = true;
+    record_.must_change = false;
     write_atomic(auth_path_, serialize_record(record_), kPrivateFileMode);
 }
 
@@ -439,7 +439,9 @@ PasswordChangeResult AuthStore::change_password(
 }
 
 bool AuthStore::must_change() const noexcept {
-    return record_.must_change;
+    // Keep reading the legacy field for on-disk compatibility, but password
+    // rotation is optional in the current product policy.
+    return false;
 }
 
 const std::filesystem::path& AuthStore::bootstrap_password_path() const noexcept {
