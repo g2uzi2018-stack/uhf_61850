@@ -71,17 +71,21 @@ root_prefix=${root_dir%/}
 if [[ -z "$root_prefix" ]]; then
     root_prefix=/
 fi
+path_prefix=$root_prefix
+if [[ "$path_prefix" == "/" ]]; then
+    path_prefix=
+fi
 if [[ "$no_systemd" == false && "$root_prefix" != "/" ]]; then
     printf '%s\n' '--no-systemd is required when --root is not /' >&2
     exit 2
 fi
-install_root="${root_prefix}/opt/uhf-gateway"
+install_root="${path_prefix}/opt/uhf-gateway"
 releases_root="${install_root}/releases"
 release_dir="${releases_root}/${version}"
 temporary_release="${releases_root}/.${version}.tmp.$$"
 current_link="${install_root}/current"
 previous_link="${install_root}/previous"
-state_dir="${root_prefix}/var/lib/uhf-gateway"
+state_dir="${path_prefix}/var/lib/uhf-gateway"
 state_file="${state_dir}/release-state.json"
 old_current_target=
 if [[ -L "$current_link" ]]; then
@@ -140,7 +144,7 @@ fi
 legacy_cutover_done=false
 cleanup() {
     if [[ "$legacy_cutover_done" == true ]]; then
-        bash "${root_prefix}/usr/lib/uhf-gateway/legacy-recovery.sh" >/dev/null 2>&1 || true
+        bash "${path_prefix}/usr/lib/uhf-gateway/legacy-recovery.sh" >/dev/null 2>&1 || true
     fi
     if [[ -d "$temporary_release" ]]; then
         rm -rf -- "$temporary_release"
@@ -156,16 +160,16 @@ fi
 bash "${script_dir}/preflight.sh" "${preflight_copy_args[@]}"
 mv -T "$temporary_release" "$release_dir"
 
-mkdir -p "${root_prefix}/etc/uhf-gateway" \
-    "${root_prefix}/etc/systemd/system" \
-    "${root_prefix}/etc/rsyslog.d" \
-    "${root_prefix}/etc/logrotate.d" \
-    "${root_prefix}/usr/lib/uhf-gateway" \
+mkdir -p "${path_prefix}/etc/uhf-gateway" \
+    "${path_prefix}/etc/systemd/system" \
+    "${path_prefix}/etc/rsyslog.d" \
+    "${path_prefix}/etc/logrotate.d" \
+    "${path_prefix}/usr/lib/uhf-gateway" \
     "$state_dir" \
-    "${root_prefix}/var/lib/uhf-privileged" \
-    "${root_prefix}/var/log/uhf-gateway"
-chmod 0755 "${root_prefix}/etc/uhf-gateway" "${root_prefix}/usr/lib/uhf-gateway" \
-    "$state_dir" "${root_prefix}/var/lib/uhf-privileged"
+    "${path_prefix}/var/lib/uhf-privileged" \
+    "${path_prefix}/var/log/uhf-gateway"
+chmod 0755 "${path_prefix}/etc/uhf-gateway" "${path_prefix}/usr/lib/uhf-gateway" \
+    "$state_dir" "${path_prefix}/var/lib/uhf-privileged"
 chmod 0700 "$state_dir"
 if [[ "$no_systemd" == false ]]; then
     chown uhfgateway:uhfgateway "$state_dir"
@@ -178,9 +182,9 @@ if [[ "$no_systemd" == false ]]; then
     chmod 0600 "$state_dir/initial-password"
     chown -R uhfgateway:uhfgateway "$state_dir/tls"
 fi
-install -m 0644 "$release_dir/config/schema.json" "${root_prefix}/etc/uhf-gateway/schema.json"
-install -m 0644 "$release_dir/config/defaults.json" "${root_prefix}/etc/uhf-gateway/defaults.json"
-network_config_file="${root_prefix}/etc/uhf-gateway/network.json"
+install -m 0644 "$release_dir/config/schema.json" "${path_prefix}/etc/uhf-gateway/schema.json"
+install -m 0644 "$release_dir/config/defaults.json" "${path_prefix}/etc/uhf-gateway/defaults.json"
+network_config_file="${path_prefix}/etc/uhf-gateway/network.json"
 if [[ -e "$network_config_file" && ! -f "$network_config_file" ]]; then
     printf 'network configuration path is not a regular file: %s\n' "$network_config_file" >&2
     exit 1
@@ -188,21 +192,21 @@ fi
 if [[ ! -e "$network_config_file" ]]; then
     install -m 0600 "$release_dir/config/network.json" "$network_config_file"
 fi
-install -m 0644 "$release_dir/config/UHFPD1.icd" "${root_prefix}/etc/uhf-gateway/UHFPD1.icd"
+install -m 0644 "$release_dir/config/UHFPD1.icd" "${path_prefix}/etc/uhf-gateway/UHFPD1.icd"
 install -m 0755 "$release_dir/libexec/uhf-gateway/uhf-gateway-hook" \
-    "${root_prefix}/usr/lib/uhf-gateway/dhclient-hook"
+    "${path_prefix}/usr/lib/uhf-gateway/dhclient-hook"
 install -m 0755 "$release_dir/libexec/uhf-gateway/release-guard.sh" \
-    "${root_prefix}/usr/lib/uhf-gateway/release-guard.sh"
+    "${path_prefix}/usr/lib/uhf-gateway/release-guard.sh"
 install -m 0755 "$release_dir/libexec/uhf-gateway/legacy-cutover.sh" \
-    "${root_prefix}/usr/lib/uhf-gateway/legacy-cutover.sh"
+    "${path_prefix}/usr/lib/uhf-gateway/legacy-cutover.sh"
 install -m 0755 "$release_dir/libexec/uhf-gateway/legacy-recovery.sh" \
-    "${root_prefix}/usr/lib/uhf-gateway/legacy-recovery.sh"
+    "${path_prefix}/usr/lib/uhf-gateway/legacy-recovery.sh"
 install -m 0644 "$release_dir/share/uhf-gateway/rsyslog/uhf-gateway.conf" \
-    "${root_prefix}/etc/rsyslog.d/uhf-gateway.conf"
+    "${path_prefix}/etc/rsyslog.d/uhf-gateway.conf"
 install -m 0644 "$release_dir/share/uhf-gateway/logrotate/uhf-gateway" \
-    "${root_prefix}/etc/logrotate.d/uhf-gateway"
+    "${path_prefix}/etc/logrotate.d/uhf-gateway"
 for unit in "$release_dir"/share/uhf-gateway/systemd/*; do
-    install -m 0644 "$unit" "${root_prefix}/etc/systemd/system/$(basename "$unit")"
+    install -m 0644 "$unit" "${path_prefix}/etc/systemd/system/$(basename "$unit")"
 done
 
 atomic_link() {
@@ -237,8 +241,8 @@ write_state() {
 
 write_state "$version"
 if [[ "$no_systemd" == false ]]; then
-    if [[ "$first_install" == true && -d "${root_prefix}/data" ]]; then
-        bash "${root_prefix}/usr/lib/uhf-gateway/legacy-cutover.sh"
+    if [[ "$first_install" == true && -d "${path_prefix}/data" ]]; then
+        bash "${path_prefix}/usr/lib/uhf-gateway/legacy-cutover.sh"
         legacy_cutover_done=true
         postflight_args=(--release "$release_dir")
         if [[ "$skip_arch" == true ]]; then

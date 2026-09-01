@@ -65,6 +65,8 @@ def main() -> int:
         fail("expected repository root")
     root = Path(sys.argv[1])
     script = root / "packaging/release-guard.sh"
+    if "path_prefix=$root_prefix" not in script.read_text(encoding="utf-8"):
+        fail("release guard does not normalize the host root before constructing paths")
     with tempfile.TemporaryDirectory(prefix="uhf-release-guard-") as temporary:
         healthy_root = Path(temporary) / "healthy"
         healthy_root.mkdir()

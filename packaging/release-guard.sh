@@ -35,11 +35,15 @@ root_prefix=${root_dir%/}
 if [[ -z "$root_prefix" ]]; then
     root_prefix=/
 fi
-product_root="${root_prefix}/opt/uhf-gateway"
+path_prefix=$root_prefix
+if [[ "$path_prefix" == "/" ]]; then
+    path_prefix=
+fi
+product_root="${path_prefix}/opt/uhf-gateway"
 current_link="${product_root}/current"
 previous_link="${product_root}/previous"
 release_root="${product_root}/releases"
-state_file="${root_prefix}/var/lib/uhf-gateway/release-state.json"
+state_file="${path_prefix}/var/lib/uhf-gateway/release-state.json"
 if [[ ! -f "$state_file" ]]; then
     exit 0
 fi

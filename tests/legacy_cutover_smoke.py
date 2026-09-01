@@ -82,7 +82,7 @@ def main() -> int:
     repo = Path(sys.argv[1])
     cutover = repo / "packaging/legacy-cutover.sh"
     recovery = repo / "packaging/legacy-recovery.sh"
-    normalized_legacy_root = 'legacy_root="${root_prefix%/}/data"'
+    normalized_legacy_root = 'legacy_root="${path_prefix}/data"'
     if normalized_legacy_root not in cutover.read_text(encoding="utf-8"):
         fail("cutover does not normalize the root path before matching /data")
     if normalized_legacy_root not in recovery.read_text(encoding="utf-8"):

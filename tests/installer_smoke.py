@@ -58,6 +58,9 @@ def main() -> int:
     if len(sys.argv) != 2:
         fail("expected repository root")
     root = Path(sys.argv[1])
+    installer = (root / "packaging/install.sh").read_text(encoding="utf-8")
+    if "path_prefix=$root_prefix" not in installer:
+        fail("installer does not normalize the host root before constructing paths")
     with tempfile.TemporaryDirectory(prefix="uhf-installer-") as temporary:
         temporary_root = Path(temporary)
         packages = temporary_root / "packages"

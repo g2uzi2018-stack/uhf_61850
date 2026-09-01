@@ -30,18 +30,22 @@ root_prefix=${root_dir%/}
 if [[ -z "$root_prefix" ]]; then
     root_prefix=/
 fi
+path_prefix=$root_prefix
+if [[ "$path_prefix" == "/" ]]; then
+    path_prefix=
+fi
 if [[ "$root_prefix" == "/" && "$(id -u)" -ne 0 ]]; then
     printf 'legacy recovery must run as root\n' >&2
     exit 1
 fi
 
-state_root="${root_prefix}/var/lib/uhf-gateway/legacy"
+state_root="${path_prefix}/var/lib/uhf-gateway/legacy"
 recovery_marker="${state_root}/recovery-enabled"
 if [[ ! -e "$recovery_marker" ]]; then
     exit 0
 fi
 
-release_state="${root_prefix}/var/lib/uhf-gateway/release-state.json"
+release_state="${path_prefix}/var/lib/uhf-gateway/release-state.json"
 pending=
 if [[ -f "$release_state" ]]; then
     pending=$(sed -n 's/.*"pending":"\([^"]*\)".*/\1/p' "$release_state")
@@ -52,7 +56,7 @@ fi
 
 backup_file="${state_root}/root-crontab.before-cutover"
 disabled_file="${state_root}/root-crontab.disabled"
-legacy_root="${root_prefix%/}/data"
+legacy_root="${path_prefix}/data"
 legacy_script="${legacy_root}/run.sh"
 if [[ ! -f "$backup_file" || ! -f "$disabled_file" ]]; then
     printf 'legacy recovery: missing cutover backup\n' >&2

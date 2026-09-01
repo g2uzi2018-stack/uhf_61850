@@ -47,13 +47,17 @@ root_prefix=${root_dir%/}
 if [[ -z "$root_prefix" ]]; then
     root_prefix=/
 fi
+path_prefix=$root_prefix
+if [[ "$path_prefix" == "/" ]]; then
+    path_prefix=
+fi
 if [[ "$root_prefix" == "/" && "$(id -u)" -ne 0 ]]; then
     printf 'legacy cutover must run as root\n' >&2
     exit 1
 fi
 
-legacy_root="${root_prefix%/}/data"
-state_root="${root_prefix}/var/lib/uhf-gateway/legacy"
+legacy_root="${path_prefix}/data"
+state_root="${path_prefix}/var/lib/uhf-gateway/legacy"
 backup_file="${state_root}/root-crontab.before-cutover"
 disabled_file="${state_root}/root-crontab.disabled"
 processes_file="${state_root}/processes.tsv"
