@@ -571,6 +571,13 @@ handleReadListOfVariablesRequest(
 	if ((variableCount < 1) ||
 			(variableCount > CONFIG_MMS_MAX_NUMBER_OF_REQUEST_ELEMENTS))
 	{
+		if (variableCount > CONFIG_MMS_MAX_NUMBER_OF_REQUEST_ELEMENTS)
+		{
+			__atomic_fetch_add(
+				&connection->server->requestElementRejects,
+				UINT32_C(1),
+				__ATOMIC_RELAXED);
+		}
 		mmsMsg_createMmsRejectPdu(&invokeId, MMS_ERROR_REJECT_REQUEST_INVALID_ARGUMENT, response);
 		return;
 	}

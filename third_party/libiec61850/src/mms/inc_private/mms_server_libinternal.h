@@ -206,6 +206,9 @@ MmsServer_getMalformedPduRejectCount(MmsServer self);
 LIB61850_INTERNAL uint32_t
 MmsServer_getOversizedPduRejectCount(MmsServer self);
 
+LIB61850_INTERNAL uint32_t
+MmsServer_getRequestElementRejectCount(MmsServer self);
+
 /**
  * \brief Stop the server (for non-threaded operation mode)
  *

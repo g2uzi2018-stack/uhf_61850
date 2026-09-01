@@ -1199,6 +1199,8 @@ std::string HttpServer::iec61850_json(std::chrono::steady_clock::time_point now)
     body.append(std::to_string(stats.malformed_pdu_rejections));
     body.append(",\"oversized_pdu_rejections\":");
     body.append(std::to_string(stats.oversized_pdu_rejections));
+    body.append(",\"request_element_rejections\":");
+    body.append(std::to_string(stats.request_element_rejections));
     body.append(",\"max_outstanding_rejections\":");
     body.append(std::to_string(stats.max_outstanding_rejections));
     body.append("}}\n");

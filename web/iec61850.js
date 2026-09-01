@@ -21,6 +21,7 @@
         setText("iec-connection-rejections", payload.counters && payload.counters.connection_rejections);
         setText("iec-malformed-pdu-rejections", payload.counters && payload.counters.malformed_pdu_rejections);
         setText("iec-oversized-pdu-rejections", payload.counters && payload.counters.oversized_pdu_rejections);
+        setText("iec-request-element-rejections", payload.counters && payload.counters.request_element_rejections);
         setText("iec-outstanding-rejections", payload.counters && payload.counters.max_outstanding_rejections);
         setText("dataset-reference", payload.dataset && payload.dataset.reference); setText("report-reference", payload.report && payload.report.reference); setText("integrity-period", payload.report ? payload.report.integrity_seconds + " 秒" : "--");
         var snapshotState = document.getElementById("snapshot-state"); snapshotState.textContent = snapshot && snapshot.generation ? "generation " + snapshot.generation : "尚无快照";

@@ -126,6 +126,10 @@ int main()
             LinkedList_destroyStatic(write_values);
         if (write_value != nullptr)
             MmsValue_delete(write_value);
+
+        ok = expect(
+            server.stats().request_element_rejections == 2U,
+            "read and write element-limit rejects are counted") && ok;
     }
 
     MmsConnection_close(connection);

@@ -355,6 +355,10 @@ createWriteNamedVariableListResponse(MmsServerConnection connection, WriteReques
 
     if (numberOfWriteItems > CONFIG_MMS_WRITE_SERVICE_MAX_NUMBER_OF_WRITE_ITEMS)
     {
+        __atomic_fetch_add(
+            &connection->server->requestElementRejects,
+            UINT32_C(1),
+            __ATOMIC_RELAXED);
         mmsMsg_createMmsRejectPdu(&invokeId, MMS_ERROR_REJECT_OTHER, response);
         return;
     }
@@ -651,6 +655,10 @@ mmsServer_handleWriteRequest(MmsServerConnection connection, uint8_t* buffer, in
 
         if (numberOfWriteItems > CONFIG_MMS_WRITE_SERVICE_MAX_NUMBER_OF_WRITE_ITEMS)
         {
+            __atomic_fetch_add(
+                &connection->server->requestElementRejects,
+                UINT32_C(1),
+                __ATOMIC_RELAXED);
             mmsMsg_createMmsRejectPdu(&invokeId, MMS_ERROR_REJECT_OTHER, response);
             goto exit_function;
         }

@@ -9,6 +9,7 @@ struct RuntimeStats {
     std::uint64_t connection_rejections{0U};
     std::uint64_t malformed_pdu_rejections{0U};
     std::uint64_t oversized_pdu_rejections{0U};
+    std::uint64_t request_element_rejections{0U};
     std::uint64_t max_outstanding_rejections{0U};
 };
 
