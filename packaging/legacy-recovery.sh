@@ -52,7 +52,7 @@ fi
 
 backup_file="${state_root}/root-crontab.before-cutover"
 disabled_file="${state_root}/root-crontab.disabled"
-legacy_root="${root_prefix}/data"
+legacy_root="${root_prefix%/}/data"
 legacy_script="${legacy_root}/run.sh"
 if [[ ! -f "$backup_file" || ! -f "$disabled_file" ]]; then
     printf 'legacy recovery: missing cutover backup\n' >&2

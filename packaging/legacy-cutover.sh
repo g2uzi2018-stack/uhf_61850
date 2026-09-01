@@ -52,7 +52,7 @@ if [[ "$root_prefix" == "/" && "$(id -u)" -ne 0 ]]; then
     exit 1
 fi
 
-legacy_root="${root_prefix}/data"
+legacy_root="${root_prefix%/}/data"
 state_root="${root_prefix}/var/lib/uhf-gateway/legacy"
 backup_file="${state_root}/root-crontab.before-cutover"
 disabled_file="${state_root}/root-crontab.disabled"
