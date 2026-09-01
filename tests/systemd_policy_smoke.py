@@ -84,6 +84,7 @@ def main() -> int:
     guard = units["uhf-release-guard.service"]
     require(guard, "ExecStart=/usr/lib/uhf-gateway/release-guard.sh", "uhf-release-guard.service")
     require(guard, "ReadWritePaths=/opt/uhf-gateway /var/lib/uhf-gateway", "uhf-release-guard.service")
+    require(guard, "CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE", "uhf-release-guard.service")
     require(units["uhf-release-guard.timer"], "OnUnitActiveSec=5s", "uhf-release-guard.timer")
     require(units["uhf-gateway.service"], "OnFailure=uhf-legacy-recovery.service", "uhf-gateway.service")
     legacy = units["uhf-legacy-recovery.service"]

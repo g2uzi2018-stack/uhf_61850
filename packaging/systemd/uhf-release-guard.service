@@ -12,5 +12,5 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/opt/uhf-gateway /var/lib/uhf-gateway
-CapabilityBoundingSet=
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE
 RestrictAddressFamilies=AF_UNIX
