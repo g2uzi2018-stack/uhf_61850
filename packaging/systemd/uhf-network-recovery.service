@@ -5,7 +5,7 @@ After=local-fs.target
 Before=network-pre.target uhf-privileged.service uhf-gateway.service
 Conflicts=shutdown.target
 Before=shutdown.target
-ConditionPathIsExecutable=/opt/uhf-gateway/current/bin/uhf-network-recovery
+ConditionFileIsExecutable=/opt/uhf-gateway/current/bin/uhf-network-recovery
 
 [Service]
 Type=oneshot
@@ -16,6 +16,8 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
+RuntimeDirectory=uhf-gateway
+RuntimeDirectoryMode=0750
 ReadWritePaths=/etc/uhf-gateway /var/lib/uhf-privileged /run/uhf-gateway
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

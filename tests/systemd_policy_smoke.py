@@ -43,6 +43,7 @@ def main() -> int:
     require(gateway, "SupplementaryGroups=dialout", "uhf-gateway.service")
     for fragment in (
         "Type=notify",
+        "ConditionFileIsExecutable=/opt/uhf-gateway/current/bin/uhf-gatewayd",
         "WatchdogSec=20s",
         "Restart=on-failure",
         "StartLimitBurst=5",
@@ -59,6 +60,7 @@ def main() -> int:
     privileged = units["uhf-privileged.service"]
     for fragment in (
         "User=root",
+        "ConditionFileIsExecutable=/opt/uhf-gateway/current/bin/uhf-privilegedd",
         "ExecStart=/opt/uhf-gateway/current/bin/uhf-privilegedd",
         "ReadWritePaths=/etc/uhf-gateway /var/lib/uhf-privileged /run/uhf-gateway",
         "CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW",
@@ -71,6 +73,8 @@ def main() -> int:
     for unit, text in (("uhf-network-rollback.service", rollback), ("uhf-network-recovery.service", recovery)):
         require(text, "DefaultDependencies=no", unit)
         require(text, "uhf-network-recovery", unit)
+        require(text, "ConditionFileIsExecutable=", unit)
+        require(text, "RuntimeDirectory=uhf-gateway", unit)
         require(text, "--transaction /var/lib/uhf-privileged/network-transaction.json", unit)
     require(units["uhf-network-rollback.timer"], "OnUnitActiveSec=5s", "uhf-network-rollback.timer")
     require(units["uhf-network-rollback.timer"], "Persistent=true", "uhf-network-rollback.timer")

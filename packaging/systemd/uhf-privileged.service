@@ -3,7 +3,9 @@ Description=UHF gateway privileged network helper
 Before=uhf-gateway.service
 Wants=uhf-network-recovery.service
 After=local-fs.target uhf-network-recovery.service
-ConditionPathIsExecutable=/opt/uhf-gateway/current/bin/uhf-privilegedd
+ConditionFileIsExecutable=/opt/uhf-gateway/current/bin/uhf-privilegedd
+StartLimitIntervalSec=120s
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -12,8 +14,6 @@ Group=uhfgateway
 ExecStart=/opt/uhf-gateway/current/bin/uhf-privilegedd --socket /run/uhf-gateway/privileged.sock --network-config /etc/uhf-gateway/network.json --transaction /var/lib/uhf-privileged/network-transaction.json
 Restart=on-failure
 RestartSec=2s
-StartLimitIntervalSec=120s
-StartLimitBurst=5
 RuntimeDirectory=uhf-gateway
 RuntimeDirectoryMode=0750
 UMask=0007

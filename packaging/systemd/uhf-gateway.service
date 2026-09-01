@@ -4,7 +4,9 @@ Wants=network-online.target uhf-network-recovery.service uhf-release-guard.timer
 Requires=uhf-privileged.service
 OnFailure=uhf-legacy-recovery.service
 After=network-online.target uhf-network-recovery.service uhf-privileged.service
-ConditionPathIsExecutable=/opt/uhf-gateway/current/bin/uhf-gatewayd
+ConditionFileIsExecutable=/opt/uhf-gateway/current/bin/uhf-gatewayd
+StartLimitIntervalSec=120s
+StartLimitBurst=5
 
 [Service]
 Type=notify
@@ -16,8 +18,6 @@ WorkingDirectory=/opt/uhf-gateway/current
 ExecStart=/opt/uhf-gateway/current/bin/uhf-gatewayd --web --web-root /opt/uhf-gateway/current/web --state-dir /var/lib/uhf-gateway --config /var/lib/uhf-gateway/config.json --data-dir /var/lib/uhf-gateway/data --privileged-socket /run/uhf-gateway/privileged.sock
 Restart=on-failure
 RestartSec=2s
-StartLimitIntervalSec=120s
-StartLimitBurst=5
 WatchdogSec=20s
 MemoryMax=128M
 TasksMax=64
