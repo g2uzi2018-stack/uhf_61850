@@ -10,6 +10,7 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <utility>
@@ -300,6 +301,36 @@ bool write_atomic(const std::filesystem::path& path, std::string_view contents) 
     return result == 0;
 }
 
+class TransactionFileLock final {
+public:
+    explicit TransactionFileLock(const std::filesystem::path& transaction_path) noexcept {
+        const std::filesystem::path lock_path = transaction_path.string() + ".lock";
+        descriptor_ = ::open(lock_path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, kFileMode);
+        if (descriptor_ < 0 || ::fchmod(descriptor_, kFileMode) < 0 ||
+            ::flock(descriptor_, LOCK_EX | LOCK_NB) < 0) {
+            if (descriptor_ >= 0) {
+                ::close(descriptor_);
+                descriptor_ = -1;
+            }
+        }
+    }
+
+    ~TransactionFileLock() {
+        if (descriptor_ >= 0) {
+            (void)::flock(descriptor_, LOCK_UN);
+            (void)::close(descriptor_);
+        }
+    }
+
+    TransactionFileLock(const TransactionFileLock&) = delete;
+    TransactionFileLock& operator=(const TransactionFileLock&) = delete;
+
+    bool acquired() const noexcept { return descriptor_ >= 0; }
+
+private:
+    int descriptor_{-1};
+};
+
 }  // namespace
 
 namespace uhf::network {
@@ -381,6 +412,10 @@ TransactionResult TransactionManager::stage(const NetworkConfig& candidate) {
     if (!validate(candidate).valid) {
         return set_error(TransactionResult::invalid_candidate, "candidate network configuration is invalid");
     }
+    TransactionFileLock lock(store_.path());
+    if (!lock.acquired()) {
+        return set_error(TransactionResult::busy, "another network operation is in progress");
+    }
     const LoadResult existing = store_.load();
     if (existing.status == LoadStatus::corrupt) {
         return set_error(TransactionResult::corrupt, "network transaction is corrupt");
@@ -426,6 +461,10 @@ TransactionResult TransactionManager::stage(const NetworkConfig& candidate) {
 
 TransactionResult TransactionManager::confirm() {
     last_error_.clear();
+    TransactionFileLock lock(store_.path());
+    if (!lock.acquired()) {
+        return set_error(TransactionResult::busy, "another network operation is in progress");
+    }
     const LoadResult loaded = store_.load();
     if (loaded.status == LoadStatus::none) {
         return set_error(TransactionResult::no_transaction, "no network transaction is pending");
@@ -461,6 +500,10 @@ TransactionResult TransactionManager::confirm() {
 
 TransactionResult TransactionManager::rollback_now() {
     last_error_.clear();
+    TransactionFileLock lock(store_.path());
+    if (!lock.acquired()) {
+        return set_error(TransactionResult::busy, "another network operation is in progress");
+    }
     const LoadResult loaded = store_.load();
     if (loaded.status == LoadStatus::none) {
         return set_error(TransactionResult::no_transaction, "no network transaction is pending");
@@ -479,6 +522,10 @@ TransactionResult TransactionManager::rollback_now() {
 
 TransactionResult TransactionManager::rollback_if_needed() {
     last_error_.clear();
+    TransactionFileLock lock(store_.path());
+    if (!lock.acquired()) {
+        return set_error(TransactionResult::busy, "another network operation is in progress");
+    }
     const LoadResult loaded = store_.load();
     if (loaded.status == LoadStatus::none) {
         return set_error(TransactionResult::no_transaction, "no network transaction is pending");

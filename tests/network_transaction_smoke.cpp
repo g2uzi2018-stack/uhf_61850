@@ -5,6 +5,9 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
 
 namespace {
 
@@ -105,6 +108,21 @@ int main() {
 
     candidate.eth0.address = "192.168.3.233";
     clock.now = 300U;
+    assert(manager.stage(candidate) == uhf::network::TransactionResult::ok);
+
+    const int lock_descriptor = ::open(
+        (path.string() + ".lock").c_str(), O_RDWR | O_CLOEXEC);
+    assert(lock_descriptor >= 0);
+    assert(::flock(lock_descriptor, LOCK_EX | LOCK_NB) == 0);
+    assert(manager.confirm() == uhf::network::TransactionResult::busy);
+    assert(manager.rollback_if_needed() == uhf::network::TransactionResult::busy);
+    assert(::flock(lock_descriptor, LOCK_UN) == 0);
+    assert(::close(lock_descriptor) == 0);
+    assert(manager.rollback_now() == uhf::network::TransactionResult::ok);
+    assert(backend.current.eth0.address == "192.168.3.232");
+
+    candidate.eth0.address = "192.168.3.234";
+    clock.now = 400U;
     assert(manager.stage(candidate) == uhf::network::TransactionResult::ok);
     clock.id = "boot-b";
     assert(manager.rollback_if_needed() == uhf::network::TransactionResult::boot_changed);
