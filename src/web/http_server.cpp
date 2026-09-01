@@ -1193,7 +1193,9 @@ std::string HttpServer::iec61850_json(std::chrono::steady_clock::time_point now)
         body.append(references[index]);
         body.push_back('\"');
     }
-    body.append("]},\"report\":{\"reference\":\"PDMON/LLN0.RPMeasurements\",\"buffered\":false,\"integrity_seconds\":60,\"triggers\":[\"data_changed\",\"quality_changed\",\"integrity\"]},\"limits\":{\"max_connections\":4,\"max_pdu_bytes\":16384,\"max_pending_bytes\":65536},\"counters\":{\"max_outstanding_rejections\":");
+    body.append("]},\"report\":{\"reference\":\"PDMON/LLN0.RPMeasurements\",\"buffered\":false,\"integrity_seconds\":60,\"triggers\":[\"data_changed\",\"quality_changed\",\"integrity\"]},\"limits\":{\"max_connections\":4,\"max_pdu_bytes\":16384,\"max_pending_bytes\":65536},\"counters\":{\"connection_rejections\":");
+    body.append(std::to_string(stats.connection_rejections));
+    body.append(",\"max_outstanding_rejections\":");
     body.append(std::to_string(stats.max_outstanding_rejections));
     body.append("}}\n");
     return body;

@@ -81,6 +81,10 @@ int main() {
         ok = expect(overflow_error != IED_ERROR_OK, "fifth MMS connection is rejected") && ok;
         IedConnection_close(overflow_connection);
         IedConnection_destroy(overflow_connection);
+        const uhf::iec61850::RuntimeStats stats = server.stats();
+        ok = expect(
+            stats.connection_rejections == 1U,
+            "connection-limit rejection is counted") && ok;
         for (IedConnection capacity_connection : capacity_connections) {
             IedConnection_close(capacity_connection);
             IedConnection_destroy(capacity_connection);

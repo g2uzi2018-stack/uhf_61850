@@ -152,8 +152,11 @@ bool Server::running() const noexcept {
 RuntimeStats Server::stats() const noexcept {
     RuntimeStats result;
     if (server_ != nullptr) {
+        const MmsServer mms_server = IedServer_getMmsServer(server_);
+        result.connection_rejections = static_cast<std::uint64_t>(
+            MmsServer_getConnectionLimitRejectCount(mms_server));
         result.max_outstanding_rejections = static_cast<std::uint64_t>(
-            MmsServer_getMaxOutstandingRejectCount(IedServer_getMmsServer(server_)));
+            MmsServer_getMaxOutstandingRejectCount(mms_server));
     }
     return result;
 }

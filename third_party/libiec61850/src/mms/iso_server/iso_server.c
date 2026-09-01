@@ -96,6 +96,7 @@ struct sIsoServer
 #endif
 
     int connectionCounter;
+    uint32_t connectionLimitRejects;
 };
 
 static void
@@ -538,6 +539,10 @@ handleIsoConnections(IsoServer self, bool isSingleThread)
                     printf("ISO_SERVER: maximum number of connections reached -> reject connection attempt.\n");
 
                 Socket_destroy(connectionSocket);
+                __atomic_fetch_add(
+                    &self->connectionLimitRejects,
+                    UINT32_C(1),
+                    __ATOMIC_RELAXED);
 
                 return;
             }
@@ -551,6 +556,10 @@ handleIsoConnections(IsoServer self, bool isSingleThread)
                 printf("ISO_SERVER: maximum number of connections reached -> reject connection attempt.\n");
 
             Socket_destroy(connectionSocket);
+            __atomic_fetch_add(
+                &self->connectionLimitRejects,
+                UINT32_C(1),
+                __ATOMIC_RELAXED);
 
             if (isSingleThread)
                 handleClientConnections(self);
@@ -871,6 +880,12 @@ int
 IsoServer_getConnectionCounter(IsoServer self)
 {
     return private_IsoServer_getConnectionCounter(self);
+}
+
+uint32_t
+IsoServer_getConnectionLimitRejectCount(IsoServer self)
+{
+    return __atomic_load_n(&self->connectionLimitRejects, __ATOMIC_RELAXED);
 }
 
 static void

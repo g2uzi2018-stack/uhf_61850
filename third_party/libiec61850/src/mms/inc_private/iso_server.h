@@ -153,6 +153,9 @@ IsoServer_processIncomingMessages(IsoServer self);
 LIB61850_INTERNAL int
 IsoServer_getConnectionCounter(IsoServer self);
 
+LIB61850_INTERNAL uint32_t
+IsoServer_getConnectionLimitRejectCount(IsoServer self);
+
 LIB61850_INTERNAL int
 IsoServer_waitReady(IsoServer self, unsigned int timeoutMs);
 

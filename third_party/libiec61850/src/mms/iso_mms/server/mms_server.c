@@ -906,6 +906,26 @@ MmsServer_getMaxOutstandingRejectCount(MmsServer self)
     return __atomic_load_n(&self->maxOutstandingRejects, __ATOMIC_RELAXED);
 }
 
+uint32_t
+MmsServer_getConnectionLimitRejectCount(MmsServer self)
+{
+    uint32_t count = 0U;
+
+    if (self->isoServerList)
+    {
+        LinkedList elem = LinkedList_getNext(self->isoServerList);
+
+        while (elem)
+        {
+            IsoServer isoServer = (IsoServer)LinkedList_getData(elem);
+            count += IsoServer_getConnectionLimitRejectCount(isoServer);
+            elem = LinkedList_getNext(elem);
+        }
+    }
+
+    return count;
+}
+
 void
 MmsServer_callConnectionHandler(MmsServer self, MmsServerConnection connection)
 {
