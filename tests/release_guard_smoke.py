@@ -57,6 +57,9 @@ def setup(root: Path) -> tuple[Path, Path, Path]:
         '{"version":1,"current":"new","previous":"old","pending":"new"}\n',
         encoding="utf-8",
     )
+    legacy_dir = state_dir / "legacy"
+    legacy_dir.mkdir()
+    (legacy_dir / "recovery-enabled").touch()
     return product, old, new
 
 
@@ -82,6 +85,8 @@ def main() -> int:
         )
         if state["pending"] != "" or product.joinpath("current").resolve() != new.resolve():
             fail("healthy release was not confirmed")
+        if (healthy_root / "var/lib/uhf-gateway/legacy/recovery-enabled").exists():
+            fail("legacy recovery marker was not cleared after confirmation")
 
         failed_root = Path(temporary) / "failed"
         failed_root.mkdir()

@@ -46,11 +46,22 @@ if [[ ! -e "$recovery_marker" ]]; then
 fi
 
 release_state="${path_prefix}/var/lib/uhf-gateway/release-state.json"
+release_root="${path_prefix}/opt/uhf-gateway/releases"
 pending=
+previous=
 if [[ -f "$release_state" ]]; then
     pending=$(sed -n 's/.*"pending":"\([^"]*\)".*/\1/p' "$release_state")
+    previous=$(sed -n 's/.*"previous":"\([^"]*\)".*/\1/p' "$release_state")
 fi
 if [[ -z "$pending" ]]; then
+    rm -f -- "$recovery_marker"
+    exit 0
+fi
+if [[ "$previous" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$ &&
+      -d "${release_root}/${previous}" ]]; then
+    # A previous release owns rollback after an upgrade. Legacy recovery is
+    # only valid for the first cutover, before any previous release exists.
+    rm -f -- "$recovery_marker"
     exit 0
 fi
 

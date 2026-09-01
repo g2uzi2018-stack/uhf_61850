@@ -44,6 +44,7 @@ current_link="${product_root}/current"
 previous_link="${product_root}/previous"
 release_root="${product_root}/releases"
 state_file="${path_prefix}/var/lib/uhf-gateway/release-state.json"
+recovery_marker="${path_prefix}/var/lib/uhf-gateway/legacy/recovery-enabled"
 if [[ ! -f "$state_file" ]]; then
     exit 0
 fi
@@ -90,6 +91,7 @@ if "$systemctl_bin" is-active --quiet uhf-gateway.service; then
     failures=0
     if (( healthy >= 3 )); then
         write_state "$current" "$previous" "" 0 0
+        rm -f -- "$recovery_marker"
     else
         write_state "$current" "$previous" "$pending" "$healthy" "$failures"
     fi

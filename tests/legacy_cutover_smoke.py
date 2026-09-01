@@ -179,6 +179,39 @@ def main() -> int:
         if not (data / "recovered").exists() or marker.exists():
             fail("legacy launcher was not restored exactly once")
 
+        guarded_root = root / "guarded-upgrade"
+        guarded_root.mkdir()
+        guarded_data, _, guarded_crontab, _ = setup_root(
+            guarded_root,
+            "@reboot sudo /data/run.sh &\n",
+        )
+        guarded_run = guarded_data / "run.sh"
+        guarded_run.write_text(
+            "#!/bin/sh\n"
+            f"printf unexpected > {guarded_data / 'recovered'}\n",
+            encoding="utf-8",
+        )
+        guarded_run.chmod(0o700)
+        guarded_state = guarded_root / "var/lib/uhf-gateway"
+        guarded_state.mkdir(parents=True)
+        (guarded_state / "legacy").mkdir()
+        (guarded_state / "legacy/recovery-enabled").touch()
+        (guarded_state / "release-state.json").write_text(
+            '{"version":1,"current":"new","previous":"old","pending":"new"}\n',
+            encoding="utf-8",
+        )
+        (guarded_root / "opt/uhf-gateway/releases/old").mkdir(parents=True)
+        (guarded_root / "opt/uhf-gateway/releases/new").mkdir()
+        guarded_result = run(recovery, "--root", str(guarded_root), "--crontab", str(guarded_crontab))
+        if guarded_result.returncode != 0:
+            fail(f"legacy recovery rejected a valid previous release: {guarded_result.stderr.strip()}")
+        if (guarded_data / "recovered").exists():
+            fail("legacy recovery launched /data/run.sh during an upgrade")
+        if (guarded_state / "legacy/recovery-enabled").exists():
+            fail("stale legacy recovery marker was not removed during an upgrade")
+        if (guarded_root / "tools/crontab").read_text(encoding="utf-8") != "@reboot sudo /data/run.sh &\n":
+            fail("upgrade recovery changed the legacy crontab")
+
         duplicate_root = root / "duplicate"
         duplicate_root.mkdir()
         duplicate_data, duplicate_proc, duplicate_crontab, duplicate_kill_log = setup_root(
