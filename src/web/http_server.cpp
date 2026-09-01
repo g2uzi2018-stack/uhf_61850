@@ -1207,6 +1207,8 @@ std::string HttpServer::iec61850_json(std::chrono::steady_clock::time_point now)
     body.append(std::to_string(stats.ber_depth_rejections));
     body.append(",\"max_outstanding_rejections\":");
     body.append(std::to_string(stats.max_outstanding_rejections));
+    body.append(",\"report_buffer_overflows\":");
+    body.append(std::to_string(stats.report_buffer_overflows));
     body.append("}}\n");
     return body;
 }

@@ -212,6 +212,9 @@ MmsServer_getRequestElementRejectCount(MmsServer self);
 LIB61850_INTERNAL uint32_t
 MmsServer_getBerDepthRejectCount(MmsServer self);
 
+LIB61850_INTERNAL uint32_t
+MmsServer_getReportBufferOverflowCount(MmsServer self);
+
 /**
  * \brief Stop the server (for non-threaded operation mode)
  *

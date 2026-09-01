@@ -5,6 +5,16 @@
 #include "iec61850/server.hpp"
 #include "linked_list.h"
 
+extern "C" {
+#include "hal_thread.h"
+#include "mms_mapping.h"
+#include "mms_mapping_internal.h"
+#include "mms_server_internal.h"
+#include "mms_server_libinternal.h"
+#include "ied_server_private.h"
+#include "reporting.h"
+}
+
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -33,6 +43,98 @@ bool expect(bool condition, const char* message) {
         std::cerr << "FAIL: " << message << '\n';
     }
     return condition;
+}
+
+bool report_buffer_storm_is_bounded() {
+    uhf::iec61850::Model model("REPORTIED");
+    IedServerConfig config = IedServerConfig_create();
+    if (config == nullptr) {
+        return false;
+    }
+    IedServerConfig_setReportBufferSize(config, 65536);
+    IedServerConfig_setReportBufferSizeForURCBs(config, 65536);
+    IedServer raw_server = IedServer_createWithConfig(model.raw(), nullptr, config);
+    IedServerConfig_destroy(config);
+    if (raw_server == nullptr) {
+        return false;
+    }
+
+    auto* private_server = reinterpret_cast<sIedServer*>(raw_server);
+    IedServer_start(raw_server, 15104);
+    bool bounded = IedServer_isRunning(raw_server);
+    IedConnection client = nullptr;
+    ClientReportControlBlock rcb = nullptr;
+    if (bounded) {
+        client = IedConnection_create();
+        bounded = client != nullptr;
+        if (bounded) {
+            IedConnection_setConnectTimeout(client, 1000U);
+            IedClientError error = IED_ERROR_OK;
+            IedConnection_connect(client, &error, "127.0.0.1", 15104);
+            bounded = error == IED_ERROR_OK;
+            if (bounded) {
+                rcb = IedConnection_getRCBValues(
+                    client,
+                    &error,
+                    "REPORTIEDPDMON/LLN0.RP.RPMeasurements",
+                    nullptr);
+                bounded = error == IED_ERROR_OK && rcb != nullptr;
+            }
+            if (bounded) {
+                ClientReportControlBlock_setTrgOps(
+                    rcb, TRG_OPT_DATA_CHANGED | TRG_OPT_QUALITY_CHANGED);
+                ClientReportControlBlock_setRptEna(rcb, true);
+                IedConnection_setRCBValues(
+                    client,
+                    &error,
+                    rcb,
+                    RCB_ELEMENT_RPT_ENA | RCB_ELEMENT_TRG_OPS,
+                    true);
+                bounded = error == IED_ERROR_OK;
+            }
+        }
+    }
+
+    MmsMapping* mapping = private_server->mmsMapping;
+    LinkedList element = mapping == nullptr ? nullptr : LinkedList_getNext(mapping->reportControls);
+    auto* report = element == nullptr
+        ? nullptr
+        : reinterpret_cast<ReportControl*>(LinkedList_getData(element));
+    bounded = bounded &&
+        report != nullptr &&
+        report->dataSet != nullptr &&
+        report->inclusionFlags != nullptr &&
+        report->reportBuffer != nullptr &&
+        report->reportBuffer->memoryBlockSize == 65536;
+    if (bounded) {
+        // Keep the enabled report queued without letting the connection worker drain it.
+        report->clientConnection = nullptr;
+        report->enabled = true;
+        constexpr std::size_t kUpdateCount = 12000U;
+        for (std::size_t index = 0U; index < kUpdateCount; ++index) {
+            ReportControl_valueUpdated(
+                report, 0, REPORT_CONTROL_VALUE_CHANGED, false);
+        }
+        const ReportBuffer* buffer = report->reportBuffer;
+        const std::size_t maximum_entries =
+            static_cast<std::size_t>(buffer->memoryBlockSize) / sizeof(ReportBufferEntry);
+        bounded = buffer->reportsCount > 0 &&
+            static_cast<std::size_t>(buffer->reportsCount) <= maximum_entries &&
+            MmsServer_getReportBufferOverflowCount(private_server->mmsServer) > 0U;
+    }
+
+    if (rcb != nullptr) {
+        ClientReportControlBlock_destroy(rcb);
+    }
+    if (client != nullptr) {
+        IedConnection_close(client);
+        IedConnection_destroy(client);
+    }
+    if (IedServer_isRunning(raw_server)) {
+        IedServer_stop(raw_server);
+    }
+    IedServer_destroy(raw_server);
+    return bounded;
 }
 
 }  // namespace
@@ -272,6 +374,9 @@ int main() {
     IedConnection_destroy(reloaded_connection);
     server.stop();
     ok = expect(!server.running(), "MMS server stops") && ok;
+    ok = expect(
+        report_buffer_storm_is_bounded(),
+        "report storm stays within 64 KiB and records overflow") && ok;
     if (ok) {
         std::cout << "IEC 61850 MMS server smoke: OK\n";
     }

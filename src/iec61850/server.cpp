@@ -167,6 +167,8 @@ RuntimeStats Server::stats() const noexcept {
             MmsServer_getBerDepthRejectCount(mms_server));
         result.max_outstanding_rejections = static_cast<std::uint64_t>(
             MmsServer_getMaxOutstandingRejectCount(mms_server));
+        result.report_buffer_overflows = static_cast<std::uint64_t>(
+            MmsServer_getReportBufferOverflowCount(mms_server));
     }
     return result;
 }

@@ -950,6 +950,12 @@ MmsServer_getBerDepthRejectCount(MmsServer self)
     return __atomic_load_n(&self->berDepthRejects, __ATOMIC_RELAXED);
 }
 
+uint32_t
+MmsServer_getReportBufferOverflowCount(MmsServer self)
+{
+    return __atomic_load_n(&self->reportBufferOverflows, __ATOMIC_RELAXED);
+}
+
 void
 MmsServer_callConnectionHandler(MmsServer self, MmsServerConnection connection)
 {

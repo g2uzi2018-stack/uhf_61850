@@ -25,6 +25,7 @@
         setText("iec-request-element-rejections", payload.counters && payload.counters.request_element_rejections);
         setText("iec-ber-depth-rejections", payload.counters && payload.counters.ber_depth_rejections);
         setText("iec-outstanding-rejections", payload.counters && payload.counters.max_outstanding_rejections);
+        setText("iec-report-buffer-overflows", payload.counters && payload.counters.report_buffer_overflows);
         setText("dataset-reference", payload.dataset && payload.dataset.reference); setText("report-reference", payload.report && payload.report.reference); setText("integrity-period", payload.report ? payload.report.integrity_seconds + " 秒" : "--");
         var snapshotState = document.getElementById("snapshot-state"); snapshotState.textContent = snapshot && snapshot.generation ? "generation " + snapshot.generation : "尚无快照";
         var body = document.getElementById("iec-model-body"); body.textContent = ""; model = payload.model || [];

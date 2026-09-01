@@ -157,6 +157,7 @@ struct sMmsServer
     uint32_t oversizedPduRejects;
     uint32_t requestElementRejects;
     uint32_t berDepthRejects;
+    uint32_t reportBufferOverflows;
 #if (CONFIG_MMS_THREADLESS_STACK != 1)
     Semaphore transmitBufferMutex;
 #endif

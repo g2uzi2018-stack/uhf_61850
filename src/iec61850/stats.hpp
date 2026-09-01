@@ -13,6 +13,7 @@ struct RuntimeStats {
     std::uint64_t request_element_rejections{0U};
     std::uint64_t ber_depth_rejections{0U};
     std::uint64_t max_outstanding_rejections{0U};
+    std::uint64_t report_buffer_overflows{0U};
 };
 
 }  // namespace uhf::iec61850

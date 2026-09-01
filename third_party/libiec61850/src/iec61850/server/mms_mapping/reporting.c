@@ -3607,6 +3607,14 @@ exit_function:
     {
         MmsMapping* mmsMapping = reportControl->server->mmsMapping;
 
+        if (overflow && reportControl->server->mmsServer != NULL)
+        {
+            __atomic_fetch_add(
+                &reportControl->server->mmsServer->reportBufferOverflows,
+                1U,
+                __ATOMIC_RELAXED);
+        }
+
         if (mmsMapping->rcbEventHandler)
         {
             if (overflow)
