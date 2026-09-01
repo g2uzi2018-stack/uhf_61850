@@ -13,4 +13,4 @@ ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/opt/uhf-gateway /var/lib/uhf-gateway
 CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE
-RestrictAddressFamilies=AF_UNIX
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
