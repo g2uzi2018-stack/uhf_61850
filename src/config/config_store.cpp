@@ -55,7 +55,8 @@ public:
                 skip_space();
                 return position_ == input_.size() &&
                     (keys_.size() == 18U || keys_.size() == 19U ||
-                     keys_.size() == 22U || keys_.size() == 23U);
+                     keys_.size() == 22U || keys_.size() == 23U ||
+                     keys_.size() == 27U || keys_.size() == 28U);
             }
             if (!consume(',')) {
                 return false;
@@ -180,7 +181,8 @@ private:
             return parse_unsigned(version) && version != 0U;
         }
         if (key == "acquisition_device" || key == "rtu_device" || key == "modbus_tcp_bind" ||
-            key == "iec_ied_name") {
+            key == "iec_ied_name" || key == "overview_title" || key == "overview_device" ||
+            key == "sntp_server") {
             std::string value;
             if (!parse_string(value)) {
                 return false;
@@ -191,8 +193,14 @@ private:
                 values.rtu_device = std::move(value);
             } else if (key == "modbus_tcp_bind") {
                 values.modbus_tcp_bind = std::move(value);
-            } else {
+            } else if (key == "iec_ied_name") {
                 values.iec_ied_name = std::move(value);
+            } else if (key == "overview_title") {
+                values.overview_title = std::move(value);
+            } else if (key == "overview_device") {
+                values.overview_device = std::move(value);
+            } else {
+                values.sntp_server = std::move(value);
             }
             return true;
         }
@@ -203,6 +211,9 @@ private:
         }
         if (key == "iec_enabled") {
             return parse_boolean(values.iec_enabled);
+        }
+        if (key == "time_sync_enabled") {
+            return parse_boolean(values.time_sync_enabled);
         }
         if (key == "storage_event_threshold_dbm") {
             std::int64_t threshold_value = 0;
@@ -247,6 +258,10 @@ private:
         if (key == "iec_port") {
             return assign_unsigned(value, std::uint16_t{1U}, std::uint16_t{65535U}, values.iec_port);
         }
+        if (key == "phase_start_degree") {
+            return assign_unsigned(
+                value, std::uint16_t{0U}, std::uint16_t{360U}, values.phase_start_degree);
+        }
         if (key == "storage_period_seconds") {
             return assign_unsigned(value, std::uint32_t{60U}, std::uint32_t{86400U}, values.storage_period_seconds);
         }
@@ -288,6 +303,37 @@ bool valid_ied_name(std::string_view value) noexcept {
         if (!(std::isalnum(unsigned_character) != 0 || character == '_')) {
             return false;
         }
+    }
+    return true;
+}
+
+bool valid_config_text(std::string_view value, std::size_t maximum) noexcept {
+    if (value.empty() || value.size() > maximum) {
+        return false;
+    }
+    for (const char character : value) {
+        const unsigned char unsigned_character = static_cast<unsigned char>(character);
+        if (unsigned_character < 0x20U || unsigned_character == 0x7FU) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool valid_sntp_server(std::string_view value) noexcept {
+    if (!valid_config_text(value, 253U) || value.front() == '.' || value.back() == '.') {
+        return false;
+    }
+    char previous = '\0';
+    for (const char character : value) {
+        const unsigned char unsigned_character = static_cast<unsigned char>(character);
+        if (!(std::isalnum(unsigned_character) != 0 || character == '.' || character == '-')) {
+            return false;
+        }
+        if (character == '.' && previous == '.') {
+            return false;
+        }
+        previous = character;
     }
     return true;
 }
@@ -442,7 +488,11 @@ bool ConfigStore::validate(const Values& values) noexcept {
         valid_device(values.acquisition_device, "/dev/ttyS1") &&
         valid_device(values.rtu_device, "/dev/ttyS4") &&
         ::inet_pton(AF_INET, values.modbus_tcp_bind.c_str(), &address) == 1 &&
-        valid_ied_name(values.iec_ied_name) && values.acquisition_slave_id >= 1U &&
+        valid_ied_name(values.iec_ied_name) &&
+        valid_config_text(values.overview_title, 64U) &&
+        valid_config_text(values.overview_device, 64U) &&
+        values.phase_start_degree <= 360U && valid_sntp_server(values.sntp_server) &&
+        values.acquisition_slave_id >= 1U &&
         values.acquisition_slave_id <= 247U && values.rtu_unit_id >= 1U &&
         values.rtu_unit_id <= 247U && values.modbus_tcp_unit_id >= 1U &&
         values.modbus_tcp_unit_id <= 247U && values.modbus_tcp_port != 0U &&
@@ -478,6 +528,12 @@ std::string ConfigStore::serialize(const Snapshot& snapshot) {
         "  \"iec_enabled\": " + std::string(values.iec_enabled ? "true" : "false") + ",\n"
         "  \"iec_port\": " + std::to_string(values.iec_port) + ",\n"
         "  \"iec_ied_name\": \"" + json_escape(values.iec_ied_name) + "\",\n"
+        "  \"overview_title\": \"" + json_escape(values.overview_title) + "\",\n"
+        "  \"overview_device\": \"" + json_escape(values.overview_device) + "\",\n"
+        "  \"phase_start_degree\": " + std::to_string(values.phase_start_degree) + ",\n"
+        "  \"time_sync_enabled\": " +
+            std::string(values.time_sync_enabled ? "true" : "false") + ",\n"
+        "  \"sntp_server\": \"" + json_escape(values.sntp_server) + "\",\n"
         "  \"storage_period_seconds\": " + std::to_string(values.storage_period_seconds) + ",\n"
         "  \"storage_retention_days\": " + std::to_string(values.storage_retention_days) + ",\n"
         "  \"storage_min_free_bytes\": " + std::to_string(values.storage_min_free_bytes) + ",\n"

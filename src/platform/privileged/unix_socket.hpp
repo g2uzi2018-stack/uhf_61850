@@ -35,6 +35,9 @@ public:
     Reply network_rollback() const;
     Reply maintenance_restart_service() const;
     Reply maintenance_reboot() const;
+    Reply time_sync(std::string_view server) const;
+    Reply time_disable() const;
+    Reply time_set(std::string_view local_time) const;
 
 private:
     std::filesystem::path socket_path_;

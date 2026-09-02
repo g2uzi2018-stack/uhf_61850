@@ -143,6 +143,29 @@ Reply NetworkService::handle(std::string_view request, uid_t uid, gid_t gid) {
             ? Reply{true, "ok", "{\"result\":\"ok\"}\n"}
             : Reply{false, "maintenance_error", {}};
     }
+    if (request.rfind("time.sync\n", 0U) == 0U) {
+        const std::string_view server = request.substr(10U);
+        if (!valid_sntp_server(server)) {
+            return {false, "invalid_time_request", {}};
+        }
+        return maintenance_runner_.configure_sntp(server)
+            ? Reply{true, "ok", "{\"result\":\"ok\"}\n"}
+            : Reply{false, "maintenance_error", {}};
+    }
+    if (request == "time.disable") {
+        return maintenance_runner_.disable_sntp()
+            ? Reply{true, "ok", "{\"result\":\"ok\"}\n"}
+            : Reply{false, "maintenance_error", {}};
+    }
+    if (request.rfind("time.set\n", 0U) == 0U) {
+        const std::string_view local_time = request.substr(9U);
+        if (!valid_system_time(local_time)) {
+            return {false, "invalid_time_request", {}};
+        }
+        return maintenance_runner_.set_system_time(local_time)
+            ? Reply{true, "ok", "{\"result\":\"ok\"}\n"}
+            : Reply{false, "maintenance_error", {}};
+    }
     return {false, "unknown_operation", {}};
 }
 

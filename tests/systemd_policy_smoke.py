@@ -64,7 +64,7 @@ def main() -> int:
         "ExecStart=/opt/uhf-gateway/current/bin/uhf-privilegedd",
         "--vendor-eth0-config /etc/net.conf --vendor-eth1-config /etc/net2.conf",
         "ReadWritePaths=/etc/uhf-gateway /var/lib/uhf-privileged /run/uhf-gateway",
-        "CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW",
+        "CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME",
         "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK",
         "NoNewPrivileges=true",
     ):

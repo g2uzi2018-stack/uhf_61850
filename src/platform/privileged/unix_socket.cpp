@@ -194,6 +194,18 @@ Reply UnixSocketClient::maintenance_reboot() const {
     return request("maintenance.reboot");
 }
 
+Reply UnixSocketClient::time_sync(std::string_view server) const {
+    return request("time.sync\n" + std::string(server));
+}
+
+Reply UnixSocketClient::time_disable() const {
+    return request("time.disable");
+}
+
+Reply UnixSocketClient::time_set(std::string_view local_time) const {
+    return request("time.set\n" + std::string(local_time));
+}
+
 UnixSocketServer::UnixSocketServer(
     std::filesystem::path socket_path, uid_t allowed_uid, RequestHandler handler)
     : socket_path_(std::move(socket_path)), allowed_uid_(allowed_uid), handler_(std::move(handler)) {

@@ -26,6 +26,11 @@ struct Values {
     bool iec_enabled{true};
     std::uint16_t iec_port{102U};
     std::string iec_ied_name{"UHFPD1"};
+    std::string overview_title{"局部放电在线监测系统"};
+    std::string overview_device{"1号主变"};
+    std::uint16_t phase_start_degree{0U};
+    bool time_sync_enabled{true};
+    std::string sntp_server{"pool.ntp.org"};
     std::uint32_t storage_period_seconds{300U};
     std::uint32_t storage_retention_days{1U};
     std::uint64_t storage_min_free_bytes{536870912U};

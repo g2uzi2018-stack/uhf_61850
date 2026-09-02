@@ -287,6 +287,18 @@ int main(int argc, char* argv[]) {
             }
             uhf::app::GatewayRuntime* runtime_pointer = runtime.get();
             uhf::privileged::UnixSocketClient network_client(options.privileged_socket);
+            if (!options.simulate) {
+                const uhf::privileged::Reply time_reply = configured.values.time_sync_enabled
+                    ? network_client.time_sync(configured.values.sntp_server)
+                    : network_client.time_disable();
+                if (!time_reply.ok) {
+                    logger.log(
+                        uhf::logging::Level::warning,
+                        uhf::logging::Component::config,
+                        "time.configuration_apply_failed",
+                        "Configured time synchronization could not be applied");
+                }
+            }
             uhf::web::HttpServer server(
                 std::move(options.document_root),
                 std::move(options.bind_address),

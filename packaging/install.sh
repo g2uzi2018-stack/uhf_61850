@@ -166,6 +166,7 @@ mv -T "$temporary_release" "$release_dir"
 
 mkdir -p "${path_prefix}/etc/uhf-gateway" \
     "${path_prefix}/etc/systemd/system" \
+    "${path_prefix}/etc/systemd/timesyncd.conf.d" \
     "${path_prefix}/etc/rsyslog.d" \
     "${path_prefix}/etc/logrotate.d" \
     "${path_prefix}/usr/lib/uhf-gateway" \

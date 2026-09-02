@@ -35,6 +35,11 @@ const char* valid_object() {
         "iec_enabled":false,
         "iec_port":15102,
         "iec_ied_name":"UHFPD2",
+        "overview_title":"现场局放监测",
+        "overview_device":"2号主变",
+        "phase_start_degree":45,
+        "time_sync_enabled":false,
+        "sntp_server":"time.example.com",
         "storage_period_seconds":600,
         "storage_retention_days":2,
         "storage_min_free_bytes":268435456,
@@ -65,6 +70,9 @@ int main() {
         const uhf::config::Snapshot initial = store.snapshot();
         if (!expect(initial.version == 1U, "initial version") ||
             !expect(initial.values.acquisition_slave_id == 2U, "file default slave ID") ||
+            !expect(initial.values.overview_title == "现场局放监测", "overview title") ||
+            !expect(initial.values.phase_start_degree == 45U, "phase start") ||
+            !expect(!initial.values.time_sync_enabled, "manual time mode") ||
             !expect(std::filesystem::is_regular_file(path), "initial file") ||
             !expect(std::filesystem::file_size(path) < 16U * 1024U, "bounded file")) {
             return 1;
@@ -145,6 +153,8 @@ int main() {
             !expect(changed.values.tls_enabled, "TLS remains enabled") ||
             !expect(changed.values.iec_enabled == false, "updated IEC flag") ||
             !expect(changed.values.iec_port == 15102U, "updated IEC port") ||
+            !expect(changed.values.overview_device == "2号主变", "overview device") ||
+            !expect(changed.values.sntp_server == "time.example.com", "SNTP server") ||
             !expect(changed.values.storage_event_threshold_dbm == -45, "event threshold") ||
             !expect(changed.values.storage_event_rearm_dbm == -50, "event rearm") ||
             !expect(changed.values.storage_event_delta_db == 10U, "event delta") ||
@@ -157,6 +167,7 @@ int main() {
             std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
         if (!expect(saved.find("\"version\": 2") != std::string::npos, "saved version") ||
             !expect(saved.find("\"iec_port\": 15102") != std::string::npos, "saved IEC port") ||
+            !expect(saved.find("\"phase_start_degree\": 45") != std::string::npos, "saved phase start") ||
             !expect(saved.find("Smoke") == std::string::npos, "no test secret")) {
             return 1;
         }
@@ -165,7 +176,8 @@ int main() {
         if (!expect(reopened_snapshot.version == 2U, "version survives restart") ||
             !expect(reopened_snapshot.values.rtu_unit_id == 3U, "values survive restart") ||
             !expect(reopened_snapshot.values.modbus_tcp_unit_id == 4U, "TCP unit survives restart") ||
-            !expect(reopened_snapshot.values.iec_port == 15102U, "IEC port survives restart")) {
+            !expect(reopened_snapshot.values.iec_port == 15102U, "IEC port survives restart") ||
+            !expect(reopened_snapshot.values.overview_title == "现场局放监测", "overview survives restart")) {
             return 1;
         }
 
