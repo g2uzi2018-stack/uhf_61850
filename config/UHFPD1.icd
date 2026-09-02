@@ -8,13 +8,13 @@
       </ConnectedAP>
     </SubNetwork>
   </Communication>
-  <IED name="UHFPD1" manufacturer="UHF 61850 Gateway" type="UHF-PD-MON">
+  <IED name="UHFPD1" desc="局部放电在线监测主IED" manufacturer="UHF 61850 Gateway" type="UHF-PD-MON">
     <AccessPoint name="AP1">
       <Server>
         <Authentication none="true"/>
-        <LDevice inst="PDMON">
-          <LN0 lnClass="LLN0" lnType="LT_LLN0" inst="">
-            <DataSet name="DSMeasurements">
+        <LDevice inst="PDMON" desc="局部放电在线监测设备">
+          <LN0 lnClass="LLN0" lnType="LT_LLN0" inst="" desc="设备公共信息">
+            <DataSet name="DSMeasurements" desc="局部放电遥测数据集">
               <FCDA ldInst="PDMON" lnClass="GGIO" lnInst="1" doName="AnIn1" daName="mag.f" fc="MX"/>
               <FCDA ldInst="PDMON" lnClass="GGIO" lnInst="1" doName="IntIn1" daName="stVal" fc="ST"/>
               <FCDA ldInst="PDMON" lnClass="GGIO" lnInst="1" doName="AnIn2" daName="mag.f" fc="MX"/>
@@ -22,57 +22,61 @@
               <FCDA ldInst="PDMON" lnClass="GGIO" lnInst="1" doName="AnIn4" daName="mag.f" fc="MX"/>
               <FCDA ldInst="PDMON" lnClass="SPDC" lnInst="1" doName="PaDschAlm" daName="stVal" fc="ST"/>
             </DataSet>
-            <ReportControl name="RPMeasurements" rptID="UHFPD1/RPMeasurements" datSet="DSMeasurements" confRev="1" buffered="false" intgPd="60000">
+            <ReportControl name="RPMeasurements" desc="局放遥测数据报告控制块" rptID="UHFPD1/RPMeasurements" datSet="DSMeasurements" confRev="1" buffered="false" intgPd="60000">
               <TrgOps dchg="true" qchg="true" intg="true"/>
               <OptFields seqNum="true" timeStamp="true" reasonCode="true" dataSet="true" dataRef="true"/>
               <RptEnabled max="4"/>
             </ReportControl>
             <DO name="Health" type="DOT_ENS"/>
           </LN0>
-          <LN lnClass="LPHD" lnType="LT_LPHD1" inst="1"/>
-          <LN lnClass="SPDC" lnType="LT_SPDC1" inst="1"/>
-          <LN lnClass="GGIO" lnType="LT_GGIO1" inst="1"/>
+          <LN lnClass="LPHD" lnType="LT_LPHD1" inst="1" desc="物理设备健康状态"/>
+          <LN lnClass="SPDC" lnType="LT_SPDC1" inst="1" desc="#1主变测点1局放"/>
+          <LN lnClass="GGIO" lnType="LT_GGIO1" inst="1" desc="局放测量值"/>
         </LDevice>
       </Server>
     </AccessPoint>
   </IED>
   <DataTypeTemplates>
-    <LNodeType id="LT_LLN0" lnClass="LLN0">
-      <DO name="Health" type="DOT_ENS"/>
+    <LNodeType id="LT_LLN0" lnClass="LLN0" desc="设备公共信息模板">
+      <DO name="Health" type="DOT_ENS" desc="设备健康状态"/>
     </LNodeType>
-    <LNodeType id="LT_LPHD1" lnClass="LPHD">
-      <DO name="PhyHealth" type="DOT_SPS"/>
+    <LNodeType id="LT_LPHD1" lnClass="LPHD" desc="物理设备模板">
+      <DO name="PhyHealth" type="DOT_SPS" desc="物理设备健康状态"/>
     </LNodeType>
-    <LNodeType id="LT_SPDC1" lnClass="SPDC">
-      <DO name="UhfPaDsch" type="DOT_MV"/>
-      <DO name="PaDschAlm" type="DOT_SPS"/>
+    <LNodeType id="LT_SPDC1" lnClass="SPDC" desc="标准 UHF 局放模板">
+      <DO name="UhfPaDsch" type="DOT_MV" desc="标准 UHF 局放峰值"/>
+      <DO name="PaDschAlm" type="DOT_SPS" desc="局部放电告警"/>
     </LNodeType>
-    <LNodeType id="LT_GGIO1" lnClass="GGIO">
-      <DO name="AnIn1" type="DOT_MV"/>
-      <DO name="IntIn1" type="DOT_INS"/>
-      <DO name="AnIn2" type="DOT_MV"/>
-      <DO name="AnIn3" type="DOT_MV"/>
-      <DO name="AnIn4" type="DOT_MV"/>
+    <LNodeType id="LT_GGIO1" lnClass="GGIO" desc="局放测量模板">
+      <DO name="AnIn1" type="DOT_MV" desc="放电均值"/>
+      <DO name="IntIn1" type="DOT_INS" desc="脉冲次数"/>
+      <DO name="AnIn2" type="DOT_MV" desc="放电峰值"/>
+      <DO name="AnIn3" type="DOT_MV" desc="峰值相位"/>
+      <DO name="AnIn4" type="DOT_MV" desc="背景噪声"/>
     </LNodeType>
     <DOType id="DOT_MV" cdc="MV">
       <DA name="mag" bType="Struct" type="DAT_AnalogueValue" fc="MX"/>
       <DA name="q" bType="Quality" fc="MX"/>
       <DA name="t" bType="Timestamp" fc="MX"/>
+      <DA name="d" bType="VisString255" fc="DC"/>
     </DOType>
     <DOType id="DOT_SPS" cdc="SPS">
       <DA name="stVal" bType="BOOLEAN" fc="ST" dchg="true"/>
       <DA name="q" bType="Quality" fc="ST" qchg="true"/>
       <DA name="t" bType="Timestamp" fc="ST"/>
+      <DA name="d" bType="VisString255" fc="DC"/>
     </DOType>
     <DOType id="DOT_INS" cdc="INS">
       <DA name="stVal" bType="INT32" fc="ST" dchg="true"/>
       <DA name="q" bType="Quality" fc="ST" qchg="true"/>
       <DA name="t" bType="Timestamp" fc="ST"/>
+      <DA name="d" bType="VisString255" fc="DC"/>
     </DOType>
     <DOType id="DOT_ENS" cdc="ENS">
       <DA name="stVal" bType="Enum" type="DAT_Health" fc="ST" dchg="true"/>
       <DA name="q" bType="Quality" fc="ST" qchg="true"/>
       <DA name="t" bType="Timestamp" fc="ST"/>
+      <DA name="d" bType="VisString255" fc="DC"/>
     </DOType>
     <DAType id="DAT_AnalogueValue">
       <BDA name="f" bType="FLOAT32"/>

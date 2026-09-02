@@ -36,6 +36,14 @@ int main() {
         IedModel_getModelNodeByObjectReference(
             model.raw(), "TESTIEDPDMON/SPDC1.PaDschAlm.stVal") != nullptr,
         "alarm reference exists") && ok;
+    ok = expect(
+        IedModel_getModelNodeByObjectReference(
+            model.raw(), "TESTIEDPDMON/GGIO1.AnIn1.d") != nullptr,
+        "average description exists") && ok;
+    ok = expect(
+        IedModel_getModelNodeByObjectReference(
+            model.raw(), "TESTIEDPDMON/SPDC1.UhfPaDsch.d") != nullptr,
+        "standard peak description exists") && ok;
     ok = expect(model.measurement_value(uhf::iec61850::kMeasurementCount) == nullptr,
                 "measurement bounds") && ok;
     for (std::size_t index = 0; index < uhf::iec61850::kMeasurementCount; ++index) {

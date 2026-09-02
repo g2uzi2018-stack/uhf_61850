@@ -49,6 +49,17 @@ def main() -> int:
     ):
         if reference not in text:
             fail(f"model member missing: {reference}")
+    for description in (
+        'desc="局部放电在线监测主IED"',
+        'desc="局部放电在线监测设备"',
+        'desc="放电均值"',
+        'desc="放电峰值"',
+        'desc="峰值相位"',
+        'desc="脉冲次数"',
+        'desc="背景噪声"',
+    ):
+        if description not in text:
+            fail(f"business description missing: {description}")
     print("IEC 61850 ICD smoke: OK")
     return 0
 

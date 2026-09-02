@@ -22,6 +22,19 @@ DataAttribute* child_attribute(DataObject* object, const char* path) {
     return reinterpret_cast<DataAttribute*>(child);
 }
 
+DataAttribute* child_description(DataObject* object) {
+    return child_attribute(object, "d");
+}
+
+void set_description(DataAttribute* attribute, const char* description) {
+    MmsValue* value = MmsValue_newVisibleString(description);
+    if (value == nullptr) {
+        throw std::runtime_error("unable to create IEC 61850 description value");
+    }
+    DataAttribute_setValue(attribute, value);
+    MmsValue_delete(value);
+}
+
 }  // namespace
 
 namespace uhf::iec61850 {
@@ -47,13 +60,21 @@ Model::Model(std::string ied_name) {
             throw std::runtime_error("unable to create IEC 61850 logical nodes");
         }
 
-        DataObject* health = CDC_ENS_create("Health", as_model_node(lln0), 0U);
-        DataObject* phy_health = CDC_SPS_create("PhyHealth", as_model_node(lphd1), 0U);
-        DataObject* peak = CDC_MV_create("UhfPaDsch", as_model_node(spdc1), 0U, false);
-        DataObject* alarm = CDC_SPS_create("PaDschAlm", as_model_node(spdc1), 0U);
+        DataObject* health = CDC_ENS_create("Health", as_model_node(lln0), CDC_OPTION_DESC);
+        DataObject* phy_health = CDC_SPS_create(
+            "PhyHealth", as_model_node(lphd1), CDC_OPTION_DESC);
+        DataObject* peak = CDC_MV_create(
+            "UhfPaDsch", as_model_node(spdc1), CDC_OPTION_DESC, false);
+        DataObject* alarm = CDC_SPS_create(
+            "PaDschAlm", as_model_node(spdc1), CDC_OPTION_DESC);
         if (health == nullptr || phy_health == nullptr || peak == nullptr || alarm == nullptr) {
             throw std::runtime_error("unable to create IEC 61850 common data objects");
         }
+
+        set_description(child_description(health), "设备健康状态");
+        set_description(child_description(phy_health), "物理设备健康状态");
+        set_description(child_description(peak), "标准 UHF 局放峰值");
+        set_description(child_description(alarm), "局部放电告警");
 
         peak_value_ = child_attribute(peak, "mag.f");
         alarm_value_ = child_attribute(alarm, "stVal");
@@ -62,13 +83,18 @@ Model::Model(std::string ied_name) {
 
         static constexpr const char* kMeasurementNames[kMeasurementCount] = {
             "AnIn1", "IntIn1", "AnIn2", "AnIn3", "AnIn4"};
+        static constexpr const char* kMeasurementDescriptions[kMeasurementCount] = {
+            "放电均值", "脉冲次数", "放电峰值", "峰值相位", "背景噪声"};
         for (std::size_t index = 0; index < kMeasurementCount; ++index) {
             DataObject* measurement = index == 1U
-                ? CDC_INS_create(kMeasurementNames[index], as_model_node(ggio1), 0U)
-                : CDC_MV_create(kMeasurementNames[index], as_model_node(ggio1), 0U, false);
+                ? CDC_INS_create(
+                      kMeasurementNames[index], as_model_node(ggio1), CDC_OPTION_DESC)
+                : CDC_MV_create(
+                      kMeasurementNames[index], as_model_node(ggio1), CDC_OPTION_DESC, false);
             if (measurement == nullptr) {
                 throw std::runtime_error("unable to create IEC 61850 measurement object");
             }
+            set_description(child_description(measurement), kMeasurementDescriptions[index]);
             measurement_values_[index] = child_attribute(
                 measurement, index == 1U ? "stVal" : "mag.f");
             measurement_integer_[index] = index == 1U;
