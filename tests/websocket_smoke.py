@@ -87,6 +87,7 @@ def masked_frame(opcode: int, payload: bytes) -> bytes:
 def websocket_handshake(port: int, cookie: str, origin: str) -> socket.socket:
     sock = socket.create_connection(("127.0.0.1", port), timeout=2)
     key = base64.b64encode(b"0123456789abcdef").decode("ascii")
+    cookie_header = f"Cookie: {cookie}\r\n" if cookie else ""
     request = (
         f"GET /ws/v1/telemetry HTTP/1.1\r\n"
         f"Host: 127.0.0.1:{port}\r\n"
@@ -95,7 +96,7 @@ def websocket_handshake(port: int, cookie: str, origin: str) -> socket.socket:
         "Sec-WebSocket-Version: 13\r\n"
         f"Sec-WebSocket-Key: {key}\r\n"
         f"Origin: {origin}\r\n"
-        f"Cookie: {cookie}\r\n\r\n"
+        f"{cookie_header}\r\n"
     ).encode("ascii")
     sock.sendall(request)
     response = receive_http_headers(sock)
@@ -159,6 +160,8 @@ def main() -> int:
 
             initial_password = (state_dir / "initial-password").read_text(encoding="utf-8").strip()
             origin = f"http://127.0.0.1:{port}"
+            public_websocket = websocket_handshake(port, "", origin)
+            public_websocket.close()
             status, body, headers = http_request(
                 port,
                 "POST",

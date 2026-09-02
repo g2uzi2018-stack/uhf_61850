@@ -630,7 +630,7 @@ bool decode_path(std::string_view target, std::string& path) {
     }
 
     if (path == "/") {
-        path = "/index.html";
+        path = "/overview.html";
     }
     return true;
 }
@@ -1056,6 +1056,11 @@ constexpr std::string_view kConfigSchemaJson = R"json({
     "iec_enabled":{"type":"boolean"},
     "iec_port":{"type":"integer","minimum":1,"maximum":65535},
     "iec_ied_name":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9_]{0,31}$"},
+    "overview_title":{"type":"string","minLength":1,"maxLength":64},
+    "overview_device":{"type":"string","minLength":1,"maxLength":64},
+    "phase_start_degree":{"type":"integer","minimum":0,"maximum":360},
+    "time_sync_enabled":{"type":"boolean"},
+    "sntp_server":{"type":"string","minLength":1,"maxLength":253},
     "storage_period_seconds":{"type":"integer","minimum":60,"maximum":86400},
     "storage_retention_days":{"type":"integer","minimum":1,"maximum":30},
     "storage_min_free_bytes":{"type":"integer","minimum":268435456},
@@ -1064,7 +1069,7 @@ constexpr std::string_view kConfigSchemaJson = R"json({
     "storage_event_delta_db":{"type":"integer","minimum":1,"maximum":85},
     "storage_event_merge_seconds":{"type":"integer","minimum":0,"maximum":3600}
   },
-  "required":["acquisition_device","acquisition_slave_id","acquisition_period_ms","acquisition_response_timeout_ms","acquisition_max_retries","rtu_device","rtu_unit_id","modbus_tcp_bind","modbus_tcp_unit_id","modbus_tcp_port","web_port","tls_enabled","iec_enabled","iec_port","iec_ied_name","storage_period_seconds","storage_retention_days","storage_min_free_bytes","storage_event_threshold_dbm","storage_event_rearm_dbm","storage_event_delta_db","storage_event_merge_seconds"]
+  "required":["acquisition_device","acquisition_slave_id","acquisition_period_ms","acquisition_response_timeout_ms","acquisition_max_retries","rtu_device","rtu_unit_id","modbus_tcp_bind","modbus_tcp_unit_id","modbus_tcp_port","web_port","tls_enabled","iec_enabled","iec_port","iec_ied_name","overview_title","overview_device","phase_start_degree","time_sync_enabled","sntp_server","storage_period_seconds","storage_retention_days","storage_min_free_bytes","storage_event_threshold_dbm","storage_event_rearm_dbm","storage_event_delta_db","storage_event_merge_seconds"]
 })json";
 
 }  // namespace
@@ -1129,6 +1134,17 @@ health::Report HttpServer::health_report(std::chrono::steady_clock::time_point n
         }
     }
     return health_aggregator_.evaluate(input, now);
+}
+
+std::string HttpServer::overview_json() const {
+    config::Values values;
+    if (config_store_ != nullptr) {
+        values = config_store_->snapshot().values;
+    }
+    return "{\"overview_title\":\"" + json_escape(values.overview_title) +
+        "\",\"overview_device\":\"" + json_escape(values.overview_device) +
+        "\",\"phase_start_degree\":" + std::to_string(values.phase_start_degree) +
+        "}\n";
 }
 
 std::string HttpServer::iec61850_json(std::chrono::steady_clock::time_point now) const {
@@ -1674,15 +1690,6 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             send_error(client_fd, tls, 400, "websocket upgrade required");
             return false;
         }
-        const std::string token = session_cookie(parsed);
-        const auto iterator = sessions_.find(token);
-        if (token.empty() || iterator == sessions_.end() || iterator->second.expires_at <= now) {
-            if (iterator != sessions_.end()) {
-                sessions_.erase(iterator);
-            }
-            send_error(client_fd, tls, 401, "authentication required");
-            return false;
-        }
         const std::string_view origin = header_value(parsed, "origin");
         const std::string_view host = header_value(parsed, "host");
         const std::string expected_origin =
@@ -1760,21 +1767,20 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
         return false;
     }
 
+    if (request_path == "/api/v1/overview") {
+        if (parsed.method != "GET") {
+            send_method_not_allowed(client_fd, tls, "GET");
+            return false;
+        }
+        send_json(client_fd, tls, 200, overview_json(), "Cache-Control: no-store\r\n");
+        return false;
+    }
+
     if (request_path == "/api/v1/health" || request_path == "/api/v1/snapshot/latest") {
         if (parsed.method != "GET") {
             send_method_not_allowed(client_fd, tls, "GET");
             return false;
         }
-        const std::string token = session_cookie(parsed);
-        const auto iterator = sessions_.find(token);
-        if (token.empty() || iterator == sessions_.end() || iterator->second.expires_at <= now) {
-            if (iterator != sessions_.end()) {
-                sessions_.erase(iterator);
-            }
-            send_error(client_fd, tls, 401, "authentication required");
-            return false;
-        }
-        iterator->second.expires_at = now + kSessionLifetime;
         if (request_path == "/api/v1/health") {
             send_json(client_fd, tls, 200, health_report(now).to_json());
             return false;
@@ -2095,6 +2101,93 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
         return false;
     }
 
+    if (request_path == "/api/v1/time") {
+        if (parsed.method != "GET" && parsed.method != "POST") {
+            send_method_not_allowed(client_fd, tls, "GET, POST");
+            return false;
+        }
+        const std::string token = session_cookie(parsed);
+        const auto iterator = sessions_.find(token);
+        if (token.empty() || iterator == sessions_.end() || iterator->second.expires_at <= now) {
+            if (iterator != sessions_.end()) {
+                sessions_.erase(iterator);
+            }
+            send_error(client_fd, tls, 401, "authentication required");
+            return false;
+        }
+        iterator->second.expires_at = now + kSessionLifetime;
+        if (config_store_ == nullptr) {
+            send_error(client_fd, tls, 404, "not found");
+            return false;
+        }
+        const config::Snapshot configured = config_store_->snapshot();
+        if (parsed.method == "GET") {
+            const auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            send_json(
+                client_fd,
+                tls,
+                200,
+                "{\"time_sync_enabled\":" +
+                    std::string(configured.values.time_sync_enabled ? "true" : "false") +
+                    ",\"sntp_server\":\"" + json_escape(configured.values.sntp_server) +
+                    "\",\"timestamp_ms\":" + std::to_string(timestamp) + "}\n",
+                "Cache-Control: no-store\r\n");
+            return false;
+        }
+        const std::string_view csrf = header_value(parsed, "x-csrf-token");
+        if (!constant_time_equal(csrf, iterator->second.csrf_token)) {
+            send_error(client_fd, tls, 403, "CSRF token required");
+            return false;
+        }
+        std::string action;
+        std::string current_password;
+        if (!json_string_field(parsed.body, "action", action, 16U) ||
+            !json_string_field(
+                parsed.body, "current_password", current_password, kMaxPasswordJsonBytes) ||
+            !auth_store_.verify_password("admin", current_password)) {
+            send_error(client_fd, tls, 401, "current password is incorrect");
+            return false;
+        }
+        if (network_client_ == nullptr) {
+            send_error(client_fd, tls, 503, "privileged time service unavailable");
+            return false;
+        }
+        privileged::Reply reply;
+        if (action == "sync") {
+            reply = network_client_->time_sync(configured.values.sntp_server);
+        } else if (action == "disable") {
+            reply = network_client_->time_disable();
+        } else if (action == "set") {
+            std::string local_time;
+            if (!json_string_field(parsed.body, "local_time", local_time, 19U)) {
+                send_error(client_fd, tls, 400, "invalid time request");
+                return false;
+            }
+            reply = network_client_->time_set(local_time);
+        } else {
+            send_error(client_fd, tls, 400, "invalid time action");
+            return false;
+        }
+        if (!reply.ok) {
+            const int status = reply.code == "invalid_time_request" ? 400 :
+                (reply.code == "unavailable" ? 503 : 502);
+            send_error(
+                client_fd,
+                tls,
+                status,
+                reply.code.empty() ? "time operation failed" : reply.code);
+            return false;
+        }
+        send_json(
+            client_fd,
+            tls,
+            202,
+            reply.body.empty() ? "{\"accepted\":true}\n" : reply.body,
+            "Cache-Control: no-store\r\n");
+        return false;
+    }
+
     if (request_path == "/api/v1/config/schema") {
         if (parsed.method != "GET") {
             send_method_not_allowed(client_fd, tls, "GET");
@@ -2387,8 +2480,15 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             return false;
         }
         request_path = "/login.html";
-    } else if (request_path == "/index.html" || request_path == "/overview" ||
-               request_path == "/overview.html" || request_path == "/settings.html" ||
+    } else if (request_path == "/overview" || request_path == "/overview.html") {
+        if (parsed.method != "GET") {
+            send_method_not_allowed(client_fd, tls, "GET");
+            return false;
+        }
+        if (request_path == "/overview") {
+            request_path = "/overview.html";
+        }
+    } else if (request_path == "/index.html" || request_path == "/settings.html" ||
                request_path == "/logs.html" || request_path == "/storage.html" ||
                request_path == "/network.html" || request_path == "/iec61850.html" ||
                request_path == "/maintenance.html") {
@@ -2406,9 +2506,6 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             return false;
         }
         iterator->second.expires_at = now + kSessionLifetime;
-        if (request_path == "/overview") {
-            request_path = "/overview.html";
-        }
     }
 
     if (parsed.method != "GET") {

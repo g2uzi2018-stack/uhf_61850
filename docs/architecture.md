@@ -147,28 +147,31 @@ V1 不实现 BRCB、控制、写服务、GOOSE、SV、MMS 文件服务、动态�
 | POST | `/api/v1/session` | 否 | 登录，限速并校验同源 Origin |
 | DELETE | `/api/v1/session` | 是+CSRF | 注销 |
 | GET | `/healthz` | 否 | 返回总体状态、版本和有限组件状态，不泄露配置 |
-| GET | `/api/v1/health` | 是 | 组件、资源、最后轮询、协议客户端数 |
-| GET | `/api/v1/snapshot/latest` | 是 | 最新快照和 3600 点 |
+| GET | `/api/v1/overview` | 否 | 总览标题、设备名和图谱起始相位 |
+| GET | `/api/v1/health` | 否 | 总览所需的组件、资源、最后轮询和协议客户端数 |
+| GET | `/api/v1/snapshot/latest` | 否 | 总览所需的最新快照和 3600 点 |
 | GET | `/api/v1/config` | 是 | 脱敏配置和 schema |
 | PUT | `/api/v1/config` | 是+CSRF | 带 `If-Match` 版本的配置修改 |
 | POST | `/api/v1/network/stage` | 是+CSRF+再认证 | 验证并试应用网络配置 |
 | POST | `/api/v1/network/confirm` | 是+CSRF | 在 60 秒内确认，否则自动回滚 |
+| GET/POST | `/api/v1/time` | 是（POST 另需 CSRF+再认证） | SNTP 配置、停用同步和手动校时 |
 | GET | `/api/v1/logs` | 是 | 受限条数、级别、组件过滤 |
 | GET | `/api/v1/frames` | 是 | 历史索引 |
 | GET | `/api/v1/frames/{id}.csv` | 是 | 流式导出一帧 |
 | PUT | `/api/v1/tls` | 是+CSRF+再认证 | 校验并原子替换服务端证书/私钥 |
 | POST | `/api/v1/maintenance/restart-service` | 是+CSRF+再认证 | POST，不使用 GET |
 | POST | `/api/v1/maintenance/reboot` | 是+CSRF+再认证 | 固定 helper，不能传 shell 命令 |
-| WS | `/ws/v1/telemetry` | 是 | 快照和健康事件 |
+| WS | `/ws/v1/telemetry` | 否（必须同源） | 总览所需的快照和健康事件 |
 
-所有 JSON 请求体默认最大 64 KiB；TLS 上传使用专用 multipart 路由、总上限 96 KiB；所有响应也有路由级大小或流式上限，谱图最大固定 3600 点。CivetWeb 工作线程固定为 8，HTTP 活跃请求上限 16，已认证 WebSocket 上限 4；WebSocket 握手必须校验同源 `Origin`。每个 WS 只排队“一份最新快照”（≤128 KiB），新 generation 覆盖未发送旧 generation，慢浏览器不会累积消息。服务端对 HTML、日志、文件名和错误消息做转义，不把内部路径或堆栈发给浏览器。
+所有 JSON 请求体默认最大 64 KiB；TLS 上传使用专用 multipart 路由、总上限 96 KiB；所有响应也有路由级大小或流式上限，谱图最大固定 3600 点。CivetWeb 工作线程固定为 8，HTTP 活跃请求上限 16，WebSocket 上限 4；WebSocket 握手必须校验同源 `Origin`。每个 WS 只排队“一份最新快照”（≤128 KiB），新 generation 覆盖未发送旧 generation，慢浏览器不会累积消息。服务端对 HTML、日志、文件名和错误消息做转义，不把内部路径或堆栈发给浏览器。
 
 产品模式默认在 `web.port=8080` 上启用 HTTPS。安装器生成带当前 IP/设备名 SAN 的自签名证书用于首次接入；管理员上传的 PEM 证书链和私钥各限 32 KiB，服务端校验证书期限、用途、SAN、私钥匹配与可解析性后写临时文件、`fsync`、原子替换并热重载，失败保持旧证书。私钥 0600、从不回传或记录；旧证书保留一份以便回滚。HTTP 兼容模式只能从本机 root 恢复配置启用，不能通过远程 Web 打开，并持续显示警告。
 
 ### 6.2 前端布局
 
 - 沿用旧站点的蓝色主色和卡片式导航，但实时页采用需求书截图中的深色图表区。
-- 顶部持续显示设备名、采集状态、最后成功时间和当前用户。
+- 总览无需登录即可查看；顶部右侧显示设备状态，左下显示服务健康，维护页和配置页仍需登录。
+- 顶部持续显示设备名、采集状态、最后成功时间和当前用户（受保护页）。
 - 5 个测量卡后紧跟 PRPD/PRPS；浏览器在 Web Worker 或主线程节流渲染，服务端只传数值。
 - 设置页按“网络、采集与转发、IEC 61850、存储、日志、安全”分组；字段显示范围、默认值和生效方式。
 - 网络试应用后显示明确倒计时和新地址链接；未确认自动回滚。

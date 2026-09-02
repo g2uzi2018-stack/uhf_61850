@@ -68,6 +68,7 @@ private:
     void run_websocket(int client_fd, SSL* tls);
     void cleanup_sessions(std::chrono::steady_clock::time_point now);
     health::Report health_report(std::chrono::steady_clock::time_point now) const;
+    std::string overview_json() const;
     std::string iec61850_json(std::chrono::steady_clock::time_point now) const;
     std::optional<std::string> snapshot_json() const;
     std::string logs_json(std::size_t limit) const;

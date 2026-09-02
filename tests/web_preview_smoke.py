@@ -27,6 +27,8 @@ def main() -> int:
     javascript = (web_dir / "app.js").read_text(encoding="utf-8")
     overview_html = (web_dir / "overview.html").read_text(encoding="utf-8")
     overview_javascript = (web_dir / "overview.js").read_text(encoding="utf-8")
+    network_html = (web_dir / "network.html").read_text(encoding="utf-8")
+    network_javascript = (web_dir / "network.js").read_text(encoding="utf-8")
     login_javascript = (web_dir / "login.js").read_text(encoding="utf-8")
     stylesheet = (web_dir / "styles.css").read_text(encoding="utf-8")
 
@@ -42,12 +44,15 @@ def main() -> int:
     for marker in ('data-action="change-password"', "showToast", "updateChecklistProgress", "password-form"):
         if marker not in javascript:
             fail(f"app.js is missing {marker!r}")
-    for marker in ("实时总览", "prpd-canvas", "prps-canvas"):
+    for marker in ("实时总览", "prpd-canvas", "prps-canvas", "overview-title-input", "phase-start-degree", "device-status"):
         if marker not in overview_html:
             fail(f"overview.html is missing {marker!r}")
-    for marker in ("drawPrpd", "drawPrps", "3600", "api/v1/snapshot/latest", "api/v1/health", "WebSocket"):
+    for marker in ("drawPrpd", "drawPrps", "3600", "api/v1/snapshot/latest", "api/v1/health", "api/v1/overview", "phaseStartBin", "WebSocket"):
         if marker not in overview_javascript:
             fail(f"overview.js is missing {marker!r}")
+    for marker in ("SNTP 服务器", "手动设备时间", "IED 名称", "api/v1/time"):
+        if marker not in network_html and marker not in network_javascript:
+            fail(f"network assets are missing {marker!r}")
     for marker in ("api/v1/session", "same-origin", "登录尝试过于频繁", "location.protocol"):
         if marker not in login_javascript:
             fail(f"login.js is missing {marker!r}")

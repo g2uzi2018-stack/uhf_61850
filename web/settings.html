@@ -14,13 +14,13 @@
             <div class="preview-chip"><span class="chip-dot"></span>设备管理模式</div>
             <nav class="primary-nav" aria-label="主导航">
                 <a class="nav-item" href="/overview.html"><span class="nav-icon">⌂</span><span>总览</span></a>
-                <a class="nav-item active" href="/settings.html" aria-current="page"><span class="nav-icon">◈</span><span>采集与转发</span></a>
-                <a class="nav-item" href="/network.html"><span class="nav-icon">⇄</span><span>网络设置</span></a>
-                <a class="nav-item" href="/storage.html"><span class="nav-icon">▣</span><span>存储与日志</span></a>
-                <a class="nav-item" href="/iec61850.html"><span class="nav-icon">◌</span><span>IEC 61850</span></a>
-                <div class="nav-section-label">安全与维护</div>
-                <a class="nav-item" href="/"><span class="nav-icon">♙</span><span>用户管理</span></a>
-                <a class="nav-item" href="/maintenance.html"><span class="nav-icon">⚙</span><span>系统维护</span></a>
+                <div class="nav-section-label">系统维护</div>
+                <a class="nav-item nav-subitem" href="/index.html"><span class="nav-icon">♙</span><span>用户管理</span></a>
+                <a class="nav-item nav-subitem active" href="/settings.html" aria-current="page"><span class="nav-icon">◈</span><span>采集与转发</span></a>
+                <a class="nav-item nav-subitem" href="/network.html"><span class="nav-icon">⇄</span><span>网络设置</span></a>
+                <a class="nav-item nav-subitem" href="/storage.html"><span class="nav-icon">▣</span><span>存储与日志</span></a>
+                <a class="nav-item nav-subitem" href="/iec61850.html"><span class="nav-icon">◌</span><span>IEC 61850</span></a>
+                <a class="nav-item nav-subitem" href="/maintenance.html"><span class="nav-icon">⚙</span><span>系统维护</span></a>
             </nav>
             <div class="sidebar-footer"><span>版本 0.1.0</span><span>配置受版本保护</span></div>
         </aside>
@@ -29,7 +29,7 @@
             <div class="page-content settings-content">
                 <div class="breadcrumb"><span>设备配置</span><b>/</b><strong>采集与转发</strong></div>
                 <div class="page-heading"><div><div class="heading-kicker">COMMUNICATION &amp; STORAGE</div><h1>采集与转发</h1><p>配置 PD1000 采集、Modbus 镜像、IEC 61850 和本地存储参数。</p></div><span class="heading-badge" id="config-version"><i></i>版本读取中</span></div>
-                <div class="settings-notice"><strong>生效范围</strong><span>采集从站号、轮询周期、响应超时、重试次数，以及存储周期、保留天数和最低空间保存后由后台运行线程热加载；串口设备、RTU 地址、IED 名称和监听端口等项目会先原子落盘，并在下次安全重启时应用。</span></div>
+                <div class="settings-notice"><strong>生效范围</strong><span>采集从站号、轮询周期、响应超时、重试次数，以及存储周期、保留天数和最低空间保存后由后台运行线程热加载；串口设备、RTU 地址和监听端口等项目会先原子落盘，并在下次安全重启时应用。IED 名称已移至网络设置。</span></div>
                 <form id="settings-form">
                     <section class="panel settings-panel"><div class="panel-header"><div><h2>PD1000 采集主站</h2><p>485-1 固定使用 /dev/ttyS1、115200 / 8N1、功能码 0x04</p></div><span class="count-badge">31 笔 / 轮</span></div><div class="settings-grid">
                         <label>从站地址<input name="acquisition_slave_id" type="number" min="1" max="247" required><small>默认 1，范围 1–247</small></label>
@@ -43,7 +43,6 @@
                         <label>Modbus/TCP Unit ID<input name="modbus_tcp_unit_id" type="number" min="1" max="247" required><small>不匹配返回 0x0B</small></label>
                         <label>IEC 61850 服务<input name="iec_enabled" type="checkbox"><small>关闭后不监听 MMS 端口</small></label>
                         <label>IEC 61850 端口<input name="iec_port" type="number" min="1" max="65535" required><small>标准端口为 102</small></label>
-                        <label>IED 名称<input name="iec_ied_name" type="text" maxlength="32" required><small>字母开头，仅字母、数字、下划线</small></label>
                     </div></section>
                     <section class="panel settings-panel"><div class="panel-header"><div><h2>存储策略</h2><p>周期帧与事件包写入数据目录，由后台清理线程维护</p></div><span class="count-badge">原子写入</span></div><div class="settings-grid">
                         <label>周期保存间隔（秒）<input name="storage_period_seconds" type="number" min="60" max="86400" required><small>默认 300 秒</small></label>

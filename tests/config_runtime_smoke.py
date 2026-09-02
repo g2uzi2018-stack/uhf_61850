@@ -69,6 +69,11 @@ def main() -> int:
         "iec_enabled": False,
         "iec_port": free_port(),
         "iec_ied_name": "UHFPD2",
+        "overview_title": "现场😀监测",
+        "overview_device": "2号主变",
+        "phase_start_degree": 45,
+        "time_sync_enabled": False,
+        "sntp_server": "time.example.com",
         "storage_period_seconds": 600,
         "storage_retention_days": 2,
         "storage_min_free_bytes": 268435456,
@@ -140,7 +145,15 @@ def main() -> int:
             if config_status != 200:
                 fail(f"config lookup returned {config_status}")
             loaded = json.loads(config_body)
-            if loaded.get("version") != 7 or loaded.get("rtu_unit_id") != 3 or loaded.get("modbus_tcp_unit_id") != 4 or loaded.get("iec_enabled") is not False:
+            if (
+                loaded.get("version") != 7
+                or loaded.get("rtu_unit_id") != 3
+                or loaded.get("modbus_tcp_unit_id") != 4
+                or loaded.get("iec_enabled") is not False
+                or loaded.get("overview_title") != "现场😀监测"
+                or loaded.get("phase_start_degree") != 45
+                or loaded.get("time_sync_enabled") is not False
+            ):
                 fail(f"persisted configuration was not loaded: {loaded!r}")
 
             update = dict(loaded)

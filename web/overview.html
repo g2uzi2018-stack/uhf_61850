@@ -17,13 +17,13 @@
             <div class="preview-chip"><span class="chip-dot"></span>设备管理模式</div>
             <nav class="primary-nav" aria-label="主导航">
                 <a class="nav-item active" href="/overview.html" aria-current="page"><span class="nav-icon">⌂</span><span>总览</span></a>
-                <a class="nav-item" href="/"><span class="nav-icon">♙</span><span>用户管理</span></a>
-                <a class="nav-item" href="/settings.html"><span class="nav-icon">◈</span><span>采集与转发</span></a>
-                <a class="nav-item" href="/network.html"><span class="nav-icon">⇄</span><span>网络设置</span></a>
-                <a class="nav-item" href="/storage.html"><span class="nav-icon">▣</span><span>存储与日志</span></a>
-                <a class="nav-item" href="/iec61850.html"><span class="nav-icon">◌</span><span>IEC 61850</span></a>
-                <div class="nav-section-label">安全与维护</div>
-                <a class="nav-item" href="/maintenance.html"><span class="nav-icon">⚙</span><span>系统维护</span></a>
+                <div class="nav-section-label">系统维护</div>
+                <a class="nav-item nav-subitem" href="/index.html"><span class="nav-icon">♙</span><span>用户管理</span></a>
+                <a class="nav-item nav-subitem" href="/settings.html"><span class="nav-icon">◈</span><span>采集与转发</span></a>
+                <a class="nav-item nav-subitem" href="/network.html"><span class="nav-icon">⇄</span><span>网络设置</span></a>
+                <a class="nav-item nav-subitem" href="/storage.html"><span class="nav-icon">▣</span><span>存储与日志</span></a>
+                <a class="nav-item nav-subitem" href="/iec61850.html"><span class="nav-icon">◌</span><span>IEC 61850</span></a>
+                <a class="nav-item nav-subitem" href="/maintenance.html"><span class="nav-icon">⚙</span><span>系统维护</span></a>
             </nav>
             <div class="sidebar-footer"><span>版本 0.1.0</span><span>设备管理服务</span></div>
         </aside>
@@ -32,15 +32,16 @@
             <header class="topbar">
                 <div class="topbar-status"><span class="status-dot" id="runtime-status-dot"></span><span id="runtime-status">采集状态读取中</span></div>
                 <div class="topbar-account">
-                    <div class="account-summary"><div class="mini-avatar">A</div><div><strong>admin</strong><span>系统管理员</span></div></div>
-                    <button class="logout-button" type="button" data-action="logout">退出登录</button>
+                    <div class="topbar-device-status" id="device-status"><i class="status-dot"></i><span>设备状态读取中</span></div>
+                    <div class="account-summary"><div class="mini-avatar">G</div><div><strong>访客</strong><span>实时只读</span></div></div>
+                    <a class="logout-button" href="/maintenance.html">登录维护</a>
                 </div>
             </header>
 
             <div class="page-content overview-content">
                 <div class="breadcrumb"><span>运行监测</span><b>/</b><strong>实时总览</strong></div>
                 <div class="page-heading">
-                    <div><div class="heading-kicker">LIVE MONITORING</div><h1>实时总览</h1><p>查看最新完整快照、局放谱图和各服务运行状态。</p></div>
+                    <div><div class="heading-kicker">LIVE MONITORING</div><h1 id="overview-title">局部放电在线监测系统</h1><p id="overview-device">1号主变 · 查看最新完整快照、局放谱图和各服务运行状态。</p></div>
                     <span class="heading-badge" id="snapshot-badge"><i></i>等待快照</span>
                 </div>
 
@@ -52,11 +53,21 @@
                     <article class="metric-card"><span>背景噪声</span><strong data-measurement="noise">--</strong><em>mV</em></article>
                 </div>
 
+                <section class="panel settings-panel overview-settings-panel">
+                    <div class="panel-header"><div><h2>总览显示设置</h2><p>可自定义设备标题、设备名称和图谱起始相位；查看总览无需登录，保存显示设置需要先登录系统维护。</p></div><span class="count-badge">配置项</span></div>
+                    <form id="overview-settings-form" class="settings-grid">
+                        <label>系统标题<input id="overview-title-input" name="overview_title" maxlength="64" required></label>
+                        <label>设备名称<input id="overview-device-input" name="overview_device" maxlength="64" required></label>
+                        <label>相位起始角（°）<input id="phase-start-degree" name="phase_start_degree" type="number" min="0" max="360" step="5" required><small>下一次绘制按 5° 分箱从该角度开始</small></label>
+                        <div class="settings-actions wide"><span class="form-error" id="overview-settings-error" role="alert"></span><span class="settings-saved" id="overview-settings-saved"></span><button class="primary-button" type="submit">保存总览设置</button></div>
+                    </form>
+                </section>
+
                 <div class="overview-grid">
                     <section class="panel chart-panel">
                         <div class="panel-header"><div><h2>PRPD 相位分布</h2><p>50 个周期 × 72 个相位分箱，颜色表示幅值 dBm</p></div><span class="count-badge" id="snapshot-generation">generation --</span></div>
                         <div class="chart-wrap"><canvas id="prpd-canvas" aria-label="PRPD 热力图"></canvas></div>
-                        <div class="chart-axis"><span>0°</span><span>180°</span><span>360°</span></div>
+                        <div class="chart-axis"><span id="prpd-axis-start">0°</span><span id="prpd-axis-middle">180°</span><span id="prpd-axis-end">360°</span></div>
                     </section>
                     <section class="panel chart-panel">
                         <div class="panel-header"><div><h2>PRPS 时序散点</h2><p>按周期和相位显示有效局放点</p></div><span class="count-badge" id="snapshot-time">--</span></div>

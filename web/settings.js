@@ -7,6 +7,7 @@
     var version = 0;
     var csrfToken = "";
     var modbusTcpBind = "192.168.3.230";
+    var configuration = null;
     var numericFields = [
         "acquisition_slave_id", "acquisition_period_ms", "acquisition_response_timeout_ms",
         "acquisition_max_retries", "rtu_unit_id", "modbus_tcp_port", "modbus_tcp_unit_id",
@@ -39,22 +40,23 @@
             if (!response.ok) { throw new Error("config failed"); }
             return response.json();
         }).then(function (config) {
+            configuration = config;
             version = Number(config.version);
             modbusTcpBind = String(config.modbus_tcp_bind);
             document.getElementById("config-version").innerHTML = "<i></i>配置版本 " + version;
             numericFields.forEach(function (name) { setValue(name, config[name]); });
             setValue("iec_enabled", config.iec_enabled);
-            setValue("iec_ied_name", config.iec_ied_name);
             document.getElementById("runtime-status").textContent = "配置已加载 · 版本 " + version;
         });
     }
     function load() { error.textContent = ""; return loadSession().then(loadConfig).catch(function (reason) { if (reason.message !== "authentication required") { showError("无法读取配置，请稍后重试。"); } }); }
     form.addEventListener("submit", function (event) {
         event.preventDefault();
-        var payload = {};
+        var payload = Object.assign({}, configuration || {});
+        delete payload.version;
         numericFields.forEach(function (name) { payload[name] = Number(form.elements[name].value); });
         payload.iec_enabled = form.elements.iec_enabled.checked;
-        payload.iec_ied_name = form.elements.iec_ied_name.value;
+        payload.iec_ied_name = configuration && configuration.iec_ied_name ? configuration.iec_ied_name : "UHFPD1";
         payload.acquisition_device = "/dev/ttyS1";
         payload.rtu_device = "/dev/ttyS4";
         payload.modbus_tcp_bind = modbusTcpBind;
@@ -62,7 +64,7 @@
         fetch("/api/v1/config", {method: "PUT", credentials: "same-origin", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrfToken, "If-Match": '"' + version + '"'}, body: JSON.stringify(payload)}).then(function (response) {
             if (response.status === 401) { redirectToLogin(); return null; }
             if (!response.ok) { return responseMessage(response, "配置保存失败").then(showError); }
-            return response.json().then(function (result) { version = Number(result.version); document.getElementById("config-version").innerHTML = "<i></i>配置版本 " + version; showSaved("已原子保存；采集和存储参数将由后台热加载，其余需要重启的项目将在下次服务重启时应用。"); });
+            return response.json().then(function (result) { version = Number(result.version); payload.version = version; configuration = payload; document.getElementById("config-version").innerHTML = "<i></i>配置版本 " + version; showSaved("已原子保存；采集和存储参数将由后台热加载，其余需要重启的项目将在下次服务重启时应用。"); });
         }).catch(function () { showError("无法连接服务，配置未确认保存。"); });
     });
     document.getElementById("reload-settings").addEventListener("click", load);

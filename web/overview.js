@@ -5,6 +5,8 @@
     var reconnectTimer;
     var websocket;
     var websocketConnected = false;
+    var phaseStartDegree = 0;
+    var csrfToken = "";
     var colors = ["#e8eef8", "#9cc8ff", "#5a9df2", "#786ed8", "#c55cb8", "#e66b66", "#e8a03e"];
 
     function redirectToLogin() {
@@ -53,7 +55,15 @@
         var runtimeStatus = document.getElementById("runtime-status");
         var dot = document.getElementById("runtime-status-dot");
         runtimeStatus.textContent = "采集 · " + statusText(acquisition.status);
-        dot.className = "status-dot " + statusClass(acquisition.status);
+        dot.className = "status-dot " + (acquisition.status || "down");
+        var deviceStatus = document.getElementById("device-status");
+        if (deviceStatus) {
+            var deviceDot = deviceStatus.querySelector(".status-dot");
+            var deviceLabel = deviceStatus.querySelector("span:not(.status-dot)");
+            var overallStatus = payload.status || "down";
+            deviceDot.className = "status-dot " + overallStatus;
+            deviceLabel.textContent = "设备状态 · " + statusText(overallStatus);
+        }
         var lastSuccess = document.getElementById("last-success");
         if (acquisition.age_ms === null || typeof acquisition.age_ms === "undefined") {
             lastSuccess.textContent = "尚无成功轮次";
@@ -81,6 +91,34 @@
         return colors[Math.min(colors.length - 1, Math.floor(normalized * colors.length))];
     }
 
+    function phaseStartBin() {
+        return Math.round(phaseStartDegree / 5) % 72;
+    }
+
+    function phaseLabel(degree) {
+        var normalized = degree % 360;
+        if (normalized < 0) { normalized += 360; }
+        return normalized + "°";
+    }
+
+    function updatePhaseAxis() {
+        document.getElementById("prpd-axis-start").textContent = phaseLabel(phaseStartDegree);
+        document.getElementById("prpd-axis-middle").textContent = phaseLabel(phaseStartDegree + 180);
+        document.getElementById("prpd-axis-end").textContent = phaseLabel(phaseStartDegree + 360);
+    }
+
+    function updateOverview(payload) {
+        var title = String(payload.overview_title || "局部放电在线监测系统");
+        var device = String(payload.overview_device || "1号主变");
+        phaseStartDegree = Number(payload.phase_start_degree || 0);
+        document.getElementById("overview-title").textContent = title;
+        document.getElementById("overview-device").textContent = device;
+        document.getElementById("overview-title-input").value = title;
+        document.getElementById("overview-device-input").value = device;
+        document.getElementById("phase-start-degree").value = phaseStartDegree;
+        updatePhaseAxis();
+    }
+
     function drawPrpd(values, valid) {
         var canvas = document.getElementById("prpd-canvas");
         var setup = setCanvasSize(canvas);
@@ -90,12 +128,14 @@
         context.fillRect(0, 0, setup.width, setup.height);
         var cellWidth = setup.width / 72;
         var cellHeight = setup.height / 50;
+        var startBin = phaseStartBin();
         for (var cycle = 0; cycle < 50; cycle += 1) {
             for (var phase = 0; phase < 72; phase += 1) {
                 var index = cycle * 72 + phase;
                 if (valid[index] && values[index] !== null) {
                     context.fillStyle = colorFor(values[index]);
-                    context.fillRect(phase * cellWidth, cycle * cellHeight, cellWidth + 0.5, cellHeight + 0.5);
+                    var displayPhase = (phase - startBin + 72) % 72;
+                    context.fillRect(displayPhase * cellWidth, cycle * cellHeight, cellWidth + 0.5, cellHeight + 0.5);
                 }
             }
         }
@@ -110,6 +150,7 @@
         context.clearRect(0, 0, setup.width, setup.height);
         context.fillStyle = "#f7faff";
         context.fillRect(0, 0, setup.width, setup.height);
+        var startBin = phaseStartBin();
         for (var cycle = 0; cycle < 50; cycle += 1) {
             for (var phase = 0; phase < 72; phase += 1) {
                 var index = cycle * 72 + phase;
@@ -118,7 +159,8 @@
                 }
                 context.fillStyle = colorFor(values[index]);
                 context.beginPath();
-                context.arc((phase + 0.5) * setup.width / 72, (cycle + 0.5) * setup.height / 50, 2, 0, Math.PI * 2);
+                var displayPhase = (phase - startBin + 72) % 72;
+                context.arc((displayPhase + 0.5) * setup.width / 72, (cycle + 0.5) * setup.height / 50, 2, 0, Math.PI * 2);
                 context.fill();
             }
         }
@@ -159,6 +201,75 @@
                 throw new Error(path + " returned " + response.status);
             }
             return response.json();
+        });
+    }
+
+    function loadOverview() {
+        return fetch("/api/v1/overview", {credentials: "same-origin"}).then(function (response) {
+            if (!response.ok) { throw new Error("overview returned " + response.status); }
+            return response.json();
+        }).then(updateOverview);
+    }
+
+    function responseMessage(response, fallback) {
+        return response.json().then(function (payload) {
+            return payload && payload.error ? payload.error : fallback;
+        }).catch(function () { return fallback; });
+    }
+
+    function saveOverview(event) {
+        event.preventDefault();
+        var saveError = document.getElementById("overview-settings-error");
+        var saved = document.getElementById("overview-settings-saved");
+        saveError.textContent = "";
+        saved.textContent = "";
+        fetch("/api/v1/session", {credentials: "same-origin"}).then(function (sessionResponse) {
+            if (sessionResponse.status === 401) {
+                redirectToLogin();
+                throw new Error("authentication required");
+            }
+            if (!sessionResponse.ok) { throw new Error("session failed"); }
+            return sessionResponse.json();
+        }).then(function (session) {
+            csrfToken = session.csrf_token;
+            return fetch("/api/v1/config", {credentials: "same-origin"});
+        }).then(function (configResponse) {
+            if (configResponse.status === 401) {
+                redirectToLogin();
+                throw new Error("authentication required");
+            }
+            if (!configResponse.ok) { throw new Error("config failed"); }
+            return configResponse.json();
+        }).then(function (config) {
+            var payload = Object.assign({}, config);
+            delete payload.version;
+            payload.overview_title = document.getElementById("overview-title-input").value;
+            payload.overview_device = document.getElementById("overview-device-input").value;
+            payload.phase_start_degree = Number(document.getElementById("phase-start-degree").value);
+            return fetch("/api/v1/config", {
+                method: "PUT",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": csrfToken,
+                    "If-Match": '"' + config.version + '"'
+                },
+                body: JSON.stringify(payload)
+            });
+        }).then(function (response) {
+            if (response.status === 401) {
+                redirectToLogin();
+                throw new Error("authentication required");
+            }
+            if (!response.ok) {
+                return responseMessage(response, "总览设置保存失败").then(function (message) { throw new Error(message); });
+            }
+            return response.json();
+        }).then(function () {
+            saved.textContent = "总览设置已保存";
+            return loadOverview();
+        }).catch(function (error) {
+            if (error.message !== "authentication required") { saveError.textContent = error.message; }
         });
     }
 
@@ -253,6 +364,7 @@
             drawPrps(snapshot.spectrum || [], snapshot.spectrum_valid || []);
         }
     });
-    refresh();
+    document.getElementById("overview-settings-form").addEventListener("submit", saveOverview);
+    loadOverview().catch(function () { showToast("总览显示设置暂时不可用"); }).then(refresh);
     connectWebSocket();
 }());

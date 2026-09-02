@@ -95,12 +95,115 @@ private:
             if (character == '"') {
                 return result.size() <= 256U;
             }
-            if (character == '\\' || static_cast<unsigned char>(character) < 0x20U) {
+            if (static_cast<unsigned char>(character) < 0x20U) {
                 return false;
             }
-            result.push_back(character);
+            if (character != '\\') {
+                result.push_back(character);
+                continue;
+            }
+            if (position_ >= input_.size()) {
+                return false;
+            }
+            const char escaped = input_[position_++];
+            switch (escaped) {
+            case '"':
+            case '\\':
+            case '/':
+                result.push_back(escaped);
+                break;
+            case 'b':
+                result.push_back('\b');
+                break;
+            case 'f':
+                result.push_back('\f');
+                break;
+            case 'n':
+                result.push_back('\n');
+                break;
+            case 'r':
+                result.push_back('\r');
+                break;
+            case 't':
+                result.push_back('\t');
+                break;
+            case 'u': {
+                if (position_ + 4U > input_.size()) {
+                    return false;
+                }
+                unsigned int code_unit = 0U;
+                for (std::size_t index = 0U; index < 4U; ++index) {
+                    const int digit = hex_value(input_[position_++]);
+                    if (digit < 0) {
+                        return false;
+                    }
+                    code_unit = (code_unit << 4U) | static_cast<unsigned int>(digit);
+                }
+                unsigned int code_point = code_unit;
+                if (code_unit >= 0xD800U && code_unit <= 0xDBFFU) {
+                    if (position_ + 6U > input_.size() || input_[position_] != '\\' ||
+                        input_[position_ + 1U] != 'u') {
+                        return false;
+                    }
+                    position_ += 2U;
+                    unsigned int low_surrogate = 0U;
+                    for (std::size_t index = 0U; index < 4U; ++index) {
+                        const int digit = hex_value(input_[position_++]);
+                        if (digit < 0) {
+                            return false;
+                        }
+                        low_surrogate = (low_surrogate << 4U) | static_cast<unsigned int>(digit);
+                    }
+                    if (low_surrogate < 0xDC00U || low_surrogate > 0xDFFFU) {
+                        return false;
+                    }
+                    code_point = 0x10000U + ((code_unit - 0xD800U) << 10U) +
+                        (low_surrogate - 0xDC00U);
+                } else if (code_unit >= 0xDC00U && code_unit <= 0xDFFFU) {
+                    return false;
+                }
+                if (code_point < 0x20U || code_point > 0x10FFFFU) {
+                    return false;
+                }
+                append_utf8(result, code_point);
+                break;
+            }
+            default:
+                return false;
+            }
         }
         return false;
+    }
+
+    static int hex_value(char value) noexcept {
+        if (value >= '0' && value <= '9') {
+            return value - '0';
+        }
+        if (value >= 'a' && value <= 'f') {
+            return value - 'a' + 10;
+        }
+        if (value >= 'A' && value <= 'F') {
+            return value - 'A' + 10;
+        }
+        return -1;
+    }
+
+    static void append_utf8(std::string& result, unsigned int code_point) {
+        if (code_point <= 0x7FU) {
+            result.push_back(static_cast<char>(code_point));
+        } else if (code_point <= 0x7FFU) {
+            result.push_back(static_cast<char>(0xC0U | (code_point >> 6U)));
+            result.push_back(static_cast<char>(0x80U | (code_point & 0x3FU)));
+        } else if (code_point <= 0xFFFFU) {
+            result.push_back(static_cast<char>(0xE0U | (code_point >> 12U)));
+            result.push_back(static_cast<char>(0x80U | ((code_point >> 6U) & 0x3FU)));
+            result.push_back(static_cast<char>(0x80U | (code_point & 0x3FU)));
+        } else {
+            result.push_back(static_cast<char>(0xF0U | (code_point >> 18U)));
+            result.push_back(static_cast<char>(0x80U | ((code_point >> 12U) & 0x3FU)));
+            result.push_back(static_cast<char>(0x80U | ((code_point >> 6U) & 0x3FU)));
+            result.push_back(static_cast<char>(0x80U | (code_point & 0x3FU)));
+        }
     }
 
     bool parse_unsigned(std::uint64_t& result) {

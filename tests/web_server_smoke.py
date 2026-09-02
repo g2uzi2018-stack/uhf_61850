@@ -144,11 +144,15 @@ def main() -> int:
             if initial_password != "admin":
                 fail("initial password does not use the configured default")
 
-            root_status, _, root_headers = request(port, "GET", "/")
-            assert_status(root_status, 302, "unauthenticated root")
-            if root_headers.get("Location") != "/login":
-                fail("unauthenticated root did not redirect to /login")
-            for protected_path in ("/api/v1/health", "/api/v1/snapshot/latest"):
+            root_status, root_body, root_headers = request(port, "GET", "/")
+            assert_status(root_status, 200, "unauthenticated root")
+            if root_headers.get("Location") is not None or "实时总览".encode("utf-8") not in root_body:
+                fail("unauthenticated root did not serve the real-time overview")
+            public_health_status, _, _ = request(port, "GET", "/api/v1/health")
+            assert_status(public_health_status, 200, "public health")
+            public_snapshot_status, _, _ = request(port, "GET", "/api/v1/snapshot/latest")
+            assert_status(public_snapshot_status, 503, "public snapshot without acquisition")
+            for protected_path in ("/api/v1/config", "/api/v1/network", "/api/v1/time", "/api/v1/iec61850"):
                 protected_status, _, _ = request(port, "GET", protected_path)
                 assert_status(protected_status, 401, f"unauthenticated {protected_path}")
 
@@ -203,25 +207,47 @@ def main() -> int:
             assert_json(session_body, "must_change", False, "session lookup")
             page_status, page_body, _ = request(port, "GET", "/", headers={"Cookie": cookie})
             assert_status(page_status, 200, "authenticated root")
-            if "用户管理".encode("utf-8") not in page_body:
+            if "实时总览".encode("utf-8") not in page_body:
                 fail("authenticated root page was not served")
+            user_page_status, user_page_body, _ = request(
+                port, "GET", "/index.html", headers={"Cookie": cookie}
+            )
+            assert_status(user_page_status, 200, "authenticated user management")
+            if "用户管理".encode("utf-8") not in user_page_body:
+                fail("authenticated user-management page was not served")
             overview_status, overview_body, _ = request(
                 port, "GET", "/overview.html", headers={"Cookie": cookie}
             )
             assert_status(overview_status, 200, "authenticated overview")
             if "实时总览".encode("utf-8") not in overview_body:
                 fail("authenticated overview page was not served")
+            overview_api_status, overview_api_body, _ = request(
+                port, "GET", "/api/v1/overview"
+            )
+            assert_status(overview_api_status, 200, "public overview settings")
+            overview_payload = json.loads(overview_api_body)
+            if overview_payload.get("overview_title") != "局部放电在线监测系统" or overview_payload.get("phase_start_degree") != 0:
+                fail(f"unexpected public overview settings: {overview_payload!r}")
             settings_status, settings_body, _ = request(
                 port, "GET", "/settings.html", headers={"Cookie": cookie}
             )
             assert_status(settings_status, 200, "authenticated settings")
             if "采集与转发".encode("utf-8") not in settings_body:
                 fail("authenticated settings page was not served")
+            if b'name="iec_ied_name"' in settings_body:
+                fail("IED name was not moved out of acquisition settings")
             for page, marker in (('/logs.html', '日志与健康'), ('/storage.html', '存储与日志'), ('/network.html', '网络设置'), ('/maintenance.html', '系统维护')):
                 page_status, page_body, _ = request(port, "GET", page, headers={"Cookie": cookie})
                 assert_status(page_status, 200, f"authenticated {page}")
                 if marker.encode("utf-8") not in page_body:
                     fail(f"authenticated page was not served: {page}")
+            network_page_status, network_page_body, _ = request(
+                port, "GET", "/network.html", headers={"Cookie": cookie}
+            )
+            assert_status(network_page_status, 200, "network time settings page")
+            for marker in ("SNTP 服务器", "手动设备时间", "IED 名称"):
+                if marker.encode("utf-8") not in network_page_body:
+                    fail(f"network page is missing {marker}")
             iec_page_status, iec_page_body, _ = request(port, "GET", "/iec61850.html", headers={"Cookie": cookie})
             assert_status(iec_page_status, 200, "authenticated IEC page")
             if "IEC 61850".encode("utf-8") not in iec_page_body:
@@ -251,6 +277,19 @@ def main() -> int:
                 fail("privileged service did not create its socket")
             network_status, _, _ = request(port, "GET", "/api/v1/network", headers={"Cookie": cookie})
             assert_status(network_status, 200, "network helper status")
+            time_status, time_body, _ = request(port, "GET", "/api/v1/time", headers={"Cookie": cookie})
+            assert_status(time_status, 200, "time settings lookup")
+            time_payload = json.loads(time_body)
+            if time_payload.get("sntp_server") != "pool.ntp.org":
+                fail(f"unexpected time settings: {time_payload!r}")
+            invalid_time_status, _, _ = request(
+                port,
+                "POST",
+                "/api/v1/time",
+                json_body({"action": "set", "current_password": initial_password, "local_time": "2026-02-30T12:34"}),
+                {"Cookie": cookie, "X-CSRF-Token": csrf_token},
+            )
+            assert_status(invalid_time_status, 400, "invalid manual time")
             confirm_without_password_status, _, _ = request(
                 port,
                 "POST",
@@ -299,6 +338,35 @@ def main() -> int:
             )
             assert_status(config_status, 200, "config lookup")
             config_payload = json.loads(config_body)
+            overview_version = int(config_payload["version"])
+            overview_update = dict(config_payload)
+            overview_update.pop("version", None)
+            overview_update["overview_title"] = "现场局放监测"
+            overview_update["overview_device"] = "2号主变"
+            overview_update["phase_start_degree"] = 45
+            overview_update_status, overview_update_body, _ = request(
+                port,
+                "PUT",
+                "/api/v1/config",
+                json_body(overview_update),
+                {
+                    "Content-Type": "application/json",
+                    "Cookie": cookie,
+                    "X-CSRF-Token": csrf_token,
+                    "If-Match": f'"{overview_version}"',
+                },
+            )
+            assert_status(overview_update_status, 200, "overview settings update")
+            assert_json(overview_update_body, "version", overview_version + 1, "overview settings update")
+            config_payload = overview_update
+            config_payload["version"] = overview_version + 1
+            public_overview_status, public_overview_body, _ = request(
+                port, "GET", "/api/v1/overview"
+            )
+            assert_status(public_overview_status, 200, "updated public overview settings")
+            public_overview = json.loads(public_overview_body)
+            if public_overview.get("overview_title") != "现场局放监测" or public_overview.get("phase_start_degree") != 45:
+                fail(f"overview settings update was not public: {public_overview!r}")
             schema_status, schema_body, _ = request(
                 port, "GET", "/api/v1/config/schema", headers={"Cookie": cookie}
             )
