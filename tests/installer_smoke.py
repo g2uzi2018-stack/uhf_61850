@@ -110,7 +110,14 @@ def main() -> int:
             fail("TLS state is not private")
         if bootstrap.stat().st_mode & 0o777 != 0o600 or auth.stat().st_mode & 0o777 != 0o600:
             fail("authentication state is not private")
-        if bootstrap.read_text(encoding="utf-8").strip() in auth.read_text(encoding="utf-8"):
+        bootstrap_password = bootstrap.read_text(encoding="utf-8").strip()
+        auth_record = json.loads(auth.read_text(encoding="utf-8"))
+        if (
+            "password" in auth_record
+            or "current_password" in auth_record
+            or "new_password" in auth_record
+            or bootstrap_password in str(auth_record.get("hash_hex", ""))
+        ):
             fail("plaintext bootstrap password was written to auth.json")
         if (target / "var/lib/uhf-gateway").stat().st_mode & 0o777 != 0o700:
             fail("gateway state directory is not private")
