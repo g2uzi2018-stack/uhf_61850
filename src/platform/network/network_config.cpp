@@ -92,6 +92,7 @@ std::string interface_json(const uhf::network::InterfaceConfig& config) {
     std::string result = "{\"mode\":\"" + uhf::network::mode_name(config.mode) +
         "\",\"address\":\"" + json_escape(config.address) +
         "\",\"prefix\":" + std::to_string(config.prefix) +
+        ",\"netmask\":\"" + uhf::network::netmask_for_prefix(config.prefix) + "\"" +
         ",\"gateway\":\"" + json_escape(config.gateway) + "\",\"dns\":[";
     for (std::size_t index = 0U; index < config.dns_count; ++index) {
         if (index != 0U) {
@@ -134,7 +135,8 @@ public:
             skip_space();
             if (consume('}')) {
                 skip_space();
-                return position_ == input_.size() && seen_.size() == kFieldCount &&
+                return position_ == input_.size() &&
+                    (seen_.size() == kFieldCount || seen_.size() == kFieldCountWithNetmask) &&
                     apply_string_values(config);
             }
             if (!consume(',')) {
@@ -147,6 +149,7 @@ public:
 
 private:
     static constexpr std::size_t kFieldCount = 16U;
+    static constexpr std::size_t kFieldCountWithNetmask = 18U;
 
     void skip_space() noexcept {
         while (position_ < input_.size()) {
@@ -241,6 +244,9 @@ private:
             if (suffix == "address") {
                 return &config->address;
             }
+            if (suffix == "netmask") {
+                return &netmask_storage_[config == &eth0_ ? 0U : 1U];
+            }
             if (suffix == "gateway") {
                 return &config->gateway;
             }
@@ -263,7 +269,8 @@ private:
             return false;
         }
         std::string* string_output = nullptr;
-        for (const std::string_view suffix : {"mode", "address", "gateway", "hostname", "dns1", "dns2"}) {
+        for (const std::string_view suffix : {
+                 "mode", "address", "netmask", "gateway", "hostname", "dns1", "dns2"}) {
             string_output = string_field(key, suffix);
             if (string_output != nullptr) {
                 break;
@@ -272,6 +279,9 @@ private:
         if (string_output != nullptr) {
             if (!parse_string(*string_output)) {
                 return false;
+            }
+            if (key.size() == 12U && key.compare(5U, 7U, "netmask") == 0) {
+                netmask_seen_[key[3U] == '0' ? 0U : 1U] = true;
             }
             return true;
         }
@@ -285,7 +295,12 @@ private:
             }
             uhf::network::InterfaceConfig* output = interface_for(key, suffix);
             if (suffix == "prefix") {
-                return assign_unsigned(value, std::uint8_t{1U}, std::uint8_t{32U}, output->prefix);
+                const bool assigned = assign_unsigned(
+                    value, std::uint8_t{1U}, std::uint8_t{32U}, output->prefix);
+                if (assigned) {
+                    prefix_seen_[output == &eth0_ ? 0U : 1U] = true;
+                }
+                return assigned;
             }
             return assign_unsigned(
                 value, std::uint16_t{1U}, std::numeric_limits<std::uint16_t>::max(),
@@ -295,6 +310,22 @@ private:
     }
 
     bool apply_string_values(uhf::network::NetworkConfig& config) {
+        for (std::size_t index = 0U; index < 2U; ++index) {
+            if (!prefix_seen_[index] && !netmask_seen_[index]) {
+                return false;
+            }
+            if (netmask_seen_[index]) {
+                std::uint8_t netmask_prefix = 0U;
+                if (!uhf::network::prefix_from_netmask(netmask_storage_[index], netmask_prefix) ||
+                    (prefix_seen_[index] &&
+                     (index == 0U ? eth0_.prefix : eth1_.prefix) != netmask_prefix)) {
+                    return false;
+                }
+                if (!prefix_seen_[index]) {
+                    (index == 0U ? eth0_.prefix : eth1_.prefix) = netmask_prefix;
+                }
+            }
+        }
         config.eth0 = eth0_;
         config.eth1 = eth1_;
         config.eth0.name = "eth0";
@@ -332,6 +363,9 @@ private:
     uhf::network::InterfaceConfig eth0_{};
     uhf::network::InterfaceConfig eth1_{};
     std::array<std::string, 2U> mode_storage_{};
+    std::array<std::string, 2U> netmask_storage_{};
+    std::array<bool, 2U> prefix_seen_{};
+    std::array<bool, 2U> netmask_seen_{};
     std::array<std::array<std::string, 2U>, 2U> dns_storage_{};
 };
 
@@ -342,6 +376,8 @@ std::string flat_interface_fields(
     return "\"" + std::string(prefix) + "mode\":\"" + uhf::network::mode_name(config.mode) +
         "\",\"" + std::string(prefix) + "address\":\"" + json_escape(config.address) +
         "\",\"" + std::string(prefix) + "prefix\":" + std::to_string(config.prefix) +
+        ",\"" + std::string(prefix) + "netmask\":\"" +
+        uhf::network::netmask_for_prefix(config.prefix) + "\"" +
         ",\"" + std::string(prefix) + "gateway\":\"" + json_escape(config.gateway) +
         "\",\"" + std::string(prefix) + "dns1\":\"" + json_escape(first_dns) +
         "\",\"" + std::string(prefix) + "dns2\":\"" + json_escape(second_dns) +
@@ -418,6 +454,45 @@ ValidationResult validate(const NetworkConfig& config) {
 
 std::string mode_name(Mode mode) noexcept {
     return mode == Mode::dhcp ? "dhcp" : "static";
+}
+
+std::string netmask_for_prefix(std::uint8_t prefix) {
+    if (prefix == 0U || prefix > 32U) {
+        return {};
+    }
+    const std::uint32_t host_mask =
+        prefix == 32U ? 0xFFFFFFFFU : (0xFFFFFFFFU << (32U - prefix));
+    in_addr address{htonl(host_mask)};
+    char buffer[INET_ADDRSTRLEN]{};
+    return ::inet_ntop(AF_INET, &address, buffer, sizeof(buffer)) == nullptr
+        ? std::string{}
+        : std::string(buffer);
+}
+
+bool prefix_from_netmask(std::string_view value, std::uint8_t& output) noexcept {
+    in_addr address{};
+    if (::inet_pton(AF_INET, std::string(value).c_str(), &address) != 1) {
+        return false;
+    }
+    const std::uint32_t mask = ntohl(address.s_addr);
+    std::uint8_t prefix = 0U;
+    bool zero_seen = false;
+    for (int bit = 31; bit >= 0; --bit) {
+        const bool one = (mask & (static_cast<std::uint32_t>(1U) << bit)) != 0U;
+        if (one && zero_seen) {
+            return false;
+        }
+        if (one) {
+            ++prefix;
+        } else {
+            zero_seen = true;
+        }
+    }
+    if (prefix == 0U) {
+        return false;
+    }
+    output = prefix;
+    return true;
 }
 
 bool parse_flat_json(std::string_view json, NetworkConfig& config) {

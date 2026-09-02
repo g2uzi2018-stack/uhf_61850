@@ -43,6 +43,8 @@ struct ValidationResult {
 
 ValidationResult validate(const NetworkConfig& config);
 std::string mode_name(Mode mode) noexcept;
+std::string netmask_for_prefix(std::uint8_t prefix);
+bool prefix_from_netmask(std::string_view netmask, std::uint8_t& prefix) noexcept;
 bool parse_flat_json(std::string_view json, NetworkConfig& config);
 std::string to_flat_json(const NetworkConfig& config);
 std::string to_json(const NetworkConfig& config);

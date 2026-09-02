@@ -10,12 +10,40 @@ int main() {
     const std::string json = uhf::network::to_json(config);
     assert(json.find("\"eth0\"") != std::string::npos);
     assert(json.find("\"mode\":\"static\"") != std::string::npos);
+    assert(json.find("\"netmask\":\"255.255.255.0\"") != std::string::npos);
     const std::string flat = uhf::network::to_flat_json(config);
+    assert(flat.find("\"eth0_netmask\":\"255.255.255.0\"") != std::string::npos);
     uhf::network::NetworkConfig round_trip;
     assert(uhf::network::parse_flat_json(flat, round_trip));
     assert(round_trip.eth0.address == config.eth0.address);
     assert(round_trip.eth0.gateway == config.eth0.gateway);
     assert(round_trip.eth1.address == config.eth1.address);
+    assert(round_trip.eth0.prefix == 24U);
+    assert(uhf::network::netmask_for_prefix(24U) == "255.255.255.0");
+    std::uint8_t prefix = 0U;
+    assert(uhf::network::prefix_from_netmask("255.255.255.0", prefix));
+    assert(prefix == 24U);
+
+    std::string netmask_only = flat;
+    const std::string eth0_prefix = ",\"eth0_prefix\":24";
+    const std::size_t eth0_prefix_position = netmask_only.find(eth0_prefix);
+    assert(eth0_prefix_position != std::string::npos);
+    netmask_only.erase(eth0_prefix_position, eth0_prefix.size());
+    const std::string eth1_prefix = ",\"eth1_prefix\":24";
+    const std::size_t eth1_prefix_position = netmask_only.find(eth1_prefix);
+    assert(eth1_prefix_position != std::string::npos);
+    netmask_only.erase(eth1_prefix_position, eth1_prefix.size());
+    assert(uhf::network::parse_flat_json(netmask_only, round_trip));
+    assert(round_trip.eth0.prefix == 24U && round_trip.eth1.prefix == 24U);
+    std::string inconsistent = flat;
+    const std::string bad_mask = "\"eth0_netmask\":\"255.255.0.0\"";
+    const std::size_t bad_mask_position = inconsistent.find(
+        "\"eth0_netmask\":\"255.255.255.0\"");
+    assert(bad_mask_position != std::string::npos);
+    inconsistent.replace(
+        bad_mask_position, std::string("\"eth0_netmask\":\"255.255.255.0\"").size(),
+        bad_mask);
+    assert(!uhf::network::parse_flat_json(inconsistent, round_trip));
 
     config.eth0.name = "eno1";
     assert(!uhf::network::validate(config).valid);
@@ -43,5 +71,6 @@ int main() {
     assert(!uhf::network::parse_flat_json("{\"eth0_mode\":\"static\"}", round_trip));
     assert(!uhf::network::parse_flat_json(
         flat.substr(0U, flat.size() - 1U) + ",\"eth0_mode\":\"dhcp\"}", round_trip));
+    assert(!uhf::network::prefix_from_netmask("255.0.255.0", prefix));
     return 0;
 }
