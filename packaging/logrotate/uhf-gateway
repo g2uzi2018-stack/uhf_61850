@@ -3,6 +3,7 @@
     size 5M
     rotate 7
     compress
+    create 0640 syslog syslog
     missingok
     notifempty
     sharedscripts
