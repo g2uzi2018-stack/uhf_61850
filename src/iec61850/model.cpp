@@ -77,6 +77,8 @@ Model::Model(std::string ied_name) {
         set_description(child_description(alarm), "局部放电告警");
 
         peak_value_ = child_attribute(peak, "mag.f");
+        peak_quality_ = child_attribute(peak, "q");
+        peak_time_ = child_attribute(peak, "t");
         alarm_value_ = child_attribute(alarm, "stVal");
         alarm_quality_ = child_attribute(alarm, "q");
         alarm_time_ = child_attribute(alarm, "t");
@@ -174,6 +176,14 @@ bool Model::measurement_integer(std::size_t index) const noexcept {
 
 DataAttribute* Model::peak_value() const noexcept {
     return peak_value_;
+}
+
+DataAttribute* Model::peak_quality() const noexcept {
+    return peak_quality_;
+}
+
+DataAttribute* Model::peak_time() const noexcept {
+    return peak_time_;
 }
 
 DataAttribute* Model::alarm_value() const noexcept {

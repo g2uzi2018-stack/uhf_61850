@@ -193,6 +193,9 @@ void Server::publish_invalid_values() {
         update_timestamp(model_->measurement_time(index), timestamp_ms);
     }
     IedServer_updateFloatAttributeValue(server_, model_->peak_value(), 0.0F);
+    IedServer_updateQuality(
+        server_, model_->peak_quality(), quality_for(acquisition::Availability::invalid, false));
+    update_timestamp(model_->peak_time(), timestamp_ms);
     IedServer_updateBooleanAttributeValue(server_, model_->alarm_value(), false);
     IedServer_updateQuality(
         server_, model_->alarm_quality(), quality_for(acquisition::Availability::invalid, false));
@@ -242,6 +245,11 @@ void Server::publish_snapshot(const acquisition::ServingView& serving_view) {
         peak.valid && serving_view.status.availability != acquisition::Availability::invalid
             ? static_cast<float>(peak.value)
             : 0.0F);
+    IedServer_updateQuality(
+        server_,
+        model_->peak_quality(),
+        quality_for(serving_view.status.availability, peak.valid));
+    update_timestamp(model_->peak_time(), timestamp_ms);
     IedServer_updateBooleanAttributeValue(server_, model_->alarm_value(), alarm);
     IedServer_updateQuality(
         server_,

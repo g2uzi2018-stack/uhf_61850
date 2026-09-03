@@ -277,6 +277,29 @@ int main() {
             MmsValue_delete(peak);
         }
 
+        const Quality standard_peak_quality = IedConnection_readQualityValue(
+            connection,
+            &error,
+            "TESTIEDPDMON/SPDC1.UhfPaDsch.q",
+            IEC61850_FC_MX);
+        ok = expect(
+            error == IED_ERROR_OK &&
+                standard_peak_quality == static_cast<Quality>(QUALITY_VALIDITY_GOOD),
+            "standard peak quality") && ok;
+        Timestamp* standard_peak_time = IedConnection_readTimestampValue(
+            connection,
+            &error,
+            "TESTIEDPDMON/SPDC1.UhfPaDsch.t",
+            IEC61850_FC_MX,
+            nullptr);
+        ok = expect(
+            error == IED_ERROR_OK && standard_peak_time != nullptr &&
+                Timestamp_getTimeInMs(standard_peak_time) > 0U,
+            "standard peak timestamp") && ok;
+        if (standard_peak_time != nullptr) {
+            Timestamp_destroy(standard_peak_time);
+        }
+
         char data_set_element[] = "TESTIEDPDMON/GGIO1.AnIn1.mag.f";
         LinkedList data_set_elements = LinkedList_create();
         LinkedList_add(data_set_elements, data_set_element);

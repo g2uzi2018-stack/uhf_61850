@@ -25,6 +25,8 @@ public:
     DataAttribute* measurement_time(std::size_t index) const noexcept;
     bool measurement_integer(std::size_t index) const noexcept;
     DataAttribute* peak_value() const noexcept;
+    DataAttribute* peak_quality() const noexcept;
+    DataAttribute* peak_time() const noexcept;
     DataAttribute* alarm_value() const noexcept;
     DataAttribute* alarm_quality() const noexcept;
     DataAttribute* alarm_time() const noexcept;
@@ -36,6 +38,8 @@ private:
     std::array<DataAttribute*, kMeasurementCount> measurement_times_{};
     std::array<bool, kMeasurementCount> measurement_integer_{};
     DataAttribute* peak_value_{nullptr};
+    DataAttribute* peak_quality_{nullptr};
+    DataAttribute* peak_time_{nullptr};
     DataAttribute* alarm_value_{nullptr};
     DataAttribute* alarm_quality_{nullptr};
     DataAttribute* alarm_time_{nullptr};
