@@ -109,8 +109,12 @@ if(UHF_ENABLE_IEC61850)
     set(CONFIG_DEFAULT_MAX_SERV_OUTSTANDING_CALLING 2)
     set(CONFIG_DEFAULT_MAX_SERV_OUTSTANDING_CALLED 2)
     set(CONFIG_MMS_MAX_DATA_STRUCTURE_NESTING_LEVEL 32)
-    set(CONFIG_INCLUDE_GOOSE_SUPPORT OFF)
-    set(CONFIG_IEC61850_SAMPLED_VALUES_SUPPORT OFF)
+    # These are upstream cache options.  Force the product profile before the
+    # subproject is entered; a normal (non-cache) assignment is discarded by
+    # option() and leaves the generated headers out of sync with the objects
+    # that consume them.
+    set(CONFIG_INCLUDE_GOOSE_SUPPORT OFF CACHE BOOL "" FORCE)
+    set(CONFIG_IEC61850_SAMPLED_VALUES_SUPPORT OFF CACHE BOOL "" FORCE)
     set(CONFIG_IEC61850_CONTROL_SERVICE OFF CACHE BOOL "" FORCE)
     set(CONFIG_IEC61850_SETTING_GROUPS OFF CACHE BOOL "" FORCE)
     set(CONFIG_IEC61850_LOG_SERVICE OFF CACHE BOOL "" FORCE)
