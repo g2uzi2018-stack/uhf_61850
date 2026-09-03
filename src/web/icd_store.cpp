@@ -93,8 +93,15 @@ bool has_open_element(std::string_view input, std::string_view element_name) noe
     std::size_t position = 0U;
     while ((position = input.find('<', position)) != std::string_view::npos) {
         ++position;
-        if (position >= input.size() || input[position] == '/' || input[position] == '!' ||
-            input[position] == '?') {
+        if (position >= input.size()) {
+            continue;
+        }
+        if (input.compare(position, 3U, "!--") == 0) {
+            const std::size_t end = input.find("-->", position + 3U);
+            position = end == std::string_view::npos ? input.size() : end + 3U;
+            continue;
+        }
+        if (input[position] == '/' || input[position] == '!' || input[position] == '?') {
             continue;
         }
         std::string_view name;
@@ -116,8 +123,15 @@ bool has_attribute_value(
     std::size_t position = 0U;
     while ((position = input.find('<', position)) != std::string_view::npos) {
         ++position;
-        if (position >= input.size() || input[position] == '/' || input[position] == '!' ||
-            input[position] == '?') {
+        if (position >= input.size()) {
+            continue;
+        }
+        if (input.compare(position, 3U, "!--") == 0) {
+            const std::size_t end = input.find("-->", position + 3U);
+            position = end == std::string_view::npos ? input.size() : end + 3U;
+            continue;
+        }
+        if (input[position] == '/' || input[position] == '!' || input[position] == '?') {
             continue;
         }
         std::string_view name;
