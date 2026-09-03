@@ -179,12 +179,23 @@ chmod 0700 "$state_dir"
 if [[ "$no_systemd" == false ]]; then
     chown uhfgateway:uhfgateway "$state_dir"
     # rsyslog normally drops privileges to the syslog account before opening
-    # the product log.  Give that account a private, writable log directory;
-    # logrotate creates each new file with the same ownership below.
+    # the product log.  Keep the directory private and pre-create the active
+    # file so rsyslog never needs write access to the directory itself.
     if getent passwd syslog >/dev/null 2>&1; then
         syslog_group=$(id -gn syslog)
         chown "root:${syslog_group}" "${path_prefix}/var/log/uhf-gateway"
-        chmod 0770 "${path_prefix}/var/log/uhf-gateway"
+        chmod 0750 "${path_prefix}/var/log/uhf-gateway"
+        log_file="${path_prefix}/var/log/uhf-gateway/gateway.log"
+        if [[ -e "$log_file" ]]; then
+            if [[ ! -f "$log_file" || -L "$log_file" ]]; then
+                printf 'product log path is not a regular file: %s\n' "$log_file" >&2
+                exit 1
+            fi
+        else
+            install -o syslog -g "$syslog_group" -m 0640 /dev/null "$log_file"
+        fi
+        chown "syslog:${syslog_group}" "$log_file"
+        chmod 0640 "$log_file"
     fi
 fi
 "$release_dir/bin/uhf-auth-init" --state-dir "$state_dir"

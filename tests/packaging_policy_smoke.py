@@ -32,10 +32,11 @@ def main() -> int:
     require(logrotate, "compress", "logrotate compression")
     require(logrotate, "create 0640 syslog syslog", "log ownership")
     require(logrotate, "missingok", "logrotate missingok")
-    require(logrotate, "systemctl reload rsyslog.service", "log reopen")
+    require(logrotate, "systemctl kill -s HUP rsyslog.service", "log reopen")
     require(installer, "systemctl enable uhf-gateway.service", "installer service enable")
     require(installer, "chown \"root:${syslog_group}\"", "rsyslog directory ownership")
-    require(installer, "chmod 0770 \"${path_prefix}/var/log/uhf-gateway\"", "rsyslog directory mode")
+    require(installer, "chmod 0750 \"${path_prefix}/var/log/uhf-gateway\"", "rsyslog directory mode")
+    require(installer, "install -o syslog -g \"$syslog_group\" -m 0640 /dev/null", "active log provisioning")
     if "/data" in rsyslog or "/data" in logrotate:
         fail("policy must not target the legacy data service")
     print("packaging policy smoke: OK")
