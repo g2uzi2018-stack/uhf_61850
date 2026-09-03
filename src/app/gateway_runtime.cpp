@@ -5,13 +5,47 @@
 
 #include <algorithm>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <utility>
 
 namespace uhf::app {
 
+namespace {
+
+std::optional<iec61850::SclModelDefinition> parse_file(
+    const std::filesystem::path& path) {
+    std::error_code error;
+    if (std::filesystem::is_symlink(path, error) || error ||
+        !std::filesystem::is_regular_file(path, error) || error) {
+        return std::nullopt;
+    }
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        return std::nullopt;
+    }
+    const std::string contents(
+        (std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    if (input.bad()) {
+        return std::nullopt;
+    }
+    iec61850::SclModelDefinition definition;
+    std::string parse_error;
+    if (!iec61850::parse_scl_model(contents, definition, parse_error)) {
+        return std::nullopt;
+    }
+    return definition;
+}
+
+}  // namespace
+
 GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& logger)
-    : options_(std::move(options)), logger_(logger) {
+    : options_(std::move(options)),
+      logger_(logger),
+      iec_current_bind_(options_.iec61850_bind),
+      iec_current_port_(options_.iec61850_port) {
     if (options_.simulate) {
         serial_port_ = std::make_unique<acquisition::LoopbackPd1000Port>();
     } else {
@@ -43,6 +77,17 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
         iec_options.bind_address = options_.iec61850_bind;
         iec_options.port = options_.iec61850_port;
         iec_options.ied_name = options_.iec61850_ied_name;
+        const std::optional<iec61850::SclModelDefinition> definition =
+            load_iec61850_definition();
+        if (definition) {
+            iec_options.model_definition = *definition;
+        } else {
+            logger_.log(
+                logging::Level::warning,
+                logging::Component::iec61850,
+                "model.load_failed",
+                "configured ICD could not be loaded; using built-in IEC 61850 model");
+        }
         if (persistence_worker_) {
             iec_options.alarm_provider = [this] { return persistence_worker_->alarm_active(); };
         }
@@ -85,8 +130,11 @@ void GatewayRuntime::start() {
             }
         });
     }
-    if (iec61850_server_) {
-        iec61850_server_->start();
+    {
+        std::lock_guard<std::mutex> lock(iec_mutex_);
+        if (iec61850_server_) {
+            iec61850_server_->start();
+        }
     }
     if (persistence_worker_) {
         persistence_worker_->start();
@@ -107,8 +155,11 @@ void GatewayRuntime::stop() noexcept {
     if (modbus_rtu_worker_.joinable()) {
         modbus_rtu_worker_.join();
     }
-    if (iec61850_server_) {
-        iec61850_server_->stop();
+    {
+        std::lock_guard<std::mutex> lock(iec_mutex_);
+        if (iec61850_server_) {
+            iec61850_server_->stop();
+        }
     }
     if (worker_.joinable()) {
         worker_.join();
@@ -134,8 +185,11 @@ health::Input GatewayRuntime::health_input() const {
     input.modbus_tcp_listening =
         modbus_tcp_server_ != nullptr && modbus_tcp_server_->bound_port() != 0U;
     input.modbus_rtu_ready = modbus_rtu_server_ != nullptr;
-    input.iec61850_enabled =
-        iec61850_server_ != nullptr && iec61850_server_->running();
+    {
+        std::lock_guard<std::mutex> lock(iec_mutex_);
+        input.iec61850_enabled =
+            iec61850_server_ != nullptr && iec61850_server_->running();
+    }
     if (persistence_worker_) {
         const storage::PersistenceStats stats = persistence_worker_->stats();
         input.storage_writable = !stats.writes_paused && !stats.cleanup_failed;
@@ -145,10 +199,78 @@ health::Input GatewayRuntime::health_input() const {
 }
 
 iec61850::RuntimeStats GatewayRuntime::iec61850_stats() const noexcept {
+    std::lock_guard<std::mutex> lock(iec_mutex_);
     if (!iec61850_server_) {
         return {};
     }
     return iec61850_server_->stats();
+}
+
+std::optional<iec61850::SclModelDefinition> GatewayRuntime::iec61850_model_definition() const {
+    std::lock_guard<std::mutex> lock(iec_mutex_);
+    if (!iec61850_server_) {
+        return std::nullopt;
+    }
+    return iec61850_server_->model_definition();
+}
+
+std::optional<iec61850::SclModelDefinition> GatewayRuntime::load_iec61850_definition() const {
+    if (const std::optional<iec61850::SclModelDefinition> definition =
+            parse_file(options_.iec61850_icd_override)) {
+        return definition;
+    }
+    return parse_file(options_.iec61850_icd_packaged);
+}
+
+bool GatewayRuntime::reload_iec61850_model() {
+    const std::optional<iec61850::SclModelDefinition> definition = load_iec61850_definition();
+    if (!definition) {
+        return false;
+    }
+
+    std::unique_lock<std::mutex> lock(iec_mutex_);
+    if (!iec61850_server_) {
+        return true;
+    }
+    iec61850::ServerOptions candidate_options;
+    candidate_options.bind_address = iec_current_bind_;
+    candidate_options.port = iec_current_port_;
+    candidate_options.ied_name = definition->ied_name;
+    candidate_options.model_definition = *definition;
+    if (persistence_worker_) {
+        candidate_options.alarm_provider = [this] { return persistence_worker_->alarm_active(); };
+    }
+    std::unique_ptr<iec61850::Server> candidate;
+    try {
+        candidate = std::make_unique<iec61850::Server>(
+            snapshot_store_, std::move(candidate_options));
+    } catch (...) {
+        return false;
+    }
+
+    std::unique_ptr<iec61850::Server> previous;
+    const bool was_running = iec61850_server_->running();
+    if (was_running) {
+        iec61850_server_->stop();
+    }
+    try {
+        if (was_running) {
+            candidate->start();
+        }
+    } catch (...) {
+        try {
+            if (was_running) {
+                iec61850_server_->start();
+            }
+        } catch (...) {
+        }
+        return false;
+    }
+    previous = std::move(iec61850_server_);
+    iec61850_server_ = std::move(candidate);
+    lock.unlock();
+    previous.reset();
+    return true;
 }
 
 void GatewayRuntime::run() {
@@ -226,7 +348,12 @@ void GatewayRuntime::apply_runtime_configuration(std::uint64_t& applied_version)
                 "invalid Modbus TCP settings were rejected");
         }
     }
-    if (iec61850_server_) {
+    {
+        std::lock_guard<std::mutex> lock(iec_mutex_);
+        if (!iec61850_server_) {
+            applied_version = configured.version;
+            return;
+        }
         if (!configured.values.iec_enabled && iec61850_server_->running()) {
             iec61850_server_->stop();
         } else if (configured.values.iec_enabled && iec61850_server_->running() &&
@@ -242,6 +369,13 @@ void GatewayRuntime::apply_runtime_configuration(std::uint64_t& applied_version)
                 logging::Component::iec61850,
                 "configuration.reload_failed",
                 "IEC 61850 endpoint reload failed; previous endpoint was restored");
+        } else if (configured.values.iec_enabled) {
+            iec_current_bind_ = options_.reload_iec61850_endpoint
+                ? configured.values.modbus_tcp_bind
+                : options_.iec61850_bind;
+            iec_current_port_ = options_.reload_iec61850_endpoint
+                ? configured.values.iec_port
+                : options_.iec61850_port;
         }
     }
     applied_version = configured.version;

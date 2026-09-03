@@ -2,6 +2,7 @@
 #include "acquisition/acquisition.hpp"
 #include "domain/snapshot.hpp"
 #include "iec61850_client.h"
+#include "iec61850/scl_model.hpp"
 #include "iec61850/server.hpp"
 #include "linked_list.h"
 
@@ -17,11 +18,15 @@ extern "C" {
 
 #include <array>
 #include <atomic>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <fstream>
+#include <iterator>
+#include <string>
 #include <thread>
 #include <utility>
 
@@ -137,9 +142,112 @@ bool report_buffer_storm_is_bounded() {
     return bounded;
 }
 
+bool uploaded_model_is_browsable(const char* path) {
+    std::ifstream input(path, std::ios::binary);
+    const std::string contents(
+        (std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    uhf::iec61850::SclModelDefinition definition;
+    std::string parse_error;
+    if (!uhf::iec61850::parse_scl_model(contents, definition, parse_error)) {
+        std::cerr << "parser error: " << parse_error << '\n';
+        return false;
+    }
+    uhf::acquisition::SnapshotStore snapshots;
+    uhf::iec61850::ServerOptions options;
+    options.bind_address = "127.0.0.1";
+    options.port = 15105U;
+    options.ied_name = definition.ied_name;
+    options.model_definition = definition;
+    uhf::iec61850::Server server(snapshots, std::move(options));
+    server.start();
+    IedConnection connection = IedConnection_create();
+    IedClientError error = IED_ERROR_OK;
+    IedConnection_setConnectTimeout(connection, 1000U);
+    IedConnection_connect(connection, &error, "127.0.0.1", 15105U);
+    const std::string prefix = definition.ied_name + definition.logical_device;
+    bool state_report_found = false;
+    if (error == IED_ERROR_OK) {
+        for (const ACSIClass report_class : {ACSI_CLASS_URCB, ACSI_CLASS_BRCB}) {
+            IedClientError directory_error = IED_ERROR_OK;
+            LinkedList reports = IedConnection_getLogicalNodeDirectory(
+                connection,
+                &directory_error,
+                (prefix + "/LLN0").c_str(),
+                report_class);
+            if (directory_error == IED_ERROR_OK && reports != nullptr) {
+                for (LinkedList item = reports; item != nullptr; item = LinkedList_getNext(item)) {
+                    const char* name = static_cast<const char*>(LinkedList_getData(item));
+                    if (name != nullptr && std::string(name) == "RPState") {
+                        state_report_found = true;
+                    }
+                }
+                LinkedList_destroy(reports);
+            }
+        }
+    }
+    const bool ok = error == IED_ERROR_OK && state_report_found;
+    IedConnection_close(connection);
+    IedConnection_destroy(connection);
+    server.stop();
+    return ok;
+}
+
+bool probe_running_model(const char* port_text, const char* prefix) {
+    std::uint16_t port = 0U;
+    const auto parsed = std::from_chars(
+        port_text, port_text + std::char_traits<char>::length(port_text), port);
+    if (parsed.ec != std::errc{} || parsed.ptr != port_text + std::char_traits<char>::length(port_text)) {
+        return false;
+    }
+    IedConnection connection = IedConnection_create();
+    IedClientError error = IED_ERROR_OK;
+    IedConnection_setConnectTimeout(connection, 1000U);
+    IedConnection_connect(connection, &error, "127.0.0.1", port);
+    if (error != IED_ERROR_OK) {
+        IedConnection_destroy(connection);
+        return false;
+    }
+    MmsValue* value = IedConnection_readObject(
+        connection, &error, (std::string(prefix) + "/SPDC1.PaDschAlm.stVal").c_str(), IEC61850_FC_ST);
+    const bool point_ok = error == IED_ERROR_OK && value != nullptr;
+    if (value != nullptr) {
+        MmsValue_delete(value);
+    }
+    IedClientError directory_error = IED_ERROR_OK;
+    LinkedList reports = IedConnection_getLogicalNodeDirectory(
+        connection, &directory_error, (std::string(prefix) + "/LLN0").c_str(), ACSI_CLASS_BRCB);
+    bool report_ok = false;
+    if (directory_error == IED_ERROR_OK && reports != nullptr) {
+        for (LinkedList item = reports; item != nullptr; item = LinkedList_getNext(item)) {
+            const char* name = static_cast<const char*>(LinkedList_getData(item));
+            if (name != nullptr && std::string(name) == "RPState") {
+                report_ok = true;
+            }
+        }
+        LinkedList_destroy(reports);
+    }
+    IedConnection_close(connection);
+    IedConnection_destroy(connection);
+    return point_ok && report_ok;
+}
+
 }  // namespace
 
-int main() {
+int main(int argc, char* argv[]) {
+    if (argc == 4 && std::string(argv[1]) == "--probe") {
+        const bool ok = probe_running_model(argv[2], argv[3]);
+        if (ok) {
+            std::cout << "IEC 61850 running model probe: OK\n";
+        }
+        return ok ? 0 : 1;
+    }
+    if (argc == 2) {
+        const bool ok = uploaded_model_is_browsable(argv[1]);
+        if (ok) {
+            std::cout << "IEC 61850 uploaded model server smoke: OK\n";
+        }
+        return ok ? 0 : 1;
+    }
     uhf::acquisition::SnapshotStore snapshots;
     uhf::domain::ParsedSnapshot payload;
     payload.payload_status = uhf::domain::PayloadStatus::good;

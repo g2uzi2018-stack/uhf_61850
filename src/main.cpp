@@ -273,6 +273,8 @@ int main(int argc, char* argv[]) {
                 runtime_options.iec61850_bind = options.iec61850_bind;
                 runtime_options.iec61850_port = options.iec61850_port;
                 runtime_options.iec61850_ied_name = configured.values.iec_ied_name;
+                runtime_options.iec61850_icd_override = options.state_directory / "UHFPD1.icd";
+                runtime_options.iec61850_icd_packaged = "/etc/uhf-gateway/UHFPD1.icd";
                 runtime_options.persistence_options.config_store = config_store.get();
                 runtime_options.persistence_options.data_root = options.data_directory;
                 runtime_options.persistence_options.periodic_period = std::chrono::seconds(
@@ -319,7 +321,15 @@ int main(int argc, char* argv[]) {
                 runtime_pointer == nullptr
                     ? uhf::web::Iec61850StatsProvider{}
                     : uhf::web::Iec61850StatsProvider{
-                          [runtime_pointer] { return runtime_pointer->iec61850_stats(); }});
+                          [runtime_pointer] { return runtime_pointer->iec61850_stats(); }},
+                runtime_pointer == nullptr
+                    ? uhf::web::Iec61850ModelProvider{}
+                    : uhf::web::Iec61850ModelProvider{
+                          [runtime_pointer] { return runtime_pointer->iec61850_model_definition(); }},
+                runtime_pointer == nullptr
+                    ? uhf::web::Iec61850ReloadHandler{}
+                    : uhf::web::Iec61850ReloadHandler{
+                          [runtime_pointer] { return runtime_pointer->reload_iec61850_model(); }});
             const int result = server.run();
             if (runtime) {
                 runtime->stop();

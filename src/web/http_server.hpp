@@ -5,6 +5,7 @@
 #include "config/config_store.hpp"
 #include "health/health.hpp"
 #include "iec61850/stats.hpp"
+#include "iec61850/scl_model.hpp"
 #include "logging/logger.hpp"
 #include "platform/privileged/unix_socket.hpp"
 #include "storage/event_store.hpp"
@@ -30,6 +31,8 @@ namespace uhf::web {
 
 using HealthInputProvider = std::function<health::Input()>;
 using Iec61850StatsProvider = std::function<iec61850::RuntimeStats()>;
+using Iec61850ModelProvider = std::function<std::optional<iec61850::SclModelDefinition>()>;
+using Iec61850ReloadHandler = std::function<bool()>;
 
 class HttpServer {
 public:
@@ -47,7 +50,9 @@ public:
         std::filesystem::path data_root = {},
         privileged::UnixSocketClient* network_client = nullptr,
         bool reload_web_endpoint = false,
-        Iec61850StatsProvider iec61850_stats_provider = {});
+        Iec61850StatsProvider iec61850_stats_provider = {},
+        Iec61850ModelProvider iec61850_model_provider = {},
+        Iec61850ReloadHandler iec61850_reload_handler = {});
 
     int run();
 
@@ -87,6 +92,8 @@ private:
     const acquisition::SnapshotStore* snapshot_store_{nullptr};
     HealthInputProvider health_input_provider_;
     Iec61850StatsProvider iec61850_stats_provider_;
+    Iec61850ModelProvider iec61850_model_provider_;
+    Iec61850ReloadHandler iec61850_reload_handler_;
     config::ConfigStore* config_store_{nullptr};
     bool tls_enabled_{true};
     std::unique_ptr<TlsContext> tls_context_;

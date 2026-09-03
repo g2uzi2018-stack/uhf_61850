@@ -2,7 +2,9 @@
 #include "iec61850/model.hpp"
 
 #include <cstddef>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <string>
 
 namespace {
@@ -16,7 +18,7 @@ bool expect(bool condition, const char* message) {
 
 }  // namespace
 
-int main() {
+int main(int argc, char* argv[]) {
     uhf::iec61850::Model model("TESTIED");
     bool ok = true;
     ok = expect(model.raw() != nullptr, "model exists") && ok;
@@ -57,6 +59,32 @@ int main() {
     ok = expect(model.alarm_value() != nullptr, "alarm handle exists") && ok;
     ok = expect(model.alarm_quality() != nullptr, "alarm quality handle exists") && ok;
     ok = expect(model.alarm_time() != nullptr, "alarm time handle exists") && ok;
+    if (argc == 2) {
+        std::ifstream input(argv[1], std::ios::binary);
+        const std::string contents(
+            (std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+        uhf::iec61850::SclModelDefinition definition;
+        std::string error;
+        ok = expect(
+            uhf::iec61850::parse_scl_model(contents, definition, error),
+            "uploaded SCL parses for model generation") && ok;
+        if (ok) {
+            uhf::iec61850::Model uploaded_model(definition);
+            const std::string prefix = definition.ied_name + definition.logical_device;
+            ok = expect(
+                IedModel_getModelNodeByObjectReference(
+                    uploaded_model.raw(), (prefix + "/SPDC1.PaDschAlm.stVal").c_str()) != nullptr,
+                "uploaded state point is generated") && ok;
+            ok = expect(
+                IedModel_lookupDataSet(
+                    uploaded_model.raw(), (prefix + "/LLN0$DSState").c_str()) != nullptr,
+                "uploaded state data set is generated") && ok;
+            ok = expect(
+                uploaded_model.definition().reports.size() == 2U &&
+                    uploaded_model.definition().reports[1].name == "RPState",
+                "uploaded state report control is generated") && ok;
+        }
+    }
     if (ok) {
         std::cout << "IEC 61850 dynamic model smoke: OK\n";
     }

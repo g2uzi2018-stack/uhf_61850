@@ -21,6 +21,7 @@ if(UHF_ENABLE_IEC61850)
     add_executable(uhf_iec61850_outstanding_network_smoke ${UHF_TEST_TARGET_OPTIONS}
         tests/iec61850_outstanding_network_smoke.cpp
         src/iec61850/model.cpp
+        src/iec61850/scl_model.cpp
     )
     target_compile_features(uhf_iec61850_outstanding_network_smoke PRIVATE cxx_std_17)
     target_include_directories(uhf_iec61850_outstanding_network_smoke PRIVATE
@@ -146,6 +147,7 @@ add_executable(uhf-gatewayd
     src/modbus/tcp_server.cpp
     src/modbus/rtu_server.cpp
     src/iec61850/model.cpp
+    src/iec61850/scl_model.cpp
     src/iec61850/server.cpp
     src/storage/frame_store.cpp
     src/storage/event_detector.cpp
@@ -870,6 +872,7 @@ if(UHF_ENABLE_IEC61850)
         tests/iec61850_request_limit_smoke.cpp
         src/iec61850/server.cpp
         src/iec61850/model.cpp
+        src/iec61850/scl_model.cpp
         src/acquisition/acquisition.cpp
         src/domain/modbus.cpp
         src/domain/snapshot.cpp
@@ -923,6 +926,7 @@ if(UHF_ENABLE_IEC61850)
     add_executable(uhf_iec61850_model_smoke ${UHF_TEST_TARGET_OPTIONS}
         tests/iec61850_model_smoke.cpp
         src/iec61850/model.cpp
+        src/iec61850/scl_model.cpp
     )
     target_compile_features(uhf_iec61850_model_smoke PRIVATE cxx_std_17)
     target_include_directories(uhf_iec61850_model_smoke PRIVATE
@@ -950,10 +954,29 @@ if(UHF_ENABLE_IEC61850)
         )
     endif()
 
+    add_executable(uhf_iec61850_scl_model_smoke ${UHF_TEST_TARGET_OPTIONS}
+        tests/iec61850_scl_model_smoke.cpp
+        src/iec61850/scl_model.cpp
+    )
+    target_compile_features(uhf_iec61850_scl_model_smoke PRIVATE cxx_std_17)
+    target_include_directories(uhf_iec61850_scl_model_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+    if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(uhf_iec61850_scl_model_smoke PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Wconversion
+            -Wsign-conversion
+            -Wshadow
+            -Werror
+        )
+    endif()
+
     add_executable(uhf_iec61850_server_smoke ${UHF_TEST_TARGET_OPTIONS}
         tests/iec61850_server_smoke.cpp
         src/iec61850/server.cpp
         src/iec61850/model.cpp
+        src/iec61850/scl_model.cpp
         src/acquisition/acquisition.cpp
         src/domain/modbus.cpp
         src/domain/snapshot.cpp
@@ -1252,7 +1275,26 @@ if(BUILD_TESTING)
         add_test(NAME uhf_iec61850_memory_smoke COMMAND uhf_iec61850_memory_smoke)
         add_test(NAME uhf_iec61850_request_limit_smoke COMMAND uhf_iec61850_request_limit_smoke)
         add_test(NAME uhf_iec61850_model_smoke COMMAND uhf_iec61850_model_smoke)
+        add_test(
+            NAME uhf_iec61850_uploaded_model_smoke
+            COMMAND uhf_iec61850_model_smoke "${PROJECT_SOURCE_DIR}/UHFPD12PD.icd")
+        add_test(
+            NAME uhf_iec61850_scl_model_smoke
+            COMMAND uhf_iec61850_scl_model_smoke
+                "${PROJECT_SOURCE_DIR}/config/UHFPD1.icd"
+                "${PROJECT_SOURCE_DIR}/UHFPD12PD.icd")
         add_test(NAME uhf_iec61850_server_smoke COMMAND uhf_iec61850_server_smoke)
+        add_test(
+            NAME uhf_iec61850_uploaded_server_smoke
+            COMMAND uhf_iec61850_server_smoke "${PROJECT_SOURCE_DIR}/UHFPD12PD.icd")
+        add_test(
+            NAME uhf_iec61850_runtime_reload_smoke
+            COMMAND ${Python3_EXECUTABLE}
+                "${PROJECT_SOURCE_DIR}/tests/iec61850_runtime_reload_smoke.py"
+                "$<TARGET_FILE:uhf-gatewayd>"
+                "${PROJECT_SOURCE_DIR}/web"
+                "${PROJECT_SOURCE_DIR}/UHFPD12PD.icd"
+                "$<TARGET_FILE:uhf_iec61850_server_smoke>")
     endif()
 endif()
 

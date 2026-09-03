@@ -40,7 +40,9 @@ namespace uhf::iec61850 {
 Server::Server(acquisition::SnapshotStore& snapshot_store, ServerOptions options)
     : snapshot_store_(snapshot_store),
       options_(std::move(options)),
-      model_(std::make_unique<Model>(options_.ied_name)),
+      model_(options_.model_definition
+          ? std::make_unique<Model>(std::move(*options_.model_definition))
+          : std::make_unique<Model>(options_.ied_name)),
       alarm_provider_(options_.alarm_provider) {
     IedServerConfig server_config = IedServerConfig_create();
     if (server_config == nullptr) {
@@ -171,6 +173,11 @@ RuntimeStats Server::stats() const noexcept {
             MmsServer_getReportBufferOverflowCount(mms_server));
     }
     return result;
+}
+
+SclModelDefinition Server::model_definition() const {
+    std::lock_guard<std::mutex> lock(lifecycle_mutex_);
+    return model_->definition();
 }
 
 void Server::update_timestamp(DataAttribute* attribute, std::uint64_t timestamp_ms) {

@@ -10,6 +10,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -20,6 +21,7 @@ struct ServerOptions {
     std::uint16_t port{102U};
     std::string ied_name{"UHFPD1"};
     std::function<bool()> alarm_provider;
+    std::optional<SclModelDefinition> model_definition;
 };
 
 class Server final {
@@ -35,6 +37,7 @@ public:
     void stop() noexcept;
     bool running() const noexcept;
     RuntimeStats stats() const noexcept;
+    SclModelDefinition model_definition() const;
 
 private:
     void start_locked();

@@ -1025,6 +1025,21 @@ std::string json_escape(std::string_view value) {
     return result;
 }
 
+std::string scl_entry_reference(
+    const uhf::iec61850::SclDataSetEntry& entry,
+    std::string_view logical_device) {
+    std::string reference(logical_device);
+    reference.push_back('/');
+    reference.append(entry.prefix);
+    reference.append(entry.ln_class);
+    reference.append(entry.ln_inst);
+    reference.push_back('.');
+    reference.append(entry.do_name);
+    reference.push_back('.');
+    reference.append(entry.da_name);
+    return reference;
+}
+
 bool configuration_requires_restart(
     const uhf::config::Values& previous, const uhf::config::Values& current) noexcept {
     return previous.acquisition_device != current.acquisition_device ||
@@ -1090,7 +1105,9 @@ HttpServer::HttpServer(
       std::filesystem::path data_root,
     privileged::UnixSocketClient* network_client,
     bool reload_web_endpoint,
-    Iec61850StatsProvider iec61850_stats_provider)
+    Iec61850StatsProvider iec61850_stats_provider,
+    Iec61850ModelProvider iec61850_model_provider,
+    Iec61850ReloadHandler iec61850_reload_handler)
     : document_root_(std::move(document_root)),
       bind_address_(std::move(bind_address)),
       port_(port),
@@ -1099,6 +1116,8 @@ HttpServer::HttpServer(
       snapshot_store_(snapshot_store),
       health_input_provider_(std::move(health_input_provider)),
       iec61850_stats_provider_(std::move(iec61850_stats_provider)),
+      iec61850_model_provider_(std::move(iec61850_model_provider)),
+      iec61850_reload_handler_(std::move(iec61850_reload_handler)),
       config_store_(config_store),
       tls_enabled_(tls_enabled),
       logger_(logger),
@@ -1162,26 +1181,56 @@ std::string HttpServer::iec61850_json(std::chrono::steady_clock::time_point now)
             stats = {};
         }
     }
-    constexpr std::array<std::string_view, 7U> references = {
-        "PDMON/SPDC1.UhfPaDsch.mag.f",
-        "PDMON/SPDC1.PaDschAlm.stVal",
-        "PDMON/GGIO1.AnIn1.mag.f",
-        "PDMON/GGIO1.IntIn1.stVal",
-        "PDMON/GGIO1.AnIn2.mag.f",
-        "PDMON/GGIO1.AnIn3.mag.f",
-        "PDMON/GGIO1.AnIn4.mag.f"};
+    iec61850::SclModelDefinition model_definition =
+        iec61850::default_model_definition(values.iec_ied_name);
+    bool live_model = false;
+    if (iec61850_model_provider_) {
+        try {
+            if (const std::optional<iec61850::SclModelDefinition> provided =
+                    iec61850_model_provider_()) {
+                model_definition = *provided;
+                live_model = true;
+            }
+        } catch (...) {
+        }
+    }
+    const std::string logical_device = model_definition.logical_device;
+    const std::string model_ied_name = model_definition.ied_name;
+    const std::array<std::string, 7U> references = {
+        logical_device + "/SPDC1.UhfPaDsch.mag.f",
+        logical_device + "/SPDC1.PaDschAlm.stVal",
+        logical_device + "/GGIO1.AnIn1.mag.f",
+        logical_device + "/GGIO1.IntIn1.stVal",
+        logical_device + "/GGIO1.AnIn2.mag.f",
+        logical_device + "/GGIO1.AnIn3.mag.f",
+        logical_device + "/GGIO1.AnIn4.mag.f"};
     constexpr std::array<std::string_view, 7U> types = {
         "MV", "SPS", "MV", "INS", "MV", "MV", "MV"};
     constexpr std::array<std::string_view, 7U> units = {
         "dBm", "boolean", "dBm", "次/秒", "dBm", "degree", "mV"};
     constexpr std::array<int, 7U> source_registers = {10003, 0, 10001, 10002, 10003, 10004, 10005};
+    const auto report_for = [&model_definition](std::string_view name) {
+        return std::find_if(
+            model_definition.reports.begin(),
+            model_definition.reports.end(),
+            [name](const iec61850::SclReportControl& report_control) {
+                return report_control.name == name;
+            });
+    };
+    const auto telemetry_report = report_for("RPMeasurements");
+    const auto telemetry_report_buffered = telemetry_report == model_definition.reports.end()
+        ? false
+        : telemetry_report->buffered;
+    const auto telemetry_report_period = telemetry_report == model_definition.reports.end()
+        ? 60000U
+        : telemetry_report->integrity_period_ms;
 
     std::string body = "{\"schema_version\":1,\"status\":\"";
     body.append(health::state_name(report.iec61850));
     body.append("\",\"enabled\":");
     body.append(values.iec_enabled ? "true" : "false");
     body.append(",\"ied_name\":\"");
-    body.append(json_escape(values.iec_ied_name));
+    body.append(json_escape(model_ied_name));
     body.append("\",\"bind_address\":\"");
     body.append(json_escape(values.modbus_tcp_bind));
     body.append("\",\"port\":");
@@ -1201,7 +1250,9 @@ std::string HttpServer::iec61850_json(std::chrono::steady_clock::time_point now)
         body.append(std::to_string(source_registers[index]));
         body.push_back('}');
     }
-    body.append("],\"dataset\":{\"reference\":\"PDMON/LLN0.DSMeasurements\",\"members\":[");
+    body.append("],\"dataset\":{\"reference\":\"");
+    body.append(json_escape(logical_device));
+    body.append("/LLN0.DSMeasurements\",\"members\":[");
     for (std::size_t index = 0U; index < references.size(); ++index) {
         if (index > 0U) {
             body.push_back(',');
@@ -1210,7 +1261,66 @@ std::string HttpServer::iec61850_json(std::chrono::steady_clock::time_point now)
         body.append(references[index]);
         body.push_back('\"');
     }
-    body.append("]},\"report\":{\"reference\":\"PDMON/LLN0.RPMeasurements\",\"buffered\":false,\"integrity_seconds\":60,\"triggers\":[\"data_changed\",\"quality_changed\",\"integrity\"]},\"limits\":{\"max_connections\":4,\"max_pdu_bytes\":16384,\"max_pending_bytes\":65536},\"active_connections\":");
+    body.append("]},\"report\":{\"reference\":\"");
+    body.append(json_escape(logical_device));
+    body.append("/LLN0.RPMeasurements\",\"buffered\":");
+    body.append(telemetry_report_buffered ? "true" : "false");
+    body.append(",\"integrity_seconds\":");
+    body.append(std::to_string(telemetry_report_period / 1000U));
+    body.append(",\"triggers\":[\"data_changed\",\"quality_changed\",\"integrity\"]},\"datasets\":[");
+    for (std::size_t index = 0U; index < model_definition.data_sets.size(); ++index) {
+        const iec61850::SclDataSet& data_set = model_definition.data_sets[index];
+        if (index > 0U) {
+            body.push_back(',');
+        }
+        body.append("{\"name\":\"");
+        body.append(json_escape(data_set.name));
+        body.append("\",\"description\":\"");
+        body.append(json_escape(data_set.description));
+        body.append("\",\"reference\":\"");
+        body.append(json_escape(logical_device));
+        body.append("/LLN0.");
+        body.append(json_escape(data_set.name));
+        body.append("\",\"members\":[");
+        for (std::size_t member_index = 0U; member_index < data_set.entries.size(); ++member_index) {
+            if (member_index > 0U) {
+                body.push_back(',');
+            }
+            body.push_back('"');
+            body.append(json_escape(scl_entry_reference(data_set.entries[member_index], logical_device)));
+            body.push_back('"');
+        }
+        body.append("]}");
+    }
+    body.append("],\"reports\":[");
+    for (std::size_t index = 0U; index < model_definition.reports.size(); ++index) {
+        const iec61850::SclReportControl& report_control = model_definition.reports[index];
+        if (index > 0U) {
+            body.push_back(',');
+        }
+        body.append("{\"name\":\"");
+        body.append(json_escape(report_control.name));
+        body.append("\",\"description\":\"");
+        body.append(json_escape(report_control.description));
+        body.append("\",\"reference\":\"");
+        body.append(json_escape(logical_device));
+        body.append("/LLN0.");
+        body.append(json_escape(report_control.name));
+        body.append("\",\"data_set\":\"");
+        body.append(json_escape(report_control.data_set));
+        body.append("\",\"buffered\":");
+        body.append(report_control.buffered ? "true" : "false");
+        body.append(",\"buffer_time_ms\":");
+        body.append(std::to_string(report_control.buffer_time_ms));
+        body.append(",\"integrity_period_ms\":");
+        body.append(std::to_string(report_control.integrity_period_ms));
+        body.append(",\"max_clients\":");
+        body.append(std::to_string(report_control.max_clients));
+        body.append("}");
+    }
+    body.append("],\"runtime_model\":");
+    body.append(live_model ? "\"scl\"" : "\"built_in_default\"");
+    body.append(",\"limits\":{\"max_connections\":4,\"max_pdu_bytes\":16384,\"max_pending_bytes\":65536},\"active_connections\":");
     body.append(std::to_string(stats.active_connections));
     body.append(",\"counters\":{\"connection_rejections\":");
     body.append(std::to_string(stats.connection_rejections));
@@ -1236,6 +1346,13 @@ std::string HttpServer::iec61850_icd_json() const {
     if (config_store_ != nullptr) {
         values = config_store_->snapshot().values;
     }
+    std::optional<iec61850::SclModelDefinition> runtime_definition;
+    if (iec61850_model_provider_) {
+        try {
+            runtime_definition = iec61850_model_provider_();
+        } catch (...) {
+        }
+    }
     std::string body = "{\"schema_version\":1,\"available\":";
     body.append(status.available ? "true" : "false");
     body.append(",\"override_active\":");
@@ -1252,7 +1369,17 @@ std::string HttpServer::iec61850_icd_json() const {
     body.append(json_escape(values.iec_ied_name));
     body.append("\",\"max_bytes\":");
     body.append(std::to_string(kMaxIcdBytes));
-    body.append(",\"applied_to_runtime\":false,\"runtime_model\":\"dynamic\"}\n");
+    body.append(",\"reload_supported\":");
+    body.append(iec61850_reload_handler_ ? "true" : "false");
+    body.append(",\"applied_to_runtime\":");
+    body.append(runtime_definition ? "true" : "false");
+    body.append(",\"runtime_model\":\"");
+    body.append(runtime_definition ? "scl" : "built_in_default");
+    body.append("\",\"runtime_model_ied_name\":\"");
+    body.append(json_escape(runtime_definition ? runtime_definition->ied_name : values.iec_ied_name));
+    body.append("\",\"runtime_logical_device\":\"");
+    body.append(json_escape(runtime_definition ? runtime_definition->logical_device : "PDMON"));
+    body.append("\"}\n");
     return body;
 }
 
@@ -1925,6 +2052,8 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             return false;
         }
         if (restore_request) {
+            const IcdStatus before_status = icd_store_.status();
+            const std::optional<std::string> before_current = icd_store_.read_current();
             const IcdRestoreResult result = icd_store_.restore();
             if (result == IcdRestoreResult::no_override) {
                 send_error(client_fd, tls, 409, "no uploaded ICD override");
@@ -1934,7 +2063,19 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
                 send_error(client_fd, tls, 500, "unable to restore ICD file");
                 return false;
             }
-            send_json(client_fd, tls, 200, "{\"restored\":true}\n", "Cache-Control: no-store\r\n");
+            if (iec61850_reload_handler_ && !iec61850_reload_handler_()) {
+                if (before_status.override_active && before_current) {
+                    (void)icd_store_.replace(*before_current);
+                } else {
+                    (void)icd_store_.discard_override();
+                }
+                send_error(client_fd, tls, 409, "ICD model rejected; previous model retained");
+                return false;
+            }
+            const std::string response = iec61850_reload_handler_
+                ? "{\"restored\":true,\"runtime_reloaded\":true}\n"
+                : "{\"restored\":true,\"runtime_reloaded\":false}\n";
+            send_json(client_fd, tls, 200, response, "Cache-Control: no-store\r\n");
             return false;
         }
 
@@ -1943,6 +2084,8 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             send_error(client_fd, tls, 400, "invalid ICD upload request");
             return false;
         }
+        const IcdStatus before_status = icd_store_.status();
+        const std::optional<std::string> before_current = icd_store_.read_current();
         const IcdReplaceResult result = icd_store_.replace(contents);
         if (result == IcdReplaceResult::invalid) {
             send_error(client_fd, tls, 400, "invalid ICD XML or model");
@@ -1952,7 +2095,19 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             send_error(client_fd, tls, 500, "unable to save ICD file");
             return false;
         }
-        send_json(client_fd, tls, 200, "{\"updated\":true}\n", "Cache-Control: no-store\r\n");
+        if (iec61850_reload_handler_ && !iec61850_reload_handler_()) {
+            if (before_status.override_active && before_current) {
+                (void)icd_store_.replace(*before_current);
+            } else {
+                (void)icd_store_.discard_override();
+            }
+            send_error(client_fd, tls, 409, "ICD model rejected; previous model retained");
+            return false;
+        }
+        const std::string response = iec61850_reload_handler_
+            ? "{\"updated\":true,\"runtime_reloaded\":true}\n"
+            : "{\"updated\":true,\"runtime_reloaded\":false}\n";
+        send_json(client_fd, tls, 200, response, "Cache-Control: no-store\r\n");
         return false;
     }
 

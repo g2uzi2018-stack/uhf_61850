@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "web/icd_store.hpp"
 
+#include "iec61850/scl_model.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
@@ -303,7 +305,7 @@ bool valid_xml(std::string_view input, std::string& ied_name) noexcept {
         has_attribute_value(input, "ReportControl", "name", "RPState") &&
         has_attribute_value(input, "ReportControl", "datSet", "DSMeasurements") &&
         has_attribute_value(input, "ReportControl", "datSet", "DSState") &&
-        has_attribute_value(input, "LDevice", "inst", "MON");
+        has_open_element(input, "LDevice");
 }
 
 std::string hash_hex(const unsigned char* bytes, std::size_t size) {
@@ -457,9 +459,25 @@ IcdRestoreResult IcdStore::restore() const {
     return error ? IcdRestoreResult::storage_error : IcdRestoreResult::restored;
 }
 
+bool IcdStore::discard_override() const noexcept {
+    std::error_code error;
+    const bool removed = std::filesystem::remove(override_path_, error);
+    return !error && (removed || !std::filesystem::exists(override_path_, error));
+}
+
 bool IcdStore::validate(std::string_view contents, std::string& ied_name) noexcept {
     ied_name.clear();
-    return valid_xml(contents, ied_name);
+    if (!valid_xml(contents, ied_name)) {
+        return false;
+    }
+    uhf::iec61850::SclModelDefinition definition;
+    std::string error;
+    if (!uhf::iec61850::parse_scl_model(contents, definition, error)) {
+        ied_name.clear();
+        return false;
+    }
+    ied_name = definition.ied_name;
+    return true;
 }
 
 std::string IcdStore::sha256(std::string_view contents) {

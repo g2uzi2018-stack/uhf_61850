@@ -43,6 +43,7 @@ public:
     std::optional<std::string> read_previous() const;
     IcdReplaceResult replace(std::string_view contents) const;
     IcdRestoreResult restore() const;
+    bool discard_override() const noexcept;
 
     static bool validate(std::string_view contents, std::string& ied_name) noexcept;
     static std::string sha256(std::string_view contents);

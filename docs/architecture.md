@@ -126,18 +126,18 @@ health()
 stop()
 ```
 
-V1 使用固定、通用且可被普通 IEC 61850 客户端浏览的模型：
+IEC 61850 仍使用受控的通用模型子集，模型实例由当前 ICD 生成并可被普通 IEC 61850 客户端浏览：
 
-- IED 名默认 `UHFPD1`，可在网页修改；LD 固定为 `PDMON`，避免配置后数据引用整体变化。
+- IED 名默认 `UHFPD1`；上传的 ICD 可提供 IED 名和 LD 实例，运行时按通过校验的值生成 MMS 域名。
 - `LLN0`、`LPHD1` 提供通用设备和健康信息。
 - `SPDC1.UhfPaDsch`（MV）映射 10003 峰值 dBm；`SPDC1.PaDschAlm`（SPS）映射 V1 事件门限状态。
 - `GGIO1.AnIn1`（MV）= 10001 平均 dBm，`IntIn1`（INS）= 10002 次/秒，`AnIn2`（MV）= 10003 峰值 dBm，`AnIn3`（MV）= 10004 相位 °，`AnIn4`（MV）= 10005 背景 mV。
-- 每个值带 `q`、`t`；一个静态数据集 `LLN0.DSMeasurements` 和一个 URCB `LLN0.RPMeasurements`，使用数据变化触发及 60 秒完整性周期。
+- 每个值带 `q`、`t`；`LLN0.DSMeasurements`、`LLN0.DSState` 及其 `RPMeasurements`、`RPState` 报告控制块按 ICD 创建，遥信报告可为 BRCB。
 - 仓库保存源 SCL/ICD 和生成步骤；GGIO 的 `d`/单位描述写清业务语义。普通客户端不需要项目私有解析即可浏览；认识 SPDC 的客户端还能直接看到标准 UHF 局放量。
 
-网页提供受保护的 ICD 工程文件管理：当前文件保存于状态目录，上传前限制为 48 KiB，并拒绝 DTD/实体、畸形 XML 以及缺少 `DSMeasurements`、`DSState`、`RPMeasurements` 或 `RPState` 的模型；通过临时文件、`fsync` 和原子替换保留上一版。该文件是交付/下载工件，V1 运行时仍使用程序内置动态模型，上传不会隐式重启或改变 MMS 模型；页面同时显示 ICD IED 与运行 IED 的不一致。
+网页提供受保护的 ICD 工程文件管理：当前文件保存于状态目录，上传前限制为 48 KiB，并拒绝 DTD/实体、畸形 XML 以及缺少 `DSMeasurements`、`DSState`、`RPMeasurements` 或 `RPState` 的模型；通过临时文件、`fsync` 和原子替换保留上一版。替换成功后只停止并重建 IEC MMS 模型，采集、存储和 Modbus 不重启，现有 IEC 客户端需重连；模型构建失败会恢复旧文件和旧模型。页面同时显示 ICD 与实际运行模型摘要。
 
-V1 不实现 BRCB、控制、写服务、GOOSE、SV、MMS 文件服务、动态数据集和 IEC TLS。IEC 资源合同：同时 MMS 连接最多 4；构建时把 `CONFIG_MMS_MAXIMUM_PDU_SIZE` 固定为 16 KiB，每连接最多 2 个 outstanding 服务、64 KiB 发送/URCB 待处理字节，整个 IEC 适配层动态内存预算 8 MiB。BER 解析深度上限 32、单请求数据元素上限 512；若协议栈不能强制任一限制，WP6 必须补受测边界或更换栈。超限请求拒绝/中止关联并计数，不能排入无界队列。
+不实现控制、写服务、GOOSE、SV、MMS 文件服务、动态数据集和 IEC TLS。BRCB 仅用于 ICD 声明的 `RPState`，不开放任意客户模型。IEC 资源合同：同时 MMS 连接最多 4；构建时把 `CONFIG_MMS_MAXIMUM_PDU_SIZE` 固定为 16 KiB，每连接最多 2 个 outstanding 服务、64 KiB 发送/报告待处理字节，整个 IEC 适配层动态内存预算 8 MiB。BER 解析深度上限 32、单请求数据元素上限 512；若协议栈不能强制任一限制，WP6 必须补受测边界或更换栈。超限请求拒绝/中止关联并计数，不能排入无界队列。
 
 ## 6. Web API 与页面
 
@@ -162,10 +162,10 @@ V1 不实现 BRCB、控制、写服务、GOOSE、SV、MMS 文件服务、动态�
 | GET | `/api/v1/frames/{id}.csv` | 是 | 流式导出一帧 |
 | PUT | `/api/v1/tls` | 是+CSRF+再认证 | 校验并原子替换服务端证书/私钥 |
 | GET | `/api/v1/iec61850/icd` | 是 | ICD 工程文件状态、大小、SHA-256 和版本信息 |
-| PUT | `/api/v1/iec61850/icd` | 是+CSRF+再认证 | 校验并原子替换 ICD，保留上一版 |
+| PUT | `/api/v1/iec61850/icd` | 是+CSRF+再认证 | 校验、原子替换 ICD 并重建实时 MMS 模型，保留上一版 |
 | GET | `/api/v1/iec61850/icd/download` | 是 | 下载当前 ICD 工程文件 |
 | GET | `/api/v1/iec61850/icd/previous/download` | 是 | 下载上一版 ICD（若存在） |
-| POST | `/api/v1/iec61850/icd/restore` | 是+CSRF+再认证 | 在网页中恢复上一版或系统基线 |
+| POST | `/api/v1/iec61850/icd/restore` | 是+CSRF+再认证 | 恢复上一版或系统基线并重建实时 MMS 模型 |
 | POST | `/api/v1/maintenance/restart-service` | 是+CSRF+再认证 | POST，不使用 GET |
 | POST | `/api/v1/maintenance/reboot` | 是+CSRF+再认证 | 固定 helper，不能传 shell 命令 |
 | WS | `/ws/v1/telemetry` | 否（必须同源） | 总览所需的快照和健康事件 |
