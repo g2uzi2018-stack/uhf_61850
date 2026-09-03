@@ -1112,6 +1112,12 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}/tests/iec61850_icd_smoke.py"
                 "${PROJECT_SOURCE_DIR}/config/UHFPD1.icd"
         )
+        add_test(
+            NAME uhf_uhfpd12pd_icd_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/uhfpd12pd_icd_smoke.py"
+                "${PROJECT_SOURCE_DIR}/UHFPD12PD.icd"
+        )
         if(UHF_ENABLE_IEC61850)
             add_test(
                 NAME uhf_iec61850_stack_config_smoke
