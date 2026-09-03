@@ -28,7 +28,7 @@ LockPersonality=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
 SystemCallArchitectures=native
-ReadWritePaths=/etc/uhf-gateway /var/lib/uhf-privileged /run/uhf-gateway /etc/htnet /etc/net.conf /etc/net2.conf /etc/systemd/timesyncd.conf.d
+ReadWritePaths=/etc/uhf-gateway /var/lib/uhf-privileged /run/uhf-gateway /etc/htnet /etc/net.conf /etc/net2.conf /etc/systemd/timesyncd.conf.d /etc
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 

@@ -74,6 +74,8 @@ def main() -> int:
         "uhf-network-rollback.service",
         "uhf-network-recovery.service",
     ):
+        require(units[unit], "ReadWritePaths=", unit)
+        require(units[unit], " /etc\n", unit)
         for fragment in ("/etc/htnet", "/etc/net.conf", "/etc/net2.conf"):
             require(units[unit], fragment, unit)
 

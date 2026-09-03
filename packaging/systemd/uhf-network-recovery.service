@@ -16,7 +16,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/etc/uhf-gateway /var/lib/uhf-privileged /etc/htnet /etc/net.conf /etc/net2.conf
+ReadWritePaths=/etc/uhf-gateway /var/lib/uhf-privileged /etc/htnet /etc/net.conf /etc/net2.conf /etc
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 
