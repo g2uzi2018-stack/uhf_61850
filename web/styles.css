@@ -236,6 +236,17 @@ noscript { position: fixed; z-index: 30; inset: 0; padding: 35vh 20px; backgroun
 .snapshot-details > div { padding: 14px 0; border-top: 1px solid var(--line-soft); }
 .snapshot-details dt { color: var(--muted); font-size: 10px; }
 .snapshot-details dd { margin: 4px 0 0; color: #53647c; font-size: 12px; font-weight: 600; }
+.icd-panel .settings-notice { margin: 0 23px 6px; }
+.icd-details { padding-bottom: 8px; }
+.mono-value { overflow-wrap: anywhere; font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; }
+.icd-form { display: grid; margin: 0 23px; padding: 10px 0 22px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 17px; }
+.icd-form label { color: #5e6e85; font-size: 11px; }
+.icd-form input[type="file"], .icd-form input[type="password"] { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid #cbd8e9; border-radius: 6px; outline: none; background: #f8fafd; color: var(--text); font: inherit; font-size: 11px; }
+.icd-form input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb(79 140 255 / 10%); }
+.form-actions { display: flex; align-items: center; flex-wrap: wrap; grid-column: 1 / -1; gap: 8px; margin-top: 5px; }
+.form-actions .secondary-button { padding: 9px 12px; border: 1px solid #cbd8e9; border-radius: 6px; background: #f8fafd; color: #53709f; font-size: 11px; text-decoration: none; }
+.form-actions .secondary-button:hover { border-color: var(--blue); color: #2f64bf; }
+.form-hint { grid-column: 1 / -1; color: var(--muted); font-size: 10px; }
 
 @media (max-width: 900px) {
     .metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }

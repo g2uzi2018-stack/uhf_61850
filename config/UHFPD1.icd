@@ -9,6 +9,7 @@
     </SubNetwork>
   </Communication>
   <IED name="UHFPD1" desc="局部放电在线监测主IED" manufacturer="UHF 61850 Gateway" type="UHF-PD-MON">
+    <Services><ConfReportControl max="2"/></Services>
     <AccessPoint name="AP1">
       <Server>
         <Authentication none="true"/>
@@ -22,10 +23,18 @@
               <FCDA ldInst="PDMON" lnClass="GGIO" lnInst="1" doName="AnIn4" daName="mag.f" fc="MX"/>
               <FCDA ldInst="PDMON" lnClass="SPDC" lnInst="1" doName="PaDschAlm" daName="stVal" fc="ST"/>
             </DataSet>
+            <DataSet name="DSState" desc="局部放电遥信数据集">
+              <FCDA ldInst="PDMON" lnClass="SPDC" lnInst="1" doName="PaDschAlm" daName="stVal" fc="ST"/>
+            </DataSet>
             <ReportControl name="RPMeasurements" desc="局放遥测数据报告控制块" rptID="UHFPD1/RPMeasurements" datSet="DSMeasurements" confRev="1" buffered="false" intgPd="60000">
               <TrgOps dchg="true" qchg="true" intg="true"/>
               <OptFields seqNum="true" timeStamp="true" reasonCode="true" dataSet="true" dataRef="true"/>
               <RptEnabled max="4"/>
+            </ReportControl>
+            <ReportControl name="RPState" desc="局放遥信数据报告控制块" rptID="UHFPD1/RPState" datSet="DSState" confRev="1" buffered="true" bufTime="4000" intgPd="60000">
+              <TrgOps dchg="true" qchg="true" intg="true"/>
+              <OptFields seqNum="true" timeStamp="true" reasonCode="true" dataSet="true" dataRef="true"/>
+              <RptEnabled max="2"/>
             </ReportControl>
             <DO name="Health" type="DOT_ENS"/>
           </LN0>

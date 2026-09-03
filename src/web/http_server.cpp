@@ -1087,14 +1087,15 @@ HttpServer::HttpServer(
     bool tls_enabled,
     TlsFiles tls_files,
     logging::Logger* logger,
-    std::filesystem::path data_root,
+      std::filesystem::path data_root,
     privileged::UnixSocketClient* network_client,
     bool reload_web_endpoint,
     Iec61850StatsProvider iec61850_stats_provider)
     : document_root_(std::move(document_root)),
       bind_address_(std::move(bind_address)),
       port_(port),
-      auth_store_(std::move(state_directory)),
+      auth_store_(state_directory),
+      icd_store_(state_directory / "UHFPD1.icd"),
       snapshot_store_(snapshot_store),
       health_input_provider_(std::move(health_input_provider)),
       iec61850_stats_provider_(std::move(iec61850_stats_provider)),
@@ -1226,6 +1227,32 @@ std::string HttpServer::iec61850_json(std::chrono::steady_clock::time_point now)
     body.append(",\"report_buffer_overflows\":");
     body.append(std::to_string(stats.report_buffer_overflows));
     body.append("}}\n");
+    return body;
+}
+
+std::string HttpServer::iec61850_icd_json() const {
+    const IcdStatus status = icd_store_.status();
+    config::Values values;
+    if (config_store_ != nullptr) {
+        values = config_store_->snapshot().values;
+    }
+    std::string body = "{\"schema_version\":1,\"available\":";
+    body.append(status.available ? "true" : "false");
+    body.append(",\"override_active\":");
+    body.append(status.override_active ? "true" : "false");
+    body.append(",\"previous_available\":");
+    body.append(status.previous_available ? "true" : "false");
+    body.append(",\"size\":");
+    body.append(std::to_string(status.size));
+    body.append(",\"sha256\":\"");
+    body.append(status.sha256);
+    body.append("\",\"ied_name\":\"");
+    body.append(json_escape(status.ied_name));
+    body.append("\",\"runtime_ied_name\":\"");
+    body.append(json_escape(values.iec_ied_name));
+    body.append("\",\"max_bytes\":");
+    body.append(std::to_string(kMaxIcdBytes));
+    body.append(",\"applied_to_runtime\":false,\"runtime_model\":\"dynamic\"}\n");
     return body;
 }
 
@@ -1819,6 +1846,113 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             return false;
         }
         send_json(client_fd, tls, 200, body, "Cache-Control: no-store\r\n");
+        return false;
+    }
+
+    if (request_path == "/api/v1/iec61850/icd" ||
+        request_path == "/api/v1/iec61850/icd/download" ||
+        request_path == "/api/v1/iec61850/icd/previous/download" ||
+        request_path == "/api/v1/iec61850/icd/restore") {
+        const bool status_request = request_path == "/api/v1/iec61850/icd" && parsed.method == "GET";
+        const bool download_request = request_path == "/api/v1/iec61850/icd/download";
+        const bool previous_download_request =
+            request_path == "/api/v1/iec61850/icd/previous/download";
+        const bool restore_request = request_path == "/api/v1/iec61850/icd/restore";
+        const std::string token = session_cookie(parsed);
+        const auto iterator = sessions_.find(token);
+        if (token.empty() || iterator == sessions_.end() || iterator->second.expires_at <= now) {
+            if (iterator != sessions_.end()) {
+                sessions_.erase(iterator);
+            }
+            send_error(client_fd, tls, 401, "authentication required");
+            return false;
+        }
+        iterator->second.expires_at = now + kSessionLifetime;
+
+        if (status_request) {
+            if (parsed.method != "GET") {
+                send_method_not_allowed(client_fd, tls, "GET");
+                return false;
+            }
+            send_json(client_fd, tls, 200, iec61850_icd_json(), "Cache-Control: no-store\r\n");
+            return false;
+        }
+        if (download_request || previous_download_request) {
+            if (parsed.method != "GET") {
+                send_method_not_allowed(client_fd, tls, "GET");
+                return false;
+            }
+            const std::optional<std::string> contents = previous_download_request
+                ? icd_store_.read_previous()
+                : icd_store_.read_current();
+            if (!contents) {
+                send_error(client_fd, tls, 404, "ICD file is not available");
+                return false;
+            }
+            send_response(
+                client_fd,
+                tls,
+                200,
+                "application/xml; charset=utf-8",
+                *contents,
+                "Content-Disposition: attachment; filename=\"UHFPD1.icd\"\r\n"
+                "Cache-Control: no-store\r\n");
+            return false;
+        }
+
+        if (parsed.method != "PUT" && parsed.method != "POST") {
+            send_method_not_allowed(client_fd, tls, restore_request ? "POST" : "PUT");
+            return false;
+        }
+        const std::string_view csrf = header_value(parsed, "x-csrf-token");
+        if (!constant_time_equal(csrf, iterator->second.csrf_token)) {
+            send_error(client_fd, tls, 403, "CSRF token required");
+            return false;
+        }
+        if (restore_request && parsed.method != "POST") {
+            send_method_not_allowed(client_fd, tls, "POST");
+            return false;
+        }
+        if (!restore_request && parsed.method != "PUT") {
+            send_method_not_allowed(client_fd, tls, "PUT");
+            return false;
+        }
+        std::string current_password;
+        if (!json_string_field(
+                parsed.body, "current_password", current_password, kMaxPasswordJsonBytes) ||
+            !auth_store_.verify_password("admin", current_password)) {
+            send_error(client_fd, tls, 401, "current password is incorrect");
+            return false;
+        }
+        if (restore_request) {
+            const IcdRestoreResult result = icd_store_.restore();
+            if (result == IcdRestoreResult::no_override) {
+                send_error(client_fd, tls, 409, "no uploaded ICD override");
+                return false;
+            }
+            if (result == IcdRestoreResult::storage_error) {
+                send_error(client_fd, tls, 500, "unable to restore ICD file");
+                return false;
+            }
+            send_json(client_fd, tls, 200, "{\"restored\":true}\n", "Cache-Control: no-store\r\n");
+            return false;
+        }
+
+        std::string contents;
+        if (!json_string_field(parsed.body, "content", contents, kMaxIcdBytes)) {
+            send_error(client_fd, tls, 400, "invalid ICD upload request");
+            return false;
+        }
+        const IcdReplaceResult result = icd_store_.replace(contents);
+        if (result == IcdReplaceResult::invalid) {
+            send_error(client_fd, tls, 400, "invalid ICD XML or model");
+            return false;
+        }
+        if (result == IcdReplaceResult::storage_error) {
+            send_error(client_fd, tls, 500, "unable to save ICD file");
+            return false;
+        }
+        send_json(client_fd, tls, 200, "{\"updated\":true}\n", "Cache-Control: no-store\r\n");
         return false;
     }
 

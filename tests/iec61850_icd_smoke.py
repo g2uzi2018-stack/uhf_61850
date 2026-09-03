@@ -40,6 +40,16 @@ def main() -> int:
     report = ldevice.find(".//" + namespace + "ReportControl[@name='RPMeasurements']")
     if report is None or report.get("buffered") != "false" or report.get("intgPd") != "60000":
         fail("unbuffered 60-second report is missing")
+    state_dataset = ldevice.find(".//" + namespace + "DataSet[@name='DSState']")
+    if state_dataset is None or len(state_dataset.findall(namespace + "FCDA")) != 1:
+        fail("single-member state dataset is missing")
+    state_report = ldevice.find(".//" + namespace + "ReportControl[@name='RPState']")
+    if state_report is None or state_report.get("buffered") != "true" or state_report.get("datSet") != "DSState":
+        fail("buffered state report is missing")
+    services = root.find(".//" + namespace + "Services")
+    conf_reports = None if services is None else services.find(namespace + "ConfReportControl")
+    if conf_reports is None or conf_reports.get("max") != "2":
+        fail("report-control service capacity is missing")
 
     text = path.read_text(encoding="utf-8")
     for reference in (

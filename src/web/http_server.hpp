@@ -10,6 +10,7 @@
 #include "storage/event_store.hpp"
 #include "storage/frame_store.hpp"
 #include "web/auth_store.hpp"
+#include "web/icd_store.hpp"
 #include "web/tls_context.hpp"
 
 #include <atomic>
@@ -70,6 +71,7 @@ private:
     health::Report health_report(std::chrono::steady_clock::time_point now) const;
     std::string overview_json() const;
     std::string iec61850_json(std::chrono::steady_clock::time_point now) const;
+    std::string iec61850_icd_json() const;
     std::optional<std::string> snapshot_json() const;
     std::string logs_json(std::size_t limit) const;
     std::optional<std::string> frames_json() const;
@@ -81,6 +83,7 @@ private:
     std::string bind_address_;
     std::uint16_t port_;
     AuthStore auth_store_;
+    IcdStore icd_store_;
     const acquisition::SnapshotStore* snapshot_store_{nullptr};
     HealthInputProvider health_input_provider_;
     Iec61850StatsProvider iec61850_stats_provider_;

@@ -156,6 +156,7 @@ add_executable(uhf-gatewayd
     src/health/health.cpp
     src/web/auth_store.cpp
     src/web/crypto.cpp
+    src/web/icd_store.cpp
     src/web/tls_context.cpp
     src/web/http_server.cpp
     src/web/snapshot_json.cpp
@@ -1095,6 +1096,14 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}/tests/websocket_smoke.py"
                 "$<TARGET_FILE:uhf-gatewayd>"
                 "${PROJECT_SOURCE_DIR}/web"
+        )
+        add_test(
+            NAME uhf_iec61850_icd_web_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/iec61850_icd_web_smoke.py"
+                "$<TARGET_FILE:uhf-gatewayd>"
+                "${PROJECT_SOURCE_DIR}/web"
+                "${PROJECT_SOURCE_DIR}/UHFPD12PD.icd"
         )
         add_test(
             NAME uhf_config_runtime_smoke
