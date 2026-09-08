@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-    printf 'usage: %s [--root DIR] [--release DIR] [--skip-hardware] [--skip-arch] [--allow-legacy]\n' "$0" >&2
+    printf 'usage: %s [--root DIR] [--release DIR] [--skip-hardware] [--skip-arch] [--allow-legacy] [--allow-current-product]\n' "$0" >&2
 }
 
 root_dir=/
@@ -10,6 +10,7 @@ release_dir=
 skip_hardware=false
 skip_arch=false
 allow_legacy=false
+allow_current_product=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --root)
@@ -34,6 +35,10 @@ while [[ $# -gt 0 ]]; do
             allow_legacy=true
             shift
             ;;
+        --allow-current-product)
+            allow_current_product=true
+            shift
+            ;;
         *)
             usage
             exit 2
@@ -41,8 +46,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+root_prefix=${root_dir%/}
+if [[ -z "$root_prefix" ]]; then
+    root_prefix=/
+fi
+path_prefix=$root_prefix
+if [[ "$path_prefix" == "/" ]]; then
+    path_prefix=
+fi
+
 if [[ -z "$release_dir" ]]; then
-    release_dir="${root_dir%/}/opt/uhf-gateway/current"
+    release_dir="${path_prefix}/opt/uhf-gateway/current"
 fi
 
 required_files=(
@@ -124,12 +138,46 @@ if [[ "$skip_arch" == false ]]; then
     fi
 fi
 
+current_product_owns_listeners() {
+    local listeners=$1
+    local main_pid=
+    local expected_executable=
+    local actual_executable=
+    local line=
+    local without_current_pid=
+    local listener_seen=false
+    if [[ "$allow_current_product" != true ]] || ! command -v systemctl >/dev/null 2>&1; then
+        return 1
+    fi
+    main_pid=$(systemctl show uhf-gateway.service -p MainPID --value 2>/dev/null || true)
+    if [[ ! "$main_pid" =~ ^[1-9][0-9]*$ ]]; then
+        return 1
+    fi
+    expected_executable=$(readlink -f "${path_prefix}/opt/uhf-gateway/current/bin/uhf-gatewayd" 2>/dev/null || true)
+    actual_executable=$(readlink -f "/proc/${main_pid}/exe" 2>/dev/null || true)
+    if [[ -z "$expected_executable" || "$actual_executable" != "$expected_executable" ]]; then
+        return 1
+    fi
+    while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        listener_seen=true
+        if [[ "$line" != *"pid=${main_pid},"* ]]; then
+            return 1
+        fi
+        without_current_pid=${line//pid=${main_pid},/}
+        if [[ "$without_current_pid" == *"pid="* ]]; then
+            return 1
+        fi
+    done <<<"$listeners"
+    [[ "$listener_seen" == true ]]
+}
+
 if [[ "$skip_hardware" == false ]]; then
     if [[ "$(uname -m)" != "aarch64" ]]; then
         printf 'preflight: target architecture is not aarch64\n' >&2
         exit 1
     fi
-    for device in /dev/ttyS1 /dev/ttyS4; do
+    for device in "${path_prefix}/dev/ttyS1" "${path_prefix}/dev/ttyS4"; do
         if [[ ! -e "$device" ]]; then
             printf 'preflight: missing serial device %s\n' "$device" >&2
             exit 1
@@ -140,7 +188,12 @@ if [[ "$skip_hardware" == false ]]; then
         exit 1
     fi
     for port in 21 102 502 8080; do
-        if ss -H -ltn "sport = :${port}" | grep -q .; then
+        listeners=$(ss -H -ltnp "sport = :${port}")
+        if [[ -n "$listeners" ]]; then
+            if current_product_owns_listeners "$listeners"; then
+                printf 'preflight: allowing current product listener on TCP port %s\n' "$port"
+                continue
+            fi
             if [[ "$allow_legacy" == true && "$port" == 502 ]]; then
                 printf 'preflight: allowing legacy port 502 for first cutover\n'
                 continue

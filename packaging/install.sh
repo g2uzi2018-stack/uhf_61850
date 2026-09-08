@@ -137,6 +137,9 @@ fi
 if [[ "$first_install" == true && "$no_systemd" == false ]]; then
     preflight_args+=(--allow-legacy)
 fi
+if [[ "$first_install" == false && "$no_systemd" == false ]]; then
+    preflight_args+=(--allow-current-product)
+fi
 bash "${script_dir}/preflight.sh" "${preflight_args[@]}"
 
 mkdir -p "$releases_root"

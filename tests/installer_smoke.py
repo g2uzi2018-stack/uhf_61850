@@ -61,6 +61,8 @@ def main() -> int:
     installer = (root / "packaging/install.sh").read_text(encoding="utf-8")
     if "path_prefix=$root_prefix" not in installer:
         fail("installer does not normalize the host root before constructing paths")
+    if "preflight_args+=(--allow-current-product)" not in installer:
+        fail("installer does not authorize the verified current product during upgrades")
     with tempfile.TemporaryDirectory(prefix="uhf-installer-") as temporary:
         temporary_root = Path(temporary)
         packages = temporary_root / "packages"
