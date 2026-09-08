@@ -175,6 +175,11 @@ RuntimeStats Server::stats() const noexcept {
     return result;
 }
 
+RuntimeEndpoint Server::endpoint() const {
+    std::lock_guard<std::mutex> lock(lifecycle_mutex_);
+    return RuntimeEndpoint{options_.bind_address, options_.port};
+}
+
 SclModelDefinition Server::model_definition() const {
     std::lock_guard<std::mutex> lock(lifecycle_mutex_);
     return model_->definition();

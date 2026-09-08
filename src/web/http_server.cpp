@@ -1109,6 +1109,7 @@ HttpServer::HttpServer(
     privileged::UnixSocketClient* network_client,
     bool reload_web_endpoint,
     Iec61850StatsProvider iec61850_stats_provider,
+    Iec61850EndpointProvider iec61850_endpoint_provider,
     Iec61850ModelProvider iec61850_model_provider,
     Iec61850ReloadHandler iec61850_reload_handler)
     : document_root_(std::move(document_root)),
@@ -1119,6 +1120,7 @@ HttpServer::HttpServer(
       snapshot_store_(snapshot_store),
       health_input_provider_(std::move(health_input_provider)),
       iec61850_stats_provider_(std::move(iec61850_stats_provider)),
+      iec61850_endpoint_provider_(std::move(iec61850_endpoint_provider)),
       iec61850_model_provider_(std::move(iec61850_model_provider)),
       iec61850_reload_handler_(std::move(iec61850_reload_handler)),
       config_store_(config_store),
@@ -1199,6 +1201,16 @@ std::string HttpServer::iec61850_json(std::chrono::steady_clock::time_point now)
             stats = {};
         }
     }
+    iec61850::RuntimeEndpoint endpoint{values.modbus_tcp_bind, values.iec_port};
+    if (iec61850_endpoint_provider_) {
+        try {
+            if (const std::optional<iec61850::RuntimeEndpoint> provided =
+                    iec61850_endpoint_provider_()) {
+                endpoint = *provided;
+            }
+        } catch (...) {
+        }
+    }
     iec61850::SclModelDefinition model_definition =
         iec61850::default_model_definition(values.iec_ied_name);
     bool live_model = false;
@@ -1252,9 +1264,9 @@ std::string HttpServer::iec61850_json(std::chrono::steady_clock::time_point now)
     body.append(",\"ied_name\":\"");
     body.append(json_escape(model_ied_name));
     body.append("\",\"bind_address\":\"");
-    body.append(json_escape(values.modbus_tcp_bind));
+    body.append(json_escape(endpoint.bind_address));
     body.append("\",\"port\":");
-    body.append(std::to_string(values.iec_port));
+    body.append(std::to_string(endpoint.port));
     body.append(",\"model\":[");
     for (std::size_t index = 0U; index < references.size(); ++index) {
         if (index > 0U) {

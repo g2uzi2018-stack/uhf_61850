@@ -136,6 +136,8 @@ def main() -> int:
             runtime = json.loads(body)
             if runtime.get("runtime_model") != "scl" or runtime.get("ied_name") != "UHFPD12PD":
                 fail(f"uploaded model is not live: {runtime!r}")
+            if runtime.get("bind_address") != "0.0.0.0" or runtime.get("port") != iec_port:
+                fail(f"IEC status does not expose the live wildcard endpoint: {runtime!r}")
             if not any(item.get("name") == "DSState" for item in runtime.get("datasets", [])):
                 fail("live status does not expose DSState")
             if not any(item.get("name") == "RPState" for item in runtime.get("reports", [])):

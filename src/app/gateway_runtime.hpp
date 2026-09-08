@@ -62,6 +62,7 @@ public:
     acquisition::SnapshotStore& snapshot_store() noexcept;
     health::Input health_input() const;
     iec61850::RuntimeStats iec61850_stats() const noexcept;
+    std::optional<iec61850::RuntimeEndpoint> iec61850_endpoint() const;
     std::optional<iec61850::SclModelDefinition> iec61850_model_definition() const;
     bool reload_iec61850_model();
 

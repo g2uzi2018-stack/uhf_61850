@@ -7,6 +7,7 @@
     function statusText(status) { return status === "up" ? "正常" : status === "disabled" ? "未启用" : status === "degraded" ? "降级" : "离线"; }
     function statusClass(status) { return status === "up" ? "up" : status === "disabled" ? "disabled" : status === "degraded" ? "degraded" : "down"; }
     function setText(id, value) { var element = document.getElementById(id); if (element) { element.textContent = value == null ? "--" : String(value); } }
+    function endpointText(payload) { return payload.bind_address === "0.0.0.0" ? "全部网口 · 端口 " + payload.port + "（客户端连接设备当前 IP）" : (payload.bind_address || "--") + ":" + (payload.port || "--"); }
     function valueFor(reference, snapshot) {
         if (reference.indexOf("PaDschAlm") >= 0) { return "由事件状态机更新"; }
         if (reference.indexOf("Ind1") >= 0) { return "连续三次无响应时置位"; }
@@ -19,7 +20,7 @@
         var dot = document.getElementById("iec-status-dot"); dot.className = "status-dot " + statusClass(status);
         setText("iec-status", "IEC · " + statusText(status));
         var badge = document.getElementById("iec-badge"); badge.className = "heading-badge " + (status === "up" ? "" : "dev-badge"); badge.innerHTML = "<i></i>" + statusText(status);
-        setText("iec-enabled", payload.enabled ? "已启用" : "未启用"); setText("ied-name", payload.ied_name); setText("iec-listen", (payload.bind_address || "--") + ":" + (payload.port || "--")); setText("iec-service-status", statusText(status));
+        setText("iec-enabled", payload.enabled ? "已启用" : "未启用"); setText("ied-name", payload.ied_name); setText("iec-listen", endpointText(payload)); setText("iec-service-status", statusText(status));
         setText("iec-active-connections", payload.active_connections);
         setText("iec-connection-rejections", payload.counters && payload.counters.connection_rejections);
         setText("iec-malformed-pdu-rejections", payload.counters && payload.counters.malformed_pdu_rejections);

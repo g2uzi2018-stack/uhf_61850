@@ -5,6 +5,7 @@
 #include "config/config_store.hpp"
 #include "ftp/server.hpp"
 #include "health/health.hpp"
+#include "iec61850/endpoint.hpp"
 #include "iec61850/stats.hpp"
 #include "iec61850/scl_model.hpp"
 #include "logging/logger.hpp"
@@ -32,6 +33,8 @@ namespace uhf::web {
 
 using HealthInputProvider = std::function<health::Input()>;
 using Iec61850StatsProvider = std::function<iec61850::RuntimeStats()>;
+using Iec61850EndpointProvider =
+    std::function<std::optional<iec61850::RuntimeEndpoint>()>;
 using Iec61850ModelProvider = std::function<std::optional<iec61850::SclModelDefinition>()>;
 using Iec61850ReloadHandler = std::function<bool()>;
 
@@ -52,6 +55,7 @@ public:
         privileged::UnixSocketClient* network_client = nullptr,
         bool reload_web_endpoint = false,
         Iec61850StatsProvider iec61850_stats_provider = {},
+        Iec61850EndpointProvider iec61850_endpoint_provider = {},
         Iec61850ModelProvider iec61850_model_provider = {},
         Iec61850ReloadHandler iec61850_reload_handler = {});
 
@@ -93,6 +97,7 @@ private:
     const acquisition::SnapshotStore* snapshot_store_{nullptr};
     HealthInputProvider health_input_provider_;
     Iec61850StatsProvider iec61850_stats_provider_;
+    Iec61850EndpointProvider iec61850_endpoint_provider_;
     Iec61850ModelProvider iec61850_model_provider_;
     Iec61850ReloadHandler iec61850_reload_handler_;
     config::ConfigStore* config_store_{nullptr};

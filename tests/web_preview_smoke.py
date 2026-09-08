@@ -64,6 +64,9 @@ def main() -> int:
     for marker in ("FTP 文件传输", "ftp_enabled", "ftp_port"):
         if marker not in (web_dir / "settings.html").read_text(encoding="utf-8") and marker not in (web_dir / "settings.js").read_text(encoding="utf-8"):
             fail(f"FTP settings are missing {marker!r}")
+    for marker in ("MMS 监听全部网口", "客户端连接设备当前 IP"):
+        if marker not in (web_dir / "iec61850.html").read_text(encoding="utf-8") and marker not in (web_dir / "iec61850.js").read_text(encoding="utf-8"):
+            fail(f"IEC endpoint guidance is missing {marker!r}")
     for marker in (".sidebar", ".panel", "@media", ".modal"):
         if marker not in stylesheet:
             fail(f"styles.css is missing {marker!r}")

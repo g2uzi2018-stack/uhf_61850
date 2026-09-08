@@ -209,6 +209,14 @@ iec61850::RuntimeStats GatewayRuntime::iec61850_stats() const noexcept {
     return iec61850_server_->stats();
 }
 
+std::optional<iec61850::RuntimeEndpoint> GatewayRuntime::iec61850_endpoint() const {
+    std::lock_guard<std::mutex> lock(iec_mutex_);
+    if (!iec61850_server_) {
+        return std::nullopt;
+    }
+    return iec61850_server_->endpoint();
+}
+
 std::optional<iec61850::SclModelDefinition> GatewayRuntime::iec61850_model_definition() const {
     std::lock_guard<std::mutex> lock(iec_mutex_);
     if (!iec61850_server_) {

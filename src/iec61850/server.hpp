@@ -2,6 +2,7 @@
 #pragma once
 
 #include "acquisition/acquisition.hpp"
+#include "iec61850/endpoint.hpp"
 #include "iec61850/model.hpp"
 #include "iec61850/stats.hpp"
 
@@ -37,6 +38,7 @@ public:
     void stop() noexcept;
     bool running() const noexcept;
     RuntimeStats stats() const noexcept;
+    RuntimeEndpoint endpoint() const;
     SclModelDefinition model_definition() const;
 
 private:

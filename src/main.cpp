@@ -325,6 +325,10 @@ int main(int argc, char* argv[]) {
                     : uhf::web::Iec61850StatsProvider{
                           [runtime_pointer] { return runtime_pointer->iec61850_stats(); }},
                 runtime_pointer == nullptr
+                    ? uhf::web::Iec61850EndpointProvider{}
+                    : uhf::web::Iec61850EndpointProvider{
+                          [runtime_pointer] { return runtime_pointer->iec61850_endpoint(); }},
+                runtime_pointer == nullptr
                     ? uhf::web::Iec61850ModelProvider{}
                     : uhf::web::Iec61850ModelProvider{
                           [runtime_pointer] { return runtime_pointer->iec61850_model_definition(); }},
