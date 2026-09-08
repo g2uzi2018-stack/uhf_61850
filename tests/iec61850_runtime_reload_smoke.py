@@ -47,6 +47,14 @@ def main() -> int:
     web_port, iec_port, modbus_port = free_port(), free_port(), free_port()
     with tempfile.TemporaryDirectory(prefix="uhf-iec-runtime-") as state_text:
         state_dir = Path(state_text)
+        configuration = json.loads(
+            (web_dir.parent / "config" / "defaults.json").read_text(encoding="utf-8")
+        )
+        configuration["modbus_tcp_bind"] = "192.0.2.123"
+        configuration["iec_port"] = iec_port
+        (state_dir / "config.json").write_text(
+            json.dumps(configuration), encoding="utf-8"
+        )
         process = subprocess.Popen(
             [
                 str(binary),
@@ -63,8 +71,6 @@ def main() -> int:
                 str(state_dir / "data"),
                 "--listen",
                 f"127.0.0.1:{web_port}",
-                "--iec61850-listen",
-                f"127.0.0.1:{iec_port}",
                 "--modbus-tcp-listen",
                 f"127.0.0.1:{modbus_port}",
                 "--no-modbus-rtu",

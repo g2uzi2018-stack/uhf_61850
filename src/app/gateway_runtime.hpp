@@ -29,6 +29,7 @@ struct GatewayRuntimeOptions {
     std::chrono::milliseconds poll_interval{std::chrono::seconds(6)};
     bool start_modbus_tcp{true};
     bool reload_modbus_tcp_endpoint{true};
+    bool modbus_tcp_bind_all{false};
     std::string modbus_tcp_bind{"127.0.0.1"};
     std::uint16_t modbus_tcp_port{502};
     std::uint8_t modbus_tcp_unit_id{1U};
@@ -37,6 +38,7 @@ struct GatewayRuntimeOptions {
     modbus::ModbusRtuOptions modbus_rtu_options{};
     bool start_iec61850{true};
     bool reload_iec61850_endpoint{true};
+    bool iec61850_bind_all{false};
     std::string iec61850_bind{"127.0.0.1"};
     std::uint16_t iec61850_port{102U};
     std::string iec61850_ied_name{"UHFPD1"};

@@ -61,7 +61,7 @@ def main() -> int:
         "acquisition_max_retries": 2,
         "rtu_device": "/dev/ttyS4",
         "rtu_unit_id": 3,
-        "modbus_tcp_bind": "127.0.0.1",
+        "modbus_tcp_bind": "192.0.2.123",
         "modbus_tcp_unit_id": 4,
         "modbus_tcp_port": configured_tcp_port,
         "web_port": configured_web_port,
@@ -98,8 +98,6 @@ def main() -> int:
                 "--config",
                 str(config_path),
                 "--simulate",
-                "--modbus-tcp-listen",
-                f"127.0.0.1:{configured_tcp_port}",
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -149,12 +147,18 @@ def main() -> int:
                 loaded.get("version") != 7
                 or loaded.get("rtu_unit_id") != 3
                 or loaded.get("modbus_tcp_unit_id") != 4
+                or loaded.get("modbus_tcp_bind") != "192.0.2.123"
                 or loaded.get("iec_enabled") is not False
                 or loaded.get("overview_title") != "现场😀监测"
                 or loaded.get("phase_start_degree") != 45
                 or loaded.get("time_sync_enabled") is not False
             ):
                 fail(f"persisted configuration was not loaded: {loaded!r}")
+            try:
+                with socket.create_connection(("127.0.0.1", configured_tcp_port), timeout=1):
+                    pass
+            except OSError as error:
+                fail(f"stale configured IP prevented the initial protocol listener: {error}")
 
             update = dict(loaded)
             update.pop("version", None)

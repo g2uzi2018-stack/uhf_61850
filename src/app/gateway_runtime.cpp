@@ -338,7 +338,9 @@ void GatewayRuntime::apply_runtime_configuration(std::uint64_t& applied_version)
     acquisition_engine_->update_options(options_.acquisition_options);
     if (modbus_tcp_server_) {
         modbus::ModbusTcpOptions modbus_options;
-        modbus_options.bind_address = options_.reload_modbus_tcp_endpoint
+        modbus_options.bind_address = options_.modbus_tcp_bind_all
+            ? "0.0.0.0"
+            : options_.reload_modbus_tcp_endpoint
             ? configured.values.modbus_tcp_bind
             : options_.modbus_tcp_bind;
         modbus_options.port = options_.reload_modbus_tcp_endpoint
@@ -374,7 +376,9 @@ void GatewayRuntime::apply_runtime_configuration(std::uint64_t& applied_version)
         } else if (iec61850_server_ && configured.values.iec_enabled &&
                    iec61850_server_->running() &&
                    !iec61850_server_->update_endpoint(
-                       options_.reload_iec61850_endpoint
+                       options_.iec61850_bind_all
+                           ? "0.0.0.0"
+                           : options_.reload_iec61850_endpoint
                            ? configured.values.modbus_tcp_bind
                            : options_.iec61850_bind,
                        options_.reload_iec61850_endpoint
@@ -386,7 +390,9 @@ void GatewayRuntime::apply_runtime_configuration(std::uint64_t& applied_version)
                 "configuration.reload_failed",
                 "IEC 61850 endpoint reload failed; previous endpoint was restored");
         } else if (iec61850_server_ && configured.values.iec_enabled) {
-            iec_current_bind_ = options_.reload_iec61850_endpoint
+            iec_current_bind_ = options_.iec61850_bind_all
+                ? "0.0.0.0"
+                : options_.reload_iec61850_endpoint
                 ? configured.values.modbus_tcp_bind
                 : options_.iec61850_bind;
             iec_current_port_ = options_.reload_iec61850_endpoint

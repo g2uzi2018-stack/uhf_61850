@@ -212,8 +212,8 @@ int main(int argc, char* argv[]) {
                 options.port = configured.values.web_port;
             }
             if (!options.modbus_tcp_explicit) {
-                options.modbus_tcp_bind = configured.values.modbus_tcp_bind;
-                options.modbus_tcp_port = options.simulate
+                options.modbus_tcp_bind = "0.0.0.0";
+                options.modbus_tcp_port = options.simulate && !options.config_file_explicit
                     ? 15020U
                     : configured.values.modbus_tcp_port;
             }
@@ -224,10 +224,10 @@ int main(int argc, char* argv[]) {
                 options.modbus_rtu_device = configured.values.rtu_device;
             }
             if (!options.iec61850_explicit) {
-                options.iec61850_bind = configured.values.modbus_tcp_bind;
+                options.iec61850_bind = "0.0.0.0";
                 options.start_iec61850 = configured.values.iec_enabled;
                 options.iec61850_port = configured.values.iec_port;
-                if (options.simulate) {
+                if (options.simulate && !options.config_file_explicit) {
                     options.iec61850_port = 15102U;
                 }
             }
@@ -258,8 +258,9 @@ int main(int argc, char* argv[]) {
                     configured.values.acquisition_period_ms);
                 runtime_options.start_modbus_tcp = true;
                 runtime_options.reload_modbus_tcp_endpoint =
-                    options.modbus_tcp_bind == configured.values.modbus_tcp_bind &&
+                    !options.modbus_tcp_explicit &&
                     options.modbus_tcp_port == configured.values.modbus_tcp_port;
+                runtime_options.modbus_tcp_bind_all = !options.modbus_tcp_explicit;
                 runtime_options.modbus_tcp_bind = options.modbus_tcp_bind;
                 runtime_options.modbus_tcp_port = options.modbus_tcp_port;
                 runtime_options.modbus_tcp_unit_id = configured.values.modbus_tcp_unit_id;
@@ -268,8 +269,9 @@ int main(int argc, char* argv[]) {
                 runtime_options.modbus_rtu_options.unit_id = configured.values.rtu_unit_id;
                 runtime_options.start_iec61850 = options.start_iec61850;
                 runtime_options.reload_iec61850_endpoint =
-                    options.iec61850_bind == configured.values.modbus_tcp_bind &&
+                    !options.iec61850_explicit &&
                     options.iec61850_port == configured.values.iec_port;
+                runtime_options.iec61850_bind_all = !options.iec61850_explicit;
                 runtime_options.iec61850_bind = options.iec61850_bind;
                 runtime_options.iec61850_port = options.iec61850_port;
                 runtime_options.iec61850_ied_name = configured.values.iec_ied_name;
