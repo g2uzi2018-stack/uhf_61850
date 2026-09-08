@@ -81,6 +81,7 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
             load_iec61850_definition();
         if (definition) {
             iec_options.model_definition = *definition;
+            iec_options.model_definition->ied_name = options_.iec61850_ied_name;
         } else {
             logger_.log(
                 logging::Level::warning,
@@ -223,9 +224,14 @@ std::optional<iec61850::SclModelDefinition> GatewayRuntime::load_iec61850_defini
 }
 
 bool GatewayRuntime::reload_iec61850_model() {
-    const std::optional<iec61850::SclModelDefinition> definition = load_iec61850_definition();
+    std::optional<iec61850::SclModelDefinition> definition = load_iec61850_definition();
     if (!definition) {
         return false;
+    }
+    if (options_.config_store != nullptr) {
+        definition->ied_name = options_.config_store->snapshot().values.iec_ied_name;
+    } else {
+        definition->ied_name = options_.iec61850_ied_name;
     }
 
     std::unique_lock<std::mutex> lock(iec_mutex_);
@@ -348,15 +354,25 @@ void GatewayRuntime::apply_runtime_configuration(std::uint64_t& applied_version)
                 "invalid Modbus TCP settings were rejected");
         }
     }
+    const std::optional<iec61850::SclModelDefinition> active_definition =
+        iec61850_model_definition();
+    if (active_definition && active_definition->ied_name != configured.values.iec_ied_name) {
+        if (!reload_iec61850_model()) {
+            logger_.log(
+                logging::Level::error,
+                logging::Component::iec61850,
+                "configuration.reload_failed",
+                "IEC 61850 IED name reload failed; previous model was restored");
+        } else {
+            options_.iec61850_ied_name = configured.values.iec_ied_name;
+        }
+    }
     {
         std::lock_guard<std::mutex> lock(iec_mutex_);
-        if (!iec61850_server_) {
-            applied_version = configured.version;
-            return;
-        }
-        if (!configured.values.iec_enabled && iec61850_server_->running()) {
+        if (iec61850_server_ && !configured.values.iec_enabled && iec61850_server_->running()) {
             iec61850_server_->stop();
-        } else if (configured.values.iec_enabled && iec61850_server_->running() &&
+        } else if (iec61850_server_ && configured.values.iec_enabled &&
+                   iec61850_server_->running() &&
                    !iec61850_server_->update_endpoint(
                        options_.reload_iec61850_endpoint
                            ? configured.values.modbus_tcp_bind
@@ -369,7 +385,7 @@ void GatewayRuntime::apply_runtime_configuration(std::uint64_t& applied_version)
                 logging::Component::iec61850,
                 "configuration.reload_failed",
                 "IEC 61850 endpoint reload failed; previous endpoint was restored");
-        } else if (configured.values.iec_enabled) {
+        } else if (iec61850_server_ && configured.values.iec_enabled) {
             iec_current_bind_ = options_.reload_iec61850_endpoint
                 ? configured.values.modbus_tcp_bind
                 : options_.iec61850_bind;

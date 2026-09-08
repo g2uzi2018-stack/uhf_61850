@@ -1045,8 +1045,7 @@ bool configuration_requires_restart(
     return previous.acquisition_device != current.acquisition_device ||
         previous.rtu_device != current.rtu_device ||
         previous.rtu_unit_id != current.rtu_unit_id ||
-        previous.iec_enabled != current.iec_enabled ||
-        previous.iec_ied_name != current.iec_ied_name;
+        previous.iec_enabled != current.iec_enabled;
 }
 
 constexpr std::string_view kConfigSchemaJson = R"json({
@@ -2054,6 +2053,9 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
         if (restore_request) {
             const IcdStatus before_status = icd_store_.status();
             const std::optional<std::string> before_current = icd_store_.read_current();
+            const std::optional<std::string> before_configured_ied_name = config_store_ == nullptr
+                ? std::nullopt
+                : std::optional<std::string>{config_store_->snapshot().values.iec_ied_name};
             const IcdRestoreResult result = icd_store_.restore();
             if (result == IcdRestoreResult::no_override) {
                 send_error(client_fd, tls, 409, "no uploaded ICD override");
@@ -2063,11 +2065,25 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
                 send_error(client_fd, tls, 500, "unable to restore ICD file");
                 return false;
             }
+            const IcdStatus restored_status = icd_store_.status();
+            if (config_store_ != nullptr &&
+                !config_store_->set_iec_ied_name(restored_status.ied_name)) {
+                if (before_status.override_active && before_current) {
+                    (void)icd_store_.replace(*before_current);
+                } else {
+                    (void)icd_store_.discard_override();
+                }
+                send_error(client_fd, tls, 500, "unable to save restored IED name");
+                return false;
+            }
             if (iec61850_reload_handler_ && !iec61850_reload_handler_()) {
                 if (before_status.override_active && before_current) {
                     (void)icd_store_.replace(*before_current);
                 } else {
                     (void)icd_store_.discard_override();
+                }
+                if (config_store_ != nullptr && before_configured_ied_name) {
+                    (void)config_store_->set_iec_ied_name(*before_configured_ied_name);
                 }
                 send_error(client_fd, tls, 409, "ICD model rejected; previous model retained");
                 return false;
@@ -2086,6 +2102,9 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
         }
         const IcdStatus before_status = icd_store_.status();
         const std::optional<std::string> before_current = icd_store_.read_current();
+        const std::optional<std::string> before_configured_ied_name = config_store_ == nullptr
+            ? std::nullopt
+            : std::optional<std::string>{config_store_->snapshot().values.iec_ied_name};
         const IcdReplaceResult result = icd_store_.replace(contents);
         if (result == IcdReplaceResult::invalid) {
             send_error(client_fd, tls, 400, "invalid ICD XML or model");
@@ -2095,11 +2114,25 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             send_error(client_fd, tls, 500, "unable to save ICD file");
             return false;
         }
+        const IcdStatus replaced_status = icd_store_.status();
+        if (config_store_ != nullptr &&
+            !config_store_->set_iec_ied_name(replaced_status.ied_name)) {
+            if (before_status.override_active && before_current) {
+                (void)icd_store_.replace(*before_current);
+            } else {
+                (void)icd_store_.discard_override();
+            }
+            send_error(client_fd, tls, 500, "unable to save uploaded IED name");
+            return false;
+        }
         if (iec61850_reload_handler_ && !iec61850_reload_handler_()) {
             if (before_status.override_active && before_current) {
                 (void)icd_store_.replace(*before_current);
             } else {
                 (void)icd_store_.discard_override();
+            }
+            if (config_store_ != nullptr && before_configured_ied_name) {
+                (void)config_store_->set_iec_ied_name(*before_configured_ied_name);
             }
             send_error(client_fd, tls, 409, "ICD model rejected; previous model retained");
             return false;

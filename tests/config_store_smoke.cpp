@@ -171,12 +171,20 @@ int main() {
             !expect(saved.find("Smoke") == std::string::npos, "no test secret")) {
             return 1;
         }
+        if (!expect(!store.set_iec_ied_name("bad-name"), "invalid direct IED name") ||
+            !expect(store.snapshot().version == 2U, "invalid IED name changed version") ||
+            !expect(store.set_iec_ied_name("RENAMED1"), "direct IED name update") ||
+            !expect(store.snapshot().version == 3U, "IED name version increment") ||
+            !expect(store.snapshot().values.iec_ied_name == "RENAMED1", "updated IED name")) {
+            return 1;
+        }
         uhf::config::ConfigStore reopened(path);
         const uhf::config::Snapshot reopened_snapshot = reopened.snapshot();
-        if (!expect(reopened_snapshot.version == 2U, "version survives restart") ||
+        if (!expect(reopened_snapshot.version == 3U, "version survives restart") ||
             !expect(reopened_snapshot.values.rtu_unit_id == 3U, "values survive restart") ||
             !expect(reopened_snapshot.values.modbus_tcp_unit_id == 4U, "TCP unit survives restart") ||
             !expect(reopened_snapshot.values.iec_port == 15102U, "IEC port survives restart") ||
+            !expect(reopened_snapshot.values.iec_ied_name == "RENAMED1", "IED name survives restart") ||
             !expect(reopened_snapshot.values.overview_title == "现场局放监测", "overview survives restart")) {
             return 1;
         }

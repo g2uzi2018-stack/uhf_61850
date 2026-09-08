@@ -143,6 +143,50 @@ def main() -> int:
             )
             if probe_result.returncode != 0:
                 fail(f"MMS probe failed: {probe_result.stdout}{probe_result.stderr}")
+
+            status, body, _ = request(
+                web_port, "GET", "/api/v1/config", headers={"Cookie": cookie}
+            )
+            if status != 200:
+                fail(f"configuration lookup returned {status}: {body!r}")
+            configuration = json.loads(body)
+            version = int(configuration.pop("version"))
+            if configuration.get("iec_ied_name") != "UHFPD12PD":
+                fail(f"ICD upload did not synchronize the configured IED name: {configuration!r}")
+            configuration["iec_ied_name"] = "RENAMED1"
+            update_headers = dict(auth_headers)
+            update_headers["If-Match"] = f'"{version}"'
+            status, body, _ = request(
+                web_port,
+                "PUT",
+                "/api/v1/config",
+                json.dumps(configuration, ensure_ascii=False, separators=(",", ":")).encode(),
+                update_headers,
+            )
+            if status != 200:
+                fail(f"IED name configuration update returned {status}: {body!r}")
+            if json.loads(body).get("restart_required") is not False:
+                fail(f"IED name update unexpectedly requires restart: {body!r}")
+
+            deadline = time.monotonic() + 12
+            while time.monotonic() < deadline:
+                status, body, _ = request(
+                    web_port, "GET", "/api/v1/iec61850", headers={"Cookie": cookie}
+                )
+                if status == 200 and json.loads(body).get("ied_name") == "RENAMED1":
+                    break
+                time.sleep(0.1)
+            else:
+                fail("configured IED name was not applied to the live model")
+            renamed_probe = subprocess.run(
+                [str(probe), "--probe", str(iec_port), "RENAMED1MON"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if renamed_probe.returncode != 0:
+                fail(f"renamed MMS model is not browsable: {renamed_probe.stdout}{renamed_probe.stderr}")
             print("IEC 61850 runtime ICD reload smoke: OK")
             return 0
         finally:

@@ -63,6 +63,7 @@ public:
     Snapshot snapshot() const;
     std::string to_json() const;
     UpdateResult update(std::uint64_t expected_version, std::string_view object_json);
+    bool set_iec_ied_name(std::string_view ied_name);
     const std::filesystem::path& path() const noexcept;
 
 private:

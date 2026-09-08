@@ -564,6 +564,24 @@ UpdateResult ConfigStore::update(std::uint64_t expected_version, std::string_vie
     return UpdateResult::updated;
 }
 
+bool ConfigStore::set_iec_ied_name(std::string_view ied_name) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!valid_ied_name(ied_name)) {
+        return false;
+    }
+    if (snapshot_.values.iec_ied_name == ied_name) {
+        return true;
+    }
+    Snapshot candidate = snapshot_;
+    ++candidate.version;
+    candidate.values.iec_ied_name.assign(ied_name);
+    if (!write_atomic(file_, serialize(candidate))) {
+        return false;
+    }
+    snapshot_ = std::move(candidate);
+    return true;
+}
+
 const std::filesystem::path& ConfigStore::path() const noexcept {
     return file_;
 }
