@@ -184,7 +184,17 @@ void Server::update_timestamp(DataAttribute* attribute, std::uint64_t timestamp_
     IedServer_updateUTCTimeAttributeValue(server_, attribute, timestamp_ms);
 }
 
-void Server::publish_invalid_values() {
+void Server::update_communication_alarm(bool active, std::uint64_t timestamp_ms) {
+    IedServer_updateBooleanAttributeValue(
+        server_, model_->communication_alarm_value(), active);
+    IedServer_updateQuality(
+        server_,
+        model_->communication_alarm_quality(),
+        static_cast<Quality>(QUALITY_VALIDITY_GOOD));
+    update_timestamp(model_->communication_alarm_time(), timestamp_ms);
+}
+
+void Server::publish_invalid_values(bool communication_alarm) {
     const std::uint64_t timestamp_ms = now_milliseconds();
     IedServer_lockDataModel(server_);
     for (std::size_t index = 0; index < kMeasurementCount; ++index) {
@@ -207,6 +217,7 @@ void Server::publish_invalid_values() {
     IedServer_updateQuality(
         server_, model_->alarm_quality(), quality_for(acquisition::Availability::invalid, false));
     update_timestamp(model_->alarm_time(), timestamp_ms);
+    update_communication_alarm(communication_alarm, timestamp_ms);
     IedServer_unlockDataModel(server_);
 }
 
@@ -263,6 +274,7 @@ void Server::publish_snapshot(const acquisition::ServingView& serving_view) {
         model_->alarm_quality(),
         quality_for(serving_view.status.availability, alarm_valid));
     update_timestamp(model_->alarm_time(), timestamp_ms);
+    update_communication_alarm(serving_view.status.communication_alarm, timestamp_ms);
     IedServer_unlockDataModel(server_);
 }
 
@@ -270,6 +282,7 @@ void Server::update_loop() {
     std::uint64_t last_generation = 0U;
     std::optional<acquisition::Availability> last_availability;
     bool last_has_snapshot = false;
+    bool last_communication_alarm = false;
     while (!stop_requested_.load()) {
         const acquisition::ServingView serving_view = snapshot_store_.serving_view();
         const bool has_snapshot = serving_view.snapshot.has_value();
@@ -277,16 +290,20 @@ void Server::update_loop() {
             !last_availability || *last_availability != serving_view.status.availability;
         const bool generation_changed = serving_view.snapshot &&
             serving_view.snapshot->generation > last_generation;
-        if (status_changed || has_snapshot != last_has_snapshot || generation_changed) {
+        const bool communication_alarm_changed =
+            serving_view.status.communication_alarm != last_communication_alarm;
+        if (status_changed || has_snapshot != last_has_snapshot || generation_changed ||
+            communication_alarm_changed) {
             if (has_snapshot) {
                 publish_snapshot(serving_view);
                 last_generation = serving_view.snapshot->generation;
             } else {
-                publish_invalid_values();
+                publish_invalid_values(serving_view.status.communication_alarm);
                 last_generation = 0U;
             }
             last_has_snapshot = has_snapshot;
             last_availability = serving_view.status.availability;
+            last_communication_alarm = serving_view.status.communication_alarm;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }

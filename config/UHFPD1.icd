@@ -25,6 +25,7 @@
             </DataSet>
             <DataSet name="DSState" desc="局部放电遥信数据集">
               <FCDA ldInst="PDMON" lnClass="SPDC" lnInst="1" doName="PaDschAlm" daName="stVal" fc="ST"/>
+              <FCDA ldInst="PDMON" lnClass="GGIO" lnInst="1" doName="Ind1" daName="stVal" fc="ST"/>
             </DataSet>
             <ReportControl name="RPMeasurements" desc="局放遥测数据报告控制块" rptID="UHFPD1/RPMeasurements" datSet="DSMeasurements" confRev="1" buffered="false" intgPd="60000">
               <TrgOps dchg="true" qchg="true" intg="true"/>
@@ -62,6 +63,7 @@
       <DO name="AnIn2" type="DOT_MV" desc="放电峰值"/>
       <DO name="AnIn3" type="DOT_MV" desc="峰值相位"/>
       <DO name="AnIn4" type="DOT_MV" desc="背景噪声"/>
+      <DO name="Ind1" type="DOT_SPS" desc="下位机通讯异常"/>
     </LNodeType>
     <DOType id="DOT_MV" cdc="MV">
       <DA name="mag" bType="Struct" type="DAT_AnalogueValue" fc="MX"/>

@@ -48,6 +48,8 @@ std::string Report::to_json() const {
         "\",\"acquisition\":{\"status\":\"" +
         std::string(state_name(acquisition)) + "\",\"age_ms\":" +
         (acquisition_age_known ? std::to_string(acquisition_age_ms) : "null") +
+        ",\"consecutive_no_response\":" + std::to_string(consecutive_no_response) +
+        ",\"communication_alarm\":" + (communication_alarm ? "true" : "false") +
         "},\"storage\":{\"status\":\"" + std::string(state_name(storage)) +
         "\"},\"modbus_tcp\":{\"status\":\"" +
         std::string(state_name(modbus_tcp)) + "\"},\"modbus_rtu\":{\"status\":\"" +
@@ -60,6 +62,8 @@ Aggregator::Aggregator(std::chrono::seconds stale_after, std::chrono::seconds do
 
 Report Aggregator::evaluate(const Input& input, std::chrono::steady_clock::time_point now) const {
     Report report;
+    report.consecutive_no_response = input.consecutive_no_response;
+    report.communication_alarm = input.communication_alarm;
     if (!input.last_acquisition_success) {
         report.acquisition = State::down;
     } else {
@@ -78,6 +82,9 @@ Report Aggregator::evaluate(const Input& input, std::chrono::steady_clock::time_
         } else {
             report.acquisition = State::up;
         }
+    }
+    if (input.communication_alarm) {
+        report.acquisition = State::down;
     }
 
     if (!input.storage_writable) {

@@ -56,7 +56,10 @@ def main() -> int:
         )
         for fcda in datasets["DSState"].findall(SCL + "FCDA")
     }
-    if state_members != {("MON", "SPDC", "1", "PaDschAlm", "stVal", "ST")}:
+    if state_members != {
+        ("MON", "SPDC", "1", "PaDschAlm", "stVal", "ST"),
+        ("MON", "GGIO", "1", "Ind1", "stVal", "ST"),
+    }:
         fail(f"unexpected state data set members: {state_members!r}")
 
     reports = {report.get("name"): report for report in ln0.findall(SCL + "ReportControl")}

@@ -1195,19 +1195,21 @@ std::string HttpServer::iec61850_json(std::chrono::steady_clock::time_point now)
     }
     const std::string logical_device = model_definition.logical_device;
     const std::string model_ied_name = model_definition.ied_name;
-    const std::array<std::string, 7U> references = {
+    const std::array<std::string, 8U> references = {
         logical_device + "/SPDC1.UhfPaDsch.mag.f",
         logical_device + "/SPDC1.PaDschAlm.stVal",
+        logical_device + "/GGIO1.Ind1.stVal",
         logical_device + "/GGIO1.AnIn1.mag.f",
         logical_device + "/GGIO1.IntIn1.stVal",
         logical_device + "/GGIO1.AnIn2.mag.f",
         logical_device + "/GGIO1.AnIn3.mag.f",
         logical_device + "/GGIO1.AnIn4.mag.f"};
-    constexpr std::array<std::string_view, 7U> types = {
-        "MV", "SPS", "MV", "INS", "MV", "MV", "MV"};
-    constexpr std::array<std::string_view, 7U> units = {
-        "dBm", "boolean", "dBm", "次/秒", "dBm", "degree", "mV"};
-    constexpr std::array<int, 7U> source_registers = {10003, 0, 10001, 10002, 10003, 10004, 10005};
+    constexpr std::array<std::string_view, 8U> types = {
+        "MV", "SPS", "SPS", "MV", "INS", "MV", "MV", "MV"};
+    constexpr std::array<std::string_view, 8U> units = {
+        "dBm", "boolean", "boolean", "dBm", "次/秒", "dBm", "degree", "mV"};
+    constexpr std::array<int, 8U> source_registers = {
+        10003, 0, 0, 10001, 10002, 10003, 10004, 10005};
     const auto report_for = [&model_definition](std::string_view name) {
         return std::find_if(
             model_definition.reports.begin(),

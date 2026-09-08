@@ -164,10 +164,14 @@ void SnapshotStore::publish(
     status_.attempt_known = true;
     status_.last_attempt_at = completed_at;
     status_.last_error.clear();
+    status_.consecutive_no_response = 0U;
+    status_.communication_alarm = false;
 }
 
 void SnapshotStore::record_failure(
-    std::chrono::steady_clock::time_point attempted_at, std::string error) {
+    std::chrono::steady_clock::time_point attempted_at,
+    std::string error,
+    FailureReason reason) {
     if (error.size() > kMaxAcquisitionErrorBytes) {
         error.resize(kMaxAcquisitionErrorBytes);
     }
@@ -176,6 +180,14 @@ void SnapshotStore::record_failure(
     status_.attempt_known = true;
     status_.last_attempt_at = attempted_at;
     status_.last_error = std::move(error);
+    if (reason == FailureReason::no_response) {
+        if (status_.consecutive_no_response < std::numeric_limits<std::uint32_t>::max()) {
+            ++status_.consecutive_no_response;
+        }
+    } else {
+        status_.consecutive_no_response = 0U;
+    }
+    status_.communication_alarm = status_.consecutive_no_response >= 3U;
 }
 
 std::optional<PublishedSnapshot> SnapshotStore::latest() const {
@@ -195,8 +207,12 @@ AcquisitionEngine::AcquisitionEngine(
 bool AcquisitionEngine::read_exact(
     std::uint8_t* data,
     std::size_t size,
-    std::chrono::steady_clock::time_point deadline) {
+    std::chrono::steady_clock::time_point deadline,
+    std::size_t* received_total) {
     std::size_t offset = 0;
+    if (received_total != nullptr) {
+        *received_total = 0U;
+    }
     while (offset < size) {
         const auto now = std::chrono::steady_clock::now();
         if (now >= deadline) {
@@ -214,6 +230,9 @@ bool AcquisitionEngine::read_exact(
             return false;
         }
         offset += received;
+        if (received_total != nullptr) {
+            *received_total = offset;
+        }
     }
     return true;
 }
@@ -226,8 +245,11 @@ AcquisitionEngine::ResponseResult AcquisitionEngine::read_response(
     std::chrono::steady_clock::time_point deadline) {
     response_size = 0;
     std::array<std::uint8_t, kResponseHeaderBytes> response_header{};
-    if (!read_exact(response_header.data(), response_header.size(), deadline)) {
-        return ResponseResult::fatal_error;
+    std::size_t header_received = 0U;
+    if (!read_exact(
+            response_header.data(), response_header.size(), deadline, &header_received)) {
+        return header_received == 0U ? ResponseResult::no_response
+                                     : ResponseResult::fatal_error;
     }
     std::copy(response_header.begin(), response_header.end(), response.begin());
     response_size = response_header.size();
@@ -305,16 +327,16 @@ void AcquisitionEngine::quarantine(std::chrono::milliseconds duration) {
 }
 
 bool AcquisitionEngine::fail_and_quarantine(
-    std::string message, std::chrono::milliseconds duration) {
+    std::string message, std::chrono::milliseconds duration, FailureReason reason) {
     last_error_ = std::move(message);
-    snapshot_store_.record_failure(std::chrono::steady_clock::now(), last_error_);
+    snapshot_store_.record_failure(std::chrono::steady_clock::now(), last_error_, reason);
     quarantine(duration);
     return false;
 }
 
-bool AcquisitionEngine::fail(std::string message) {
+bool AcquisitionEngine::fail(std::string message, FailureReason reason) {
     last_error_ = std::move(message);
-    snapshot_store_.record_failure(std::chrono::steady_clock::now(), last_error_);
+    snapshot_store_.record_failure(std::chrono::steady_clock::now(), last_error_, reason);
     return false;
 }
 
@@ -385,6 +407,12 @@ bool AcquisitionEngine::poll_once() {
                 }
                 complete = true;
                 break;
+            }
+            if (result == ResponseResult::no_response) {
+                return fail_and_quarantine(
+                    "Modbus response timeout with no data",
+                    options.quarantine_duration,
+                    FailureReason::no_response);
             }
             if (result == ResponseResult::fatal_error) {
                 return fail_and_quarantine(

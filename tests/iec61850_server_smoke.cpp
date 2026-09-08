@@ -302,6 +302,12 @@ int main(int argc, char* argv[]) {
             IedConnection_close(capacity_connection);
             IedConnection_destroy(capacity_connection);
         }
+        const auto close_deadline = std::chrono::steady_clock::now() +
+            std::chrono::milliseconds(500);
+        while (server.stats().active_connections != 1U &&
+               std::chrono::steady_clock::now() < close_deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
         ok = expect(
             server.stats().active_connections == 1U,
             "active MMS connections drop after clients close") && ok;
@@ -434,6 +440,63 @@ int main(int argc, char* argv[]) {
         if (alarm != nullptr) {
             ok = expect(MmsValue_getBoolean(alarm), "shared event alarm state") && ok;
             MmsValue_delete(alarm);
+        }
+
+        const auto communication_failure_at = std::chrono::steady_clock::now();
+        snapshots.record_failure(
+            communication_failure_at,
+            "no response 1",
+            uhf::acquisition::FailureReason::no_response);
+        snapshots.record_failure(
+            communication_failure_at,
+            "no response 2",
+            uhf::acquisition::FailureReason::no_response);
+        snapshots.record_failure(
+            communication_failure_at,
+            "no response 3",
+            uhf::acquisition::FailureReason::no_response);
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        MmsValue* communication_alarm = IedConnection_readObject(
+            connection,
+            &error,
+            "TESTIEDPDMON/GGIO1.Ind1.stVal",
+            IEC61850_FC_ST);
+        ok = expect(
+            error == IED_ERROR_OK && communication_alarm != nullptr,
+            "read communication alarm") && ok;
+        if (communication_alarm != nullptr) {
+            ok = expect(
+                MmsValue_getBoolean(communication_alarm),
+                "third no-response result raises IEC communication alarm") && ok;
+            MmsValue_delete(communication_alarm);
+        }
+
+        ClientDataSet state_data_set = IedConnection_readDataSetValues(
+            connection, &error, "TESTIEDPDMON/LLN0.DSState", nullptr);
+        ok = expect(
+            error == IED_ERROR_OK && state_data_set != nullptr,
+            "read IEC state data set") && ok;
+        if (state_data_set != nullptr) {
+            ok = expect(
+                ClientDataSet_getDataSetSize(state_data_set) == 2,
+                "state data set carries event and communication alarms") && ok;
+            ClientDataSet_destroy(state_data_set);
+        }
+
+        const auto communication_recovered_at = std::chrono::steady_clock::now();
+        snapshots.publish(payload, communication_recovered_at, communication_recovered_at);
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        communication_alarm = IedConnection_readObject(
+            connection,
+            &error,
+            "TESTIEDPDMON/GGIO1.Ind1.stVal",
+            IEC61850_FC_ST);
+        ok = expect(
+            error == IED_ERROR_OK && communication_alarm != nullptr &&
+                !MmsValue_getBoolean(communication_alarm),
+            "successful snapshot clears IEC communication alarm") && ok;
+        if (communication_alarm != nullptr) {
+            MmsValue_delete(communication_alarm);
         }
 
         ClientDataSet data_set = IedConnection_readDataSetValues(

@@ -72,6 +72,22 @@ int main() {
         return 1;
     }
 
+    uhf::health::Input communication_input = healthy_input(now - std::chrono::seconds(1));
+    communication_input.acquisition_last_cycle_ok = false;
+    communication_input.consecutive_no_response = 3U;
+    communication_input.communication_alarm = true;
+    const uhf::health::Report communication = aggregator.evaluate(communication_input, now);
+    if (!expect(communication.overall == uhf::health::State::down, "communication alarm overall") ||
+        !expect(communication.acquisition == uhf::health::State::down, "communication alarm acquisition") ||
+        !expect(
+            communication.to_json().find("\"consecutive_no_response\":3") != std::string::npos,
+            "communication count JSON") ||
+        !expect(
+            communication.to_json().find("\"communication_alarm\":true") != std::string::npos,
+            "communication alarm JSON")) {
+        return 1;
+    }
+
     std::cout << "health smoke: OK\n";
     return 0;
 }

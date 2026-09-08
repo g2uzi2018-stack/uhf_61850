@@ -71,6 +71,11 @@ enum class Availability {
     invalid,
 };
 
+enum class FailureReason {
+    other,
+    no_response,
+};
+
 std::string_view availability_name(Availability availability) noexcept;
 
 struct AcquisitionStatus {
@@ -78,6 +83,8 @@ struct AcquisitionStatus {
     bool attempt_known{false};
     std::chrono::steady_clock::time_point last_attempt_at{};
     std::string last_error;
+    std::uint32_t consecutive_no_response{0U};
+    bool communication_alarm{false};
 };
 
 struct ServingView {
@@ -92,7 +99,9 @@ public:
         std::chrono::steady_clock::time_point started_at,
         std::chrono::steady_clock::time_point completed_at);
     void record_failure(
-        std::chrono::steady_clock::time_point attempted_at, std::string error);
+        std::chrono::steady_clock::time_point attempted_at,
+        std::string error,
+        FailureReason reason = FailureReason::other);
 
     std::optional<PublishedSnapshot> latest() const;
     ServingView serving_view() const;
@@ -118,13 +127,15 @@ private:
     enum class ResponseResult {
         complete,
         retryable_error,
+        no_response,
         fatal_error,
     };
 
     bool read_exact(
         std::uint8_t* data,
         std::size_t size,
-        std::chrono::steady_clock::time_point deadline);
+        std::chrono::steady_clock::time_point deadline,
+        std::size_t* received_total = nullptr);
     ResponseResult read_response(
         const domain::ModbusReadRequest& request,
         const AcquisitionOptions& options,
@@ -134,8 +145,11 @@ private:
     bool sleep_until(
         std::chrono::steady_clock::time_point deadline, std::chrono::microseconds duration);
     void quarantine(std::chrono::milliseconds duration);
-    bool fail_and_quarantine(std::string message, std::chrono::milliseconds duration);
-    bool fail(std::string message);
+    bool fail_and_quarantine(
+        std::string message,
+        std::chrono::milliseconds duration,
+        FailureReason reason = FailureReason::other);
+    bool fail(std::string message, FailureReason reason = FailureReason::other);
 
     ISerialPort& serial_port_;
     SnapshotStore& snapshot_store_;

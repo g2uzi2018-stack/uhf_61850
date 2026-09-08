@@ -211,6 +211,9 @@ bool approved_entry(const uhf::iec61850::SclDataSetEntry& entry) {
         return false;
     }
     if (entry.ln_class == "GGIO") {
+        if (entry.do_name == "Ind1") {
+            return entry.da_name == "stVal" && entry.fc == "ST";
+        }
         if (entry.do_name == "IntIn1") {
             return entry.da_name == "stVal" && entry.fc == "ST";
         }
@@ -236,6 +239,7 @@ SclModelDefinition default_model_definition(std::string ied_name) {
     definition.measurement_descriptions = {"放电均值", "脉冲次数", "放电峰值", "峰值相位", "背景噪声"};
     definition.peak_description = "标准 UHF 局放峰值";
     definition.alarm_description = "局部放电告警";
+    definition.communication_alarm_description = "下位机通讯异常";
 
     SclDataSet measurements;
     measurements.name = "DSMeasurements";
@@ -258,7 +262,8 @@ SclModelDefinition default_model_definition(std::string ied_name) {
     definition.data_sets.push_back(std::move(measurements));
     definition.data_sets.push_back(SclDataSet{
         "DSState", "局部放电遥信数据集",
-        {SclDataSetEntry{"PDMON", "", "SPDC", "1", "PaDschAlm", "stVal", "ST"}}});
+        {SclDataSetEntry{"PDMON", "", "SPDC", "1", "PaDschAlm", "stVal", "ST"},
+         SclDataSetEntry{"PDMON", "", "GGIO", "1", "Ind1", "stVal", "ST"}}});
     definition.reports.push_back(SclReportControl{
         "RPMeasurements", "局放遥测数据报告控制块", "RPMeasurements", "DSMeasurements", false,
         0U, 60000U, 1U, true, true, true});
@@ -357,6 +362,8 @@ bool parse_scl_model(
                     definition.peak_description = value;
                 } else if (current_doi_name == "PaDschAlm") {
                     definition.alarm_description = value;
+                } else if (current_doi_name == "Ind1") {
+                    definition.communication_alarm_description = value;
                 } else if (current_doi_name == "AnIn1") {
                     definition.measurement_descriptions[0] = value;
                 } else if (current_doi_name == "IntIn1") {
@@ -549,6 +556,8 @@ bool parse_scl_model(
                         definition.measurement_descriptions[3] = value;
                     } else if (*do_name == "AnIn4") {
                         definition.measurement_descriptions[4] = value;
+                    } else if (*do_name == "Ind1") {
+                        definition.communication_alarm_description = value;
                     }
                 }
             }
@@ -581,9 +590,29 @@ bool parse_scl_model(
     const SclDataSet* measurements = find_dataset(definition, "DSMeasurements");
     const SclDataSet* state = find_dataset(definition, "DSState");
     if (definition.data_sets.size() != 2U || measurements == nullptr || state == nullptr ||
-        measurements->entries.size() != 6U || state->entries.size() != 1U) {
+        measurements->entries.size() != 6U || state->entries.empty() ||
+        state->entries.size() > 2U) {
         error = "SCL must contain the approved telemetry and state data sets";
         return false;
+    }
+    SclDataSet* mutable_state = nullptr;
+    for (SclDataSet& data_set : definition.data_sets) {
+        if (data_set.name == "DSState") {
+            mutable_state = &data_set;
+            break;
+        }
+    }
+    const bool communication_entry_present = mutable_state != nullptr &&
+        std::any_of(
+            mutable_state->entries.begin(),
+            mutable_state->entries.end(),
+            [](const SclDataSetEntry& entry) {
+                return entry.ln_class == "GGIO" && entry.ln_inst == "1" &&
+                    entry.do_name == "Ind1" && entry.da_name == "stVal" && entry.fc == "ST";
+            });
+    if (mutable_state != nullptr && !communication_entry_present) {
+        mutable_state->entries.push_back(SclDataSetEntry{
+            definition.logical_device, "", "GGIO", "1", "Ind1", "stVal", "ST"});
     }
     for (const SclDataSet& data_set : definition.data_sets) {
         if (data_set.name != "DSMeasurements" && data_set.name != "DSState") {

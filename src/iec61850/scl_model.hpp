@@ -50,6 +50,7 @@ struct SclModelDefinition {
     std::array<std::string, 5U> measurement_descriptions{};
     std::string peak_description;
     std::string alarm_description;
+    std::string communication_alarm_description;
     std::uint8_t max_report_controls{2U};
     std::vector<SclDataSet> data_sets;
     std::vector<SclReportControl> reports;

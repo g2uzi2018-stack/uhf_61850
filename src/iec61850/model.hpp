@@ -32,6 +32,9 @@ public:
     DataAttribute* alarm_value() const noexcept;
     DataAttribute* alarm_quality() const noexcept;
     DataAttribute* alarm_time() const noexcept;
+    DataAttribute* communication_alarm_value() const noexcept;
+    DataAttribute* communication_alarm_quality() const noexcept;
+    DataAttribute* communication_alarm_time() const noexcept;
     const SclModelDefinition& definition() const noexcept;
 
 private:
@@ -46,6 +49,9 @@ private:
     DataAttribute* alarm_value_{nullptr};
     DataAttribute* alarm_quality_{nullptr};
     DataAttribute* alarm_time_{nullptr};
+    DataAttribute* communication_alarm_value_{nullptr};
+    DataAttribute* communication_alarm_quality_{nullptr};
+    DataAttribute* communication_alarm_time_{nullptr};
     SclModelDefinition definition_;
 };
 

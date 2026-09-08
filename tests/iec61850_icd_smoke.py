@@ -41,8 +41,8 @@ def main() -> int:
     if report is None or report.get("buffered") != "false" or report.get("intgPd") != "60000":
         fail("unbuffered 60-second report is missing")
     state_dataset = ldevice.find(".//" + namespace + "DataSet[@name='DSState']")
-    if state_dataset is None or len(state_dataset.findall(namespace + "FCDA")) != 1:
-        fail("single-member state dataset is missing")
+    if state_dataset is None or len(state_dataset.findall(namespace + "FCDA")) != 2:
+        fail("two-member state dataset is missing")
     state_report = ldevice.find(".//" + namespace + "ReportControl[@name='RPState']")
     if state_report is None or state_report.get("buffered") != "true" or state_report.get("datSet") != "DSState":
         fail("buffered state report is missing")
@@ -54,7 +54,7 @@ def main() -> int:
     text = path.read_text(encoding="utf-8")
     for reference in (
         'doName="AnIn1"', 'doName="IntIn1"', 'doName="AnIn2"',
-        'doName="AnIn3"', 'doName="AnIn4"', 'doName="PaDschAlm"',
+        'doName="AnIn3"', 'doName="AnIn4"', 'doName="PaDschAlm"', 'doName="Ind1"',
         'name="UhfPaDsch"',
     ):
         if reference not in text:

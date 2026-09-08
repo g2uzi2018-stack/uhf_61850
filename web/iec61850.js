@@ -9,6 +9,7 @@
     function setText(id, value) { var element = document.getElementById(id); if (element) { element.textContent = value == null ? "--" : String(value); } }
     function valueFor(reference, snapshot) {
         if (reference.indexOf("PaDschAlm") >= 0) { return "由事件状态机更新"; }
+        if (reference.indexOf("Ind1") >= 0) { return "连续三次无响应时置位"; }
         var name = reference.indexOf("AnIn1") >= 0 ? "average" : reference.indexOf("IntIn1") >= 0 ? "frequency" : reference.indexOf("AnIn2") >= 0 || reference.indexOf("UhfPaDsch") >= 0 ? "peak" : reference.indexOf("AnIn3") >= 0 ? "phase" : "noise";
         var measurement = (snapshot.measurements || []).filter(function (item) { return item.name === name; })[0];
         return measurement && measurement.valid ? measurement.value : "--";
@@ -31,7 +32,7 @@
         var snapshotState = document.getElementById("snapshot-state"); snapshotState.textContent = snapshot && snapshot.generation ? "generation " + snapshot.generation : "尚无快照";
         var body = document.getElementById("iec-model-body"); body.textContent = ""; model = payload.model || [];
         if (!model.length) { var empty = document.createElement("tr"); var cell = document.createElement("td"); cell.colSpan = 6; cell.className = "muted-cell"; cell.textContent = "模型不可用"; empty.appendChild(cell); body.appendChild(empty); return; }
-        model.forEach(function (item) { var row = document.createElement("tr"); [item.reference, item.type, item.source_register ? "寄存器 " + item.source_register : "事件状态", item.unit, valueFor(item.reference, snapshot || {}), item.reference.indexOf("PaDschAlm") >= 0 ? "事件状态" : ((snapshot || {}).payload_status || "待采集")].forEach(function (value) { var cell = document.createElement("td"); cell.textContent = value == null ? "--" : String(value); row.appendChild(cell); }); body.appendChild(row); });
+        model.forEach(function (item) { var row = document.createElement("tr"); var communication = item.reference.indexOf("Ind1") >= 0; [item.reference, item.type, item.source_register ? "寄存器 " + item.source_register : (communication ? "通讯监督" : "事件状态"), item.unit, valueFor(item.reference, snapshot || {}), communication ? "通讯状态" : (item.reference.indexOf("PaDschAlm") >= 0 ? "事件状态" : ((snapshot || {}).payload_status || "待采集"))].forEach(function (value) { var cell = document.createElement("td"); cell.textContent = value == null ? "--" : String(value); row.appendChild(cell); }); body.appendChild(row); });
     }
     function renderIcd(payload) {
         var available = payload && payload.available;

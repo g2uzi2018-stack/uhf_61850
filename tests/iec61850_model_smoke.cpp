@@ -40,6 +40,10 @@ int main(int argc, char* argv[]) {
         "alarm reference exists") && ok;
     ok = expect(
         IedModel_getModelNodeByObjectReference(
+            model.raw(), "TESTIEDPDMON/GGIO1.Ind1.stVal") != nullptr,
+        "communication alarm reference exists") && ok;
+    ok = expect(
+        IedModel_getModelNodeByObjectReference(
             model.raw(), "TESTIEDPDMON/GGIO1.AnIn1.d") != nullptr,
         "average description exists") && ok;
     ok = expect(
@@ -59,6 +63,9 @@ int main(int argc, char* argv[]) {
     ok = expect(model.alarm_value() != nullptr, "alarm handle exists") && ok;
     ok = expect(model.alarm_quality() != nullptr, "alarm quality handle exists") && ok;
     ok = expect(model.alarm_time() != nullptr, "alarm time handle exists") && ok;
+    ok = expect(model.communication_alarm_value() != nullptr, "communication alarm handle exists") && ok;
+    ok = expect(model.communication_alarm_quality() != nullptr, "communication alarm quality exists") && ok;
+    ok = expect(model.communication_alarm_time() != nullptr, "communication alarm time exists") && ok;
     if (argc == 2) {
         std::ifstream input(argv[1], std::ios::binary);
         const std::string contents(
@@ -79,6 +86,10 @@ int main(int argc, char* argv[]) {
                 IedModel_lookupDataSet(
                     uploaded_model.raw(), (prefix + "/LLN0$DSState").c_str()) != nullptr,
                 "uploaded state data set is generated") && ok;
+            ok = expect(
+                IedModel_getModelNodeByObjectReference(
+                    uploaded_model.raw(), (prefix + "/GGIO1.Ind1.stVal").c_str()) != nullptr,
+                "uploaded communication alarm is generated") && ok;
             ok = expect(
                 uploaded_model.definition().reports.size() == 2U &&
                     uploaded_model.definition().reports[1].name == "RPState",

@@ -114,6 +114,8 @@ bool run_fatal_case(PortMode mode, std::size_t expected_writes, bool expect_late
     const bool result = engine.poll_once();
     const auto elapsed = std::chrono::steady_clock::now() - started;
     const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed);
+    const auto status = store.serving_view().status;
+    const bool no_response = mode == PortMode::timeout || mode == PortMode::late_byte;
     return expect(!result, "fatal case unexpectedly published") &&
         expect(port.write_count() == expected_writes, "fatal case retried an unsafe response") &&
         expect(!engine.last_error().empty(), "fatal case did not retain an error") &&
@@ -122,6 +124,10 @@ bool run_fatal_case(PortMode mode, std::size_t expected_writes, bool expect_late
             store.serving_view().status.availability == uhf::acquisition::Availability::invalid,
             "fatal case did not mark snapshot invalid") &&
         expect(store.serving_view().status.attempt_known, "fatal case did not record attempt") &&
+        expect(
+            status.consecutive_no_response == (no_response ? 1U : 0U),
+            "response failure classification") &&
+        expect(!status.communication_alarm, "single missing response raised alarm") &&
         expect(elapsed_ms >= std::chrono::milliseconds(expect_late_extension ? 24 : 19),
             "quarantine window was not enforced");
 }
@@ -183,6 +189,44 @@ int main() {
 
     if (!run_fatal_case(PortMode::crc_always, 4U, false)) {
         return 1;
+    }
+
+    {
+        uhf::acquisition::SnapshotStore store;
+        const auto now = std::chrono::steady_clock::now();
+        store.record_failure(now, "timeout 1", uhf::acquisition::FailureReason::no_response);
+        store.record_failure(now, "timeout 2", uhf::acquisition::FailureReason::no_response);
+        if (!expect(
+                store.serving_view().status.consecutive_no_response == 2U,
+                "two missing responses were not counted") ||
+            !expect(
+                !store.serving_view().status.communication_alarm,
+                "alarm raised before third missing response")) {
+            return 1;
+        }
+        store.record_failure(now, "timeout 3", uhf::acquisition::FailureReason::no_response);
+        if (!expect(
+                store.serving_view().status.communication_alarm,
+                "third missing response did not raise alarm")) {
+            return 1;
+        }
+        store.record_failure(now, "CRC", uhf::acquisition::FailureReason::other);
+        if (!expect(
+                store.serving_view().status.consecutive_no_response == 0U &&
+                    !store.serving_view().status.communication_alarm,
+                "non-timeout result did not break the no-response sequence")) {
+            return 1;
+        }
+        store.record_failure(now, "timeout 1", uhf::acquisition::FailureReason::no_response);
+        store.record_failure(now, "timeout 2", uhf::acquisition::FailureReason::no_response);
+        store.record_failure(now, "timeout 3", uhf::acquisition::FailureReason::no_response);
+        store.publish({}, now, now);
+        if (!expect(
+                store.serving_view().status.consecutive_no_response == 0U &&
+                    !store.serving_view().status.communication_alarm,
+                "successful snapshot did not clear communication alarm")) {
+            return 1;
+        }
     }
 
     std::cout << "acquisition fault smoke: OK\n";

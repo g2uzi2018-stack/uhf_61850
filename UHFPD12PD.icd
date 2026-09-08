@@ -54,6 +54,7 @@
 						</DataSet>
 						<DataSet name="DSState" desc="局部放电遥信数据集">
 							<FCDA ldInst="MON" prefix="" lnClass="SPDC" lnInst="1" doName="PaDschAlm" daName="stVal" fc="ST" />
+							<FCDA ldInst="MON" prefix="" lnClass="GGIO" lnInst="1" doName="Ind1" daName="stVal" fc="ST" />
 						</DataSet>
 						<ReportControl name="RPMeasurements" desc="局放遥测数据报告控制块" rptID="RPMeasurements" buffered="false" bufTime="0" datSet="DSMeasurements" intgPd="60000" confRev="1">
 							<TrgOps dchg="true" qchg="true" dupd="false" period="true" />
@@ -97,6 +98,11 @@
 								<Val>背景噪声</Val>
 							</DAI>
 						</DOI>
+						<DOI name="Ind1">
+							<DAI name="d">
+								<Val>下位机通讯异常</Val>
+							</DAI>
+						</DOI>
 					</LN>
 					<LN lnType="UHFPD12PDMON.LPHD1" lnClass="LPHD" inst="1">
 						<DOI name="PhyHealth">
@@ -128,6 +134,7 @@
 			<DO name="AnIn2" type="UHFPD12PDMON.GGIO1.AnIn1" />
 			<DO name="AnIn3" type="UHFPD12PDMON.GGIO1.AnIn1" />
 			<DO name="AnIn4" type="UHFPD12PDMON.GGIO1.AnIn1" />
+			<DO name="Ind1" type="UHFPD12PDMON.SPDC1.PaDschAlm" />
 		</LNodeType>
 		<LNodeType id="UHFPD12PDMON.LLN0" lnClass="LLN0">
 			<DO name="Health" type="UHFPD12PDMON.LLN0.Health" />

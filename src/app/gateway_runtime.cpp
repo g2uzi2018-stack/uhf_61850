@@ -182,6 +182,8 @@ health::Input GatewayRuntime::health_input() const {
     }
     input.acquisition_last_cycle_ok =
         serving_view.status.availability == acquisition::Availability::fresh;
+    input.consecutive_no_response = serving_view.status.consecutive_no_response;
+    input.communication_alarm = serving_view.status.communication_alarm;
     input.storage_writable = true;
     input.modbus_tcp_listening =
         modbus_tcp_server_ != nullptr && modbus_tcp_server_->bound_port() != 0U;
@@ -281,6 +283,7 @@ bool GatewayRuntime::reload_iec61850_model() {
 
 void GatewayRuntime::run() {
     bool previous_cycle_failed = false;
+    bool communication_alarm_active = false;
     std::uint64_t applied_config_version = 0U;
     std::chrono::steady_clock::time_point next_poll = std::chrono::steady_clock::now();
     while (!stop_requested_.load()) {
@@ -302,6 +305,24 @@ void GatewayRuntime::run() {
                 acquisition_engine_->last_error());
             previous_cycle_failed = true;
         }
+        const acquisition::AcquisitionStatus acquisition_status =
+            snapshot_store_.serving_view().status;
+        if (acquisition_status.communication_alarm && !communication_alarm_active) {
+            logger_.log(
+                logging::Level::error,
+                logging::Component::acquisition,
+                "communication.alarm",
+                "PD1000 communication alarm raised after three consecutive no-response cycles",
+                {logging::Field{
+                    "consecutive_no_response",
+                    std::to_string(acquisition_status.consecutive_no_response)}});
+        } else if (!acquisition_status.communication_alarm && communication_alarm_active) {
+            logger_.recovered(
+                logging::Component::acquisition,
+                "communication.alarm",
+                "PD1000 communication recovered");
+        }
+        communication_alarm_active = acquisition_status.communication_alarm;
 
         next_poll += options_.poll_interval;
         const auto now = std::chrono::steady_clock::now();

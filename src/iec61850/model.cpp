@@ -104,7 +104,10 @@ Model::Model(SclModelDefinition definition)
             "UhfPaDsch", as_model_node(spdc1), CDC_OPTION_DESC, false);
         DataObject* alarm = CDC_SPS_create(
             "PaDschAlm", as_model_node(spdc1), CDC_OPTION_DESC);
-        if (health == nullptr || phy_health == nullptr || peak == nullptr || alarm == nullptr) {
+        DataObject* communication_alarm = CDC_SPS_create(
+            "Ind1", as_model_node(ggio1), CDC_OPTION_DESC);
+        if (health == nullptr || phy_health == nullptr || peak == nullptr || alarm == nullptr ||
+            communication_alarm == nullptr) {
             throw std::runtime_error("unable to create IEC 61850 common data objects");
         }
 
@@ -113,6 +116,11 @@ Model::Model(SclModelDefinition definition)
         set_description(child_description(phy_health), definition_.phy_health_description);
         set_description(child_description(peak), definition_.peak_description);
         set_description(child_description(alarm), definition_.alarm_description);
+        set_description(
+            child_description(communication_alarm),
+            definition_.communication_alarm_description.empty()
+                ? std::string{"下位机通讯异常"}
+                : definition_.communication_alarm_description);
 
         peak_value_ = child_attribute(peak, "mag.f");
         peak_quality_ = child_attribute(peak, "q");
@@ -120,6 +128,9 @@ Model::Model(SclModelDefinition definition)
         alarm_value_ = child_attribute(alarm, "stVal");
         alarm_quality_ = child_attribute(alarm, "q");
         alarm_time_ = child_attribute(alarm, "t");
+        communication_alarm_value_ = child_attribute(communication_alarm, "stVal");
+        communication_alarm_quality_ = child_attribute(communication_alarm, "q");
+        communication_alarm_time_ = child_attribute(communication_alarm, "t");
 
         static constexpr const char* kMeasurementNames[kMeasurementCount] = {
             "AnIn1", "IntIn1", "AnIn2", "AnIn3", "AnIn4"};
@@ -235,6 +246,18 @@ DataAttribute* Model::alarm_quality() const noexcept {
 
 DataAttribute* Model::alarm_time() const noexcept {
     return alarm_time_;
+}
+
+DataAttribute* Model::communication_alarm_value() const noexcept {
+    return communication_alarm_value_;
+}
+
+DataAttribute* Model::communication_alarm_quality() const noexcept {
+    return communication_alarm_quality_;
+}
+
+DataAttribute* Model::communication_alarm_time() const noexcept {
+    return communication_alarm_time_;
 }
 
 const SclModelDefinition& Model::definition() const noexcept {

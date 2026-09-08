@@ -43,8 +43,9 @@ private:
     void start_locked();
     void stop_locked() noexcept;
     void update_loop();
-    void publish_invalid_values();
+    void publish_invalid_values(bool communication_alarm = false);
     void publish_snapshot(const acquisition::ServingView& serving_view);
+    void update_communication_alarm(bool active, std::uint64_t timestamp_ms);
     void update_timestamp(DataAttribute* attribute, std::uint64_t timestamp_ms);
 
     acquisition::SnapshotStore& snapshot_store_;

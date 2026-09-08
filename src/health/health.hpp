@@ -19,6 +19,8 @@ enum class State {
 struct Input {
     std::optional<std::chrono::steady_clock::time_point> last_acquisition_success;
     bool acquisition_last_cycle_ok{false};
+    std::uint32_t consecutive_no_response{0U};
+    bool communication_alarm{false};
     bool storage_writable{false};
     bool storage_low_watermark{false};
     bool modbus_tcp_listening{false};
@@ -35,6 +37,8 @@ struct Report {
     State iec61850{State::disabled};
     bool acquisition_age_known{false};
     std::uint64_t acquisition_age_ms{0U};
+    std::uint32_t consecutive_no_response{0U};
+    bool communication_alarm{false};
 
     std::string to_json() const;
 };

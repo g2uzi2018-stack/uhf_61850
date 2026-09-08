@@ -317,7 +317,14 @@ def main() -> int:
             iec_status, iec_body, _ = request(port, "GET", "/api/v1/iec61850", headers={"Cookie": cookie})
             assert_status(iec_status, 200, "IEC status lookup")
             iec_payload = json.loads(iec_body)
-            if iec_payload.get("ied_name") != "UHFPD1" or len(iec_payload.get("model", [])) != 7:
+            model_references = {
+                item.get("reference") for item in iec_payload.get("model", [])
+            }
+            if (
+                iec_payload.get("ied_name") != "UHFPD1"
+                or len(model_references) != 8
+                or "PDMON/GGIO1.Ind1.stVal" not in model_references
+            ):
                 fail(f"IEC status model is incomplete: {iec_payload!r}")
             counters = iec_payload.get("counters", {})
             if iec_payload.get("active_connections") != 0:
