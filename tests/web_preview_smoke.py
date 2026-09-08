@@ -50,9 +50,14 @@ def main() -> int:
     for marker in ("drawPrpd", "drawPrps", "3600", "api/v1/snapshot/latest", "api/v1/health", "api/v1/overview", "phaseStartBin", "WebSocket"):
         if marker not in overview_javascript:
             fail(f"overview.js is missing {marker!r}")
-    for marker in ("SNTP 服务器", "手动设备时间", "IED 名称", "api/v1/time"):
+    for marker in (
+        "IP 设置入口", "IP 修改操作步骤", "① 试应用 IP", "② 确认并永久保存 IP",
+        "保存并应用 IED 名称", "SNTP 服务器", "手动设备时间", "api/v1/time",
+    ):
         if marker not in network_html and marker not in network_javascript:
             fail(f"network assets are missing {marker!r}")
+    if network_html.index('type="submit">① 试应用 IP') > network_html.index('id="confirm-network"'):
+        fail("network confirmation action is not positioned after staging")
     for marker in ("api/v1/session", "same-origin", "登录尝试过于频繁", "location.protocol"):
         if marker not in login_javascript:
             fail(f"login.js is missing {marker!r}")

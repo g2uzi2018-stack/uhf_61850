@@ -11,6 +11,10 @@
     var timeError = document.getElementById("time-error");
     var timeSaved = document.getElementById("time-saved");
     var timeState = document.getElementById("time-state");
+    var iedNameError = document.getElementById("ied-name-error");
+    var iedNameSaved = document.getElementById("ied-name-saved");
+    var iedNameState = document.getElementById("ied-name-state");
+    var confirmationGuide = document.getElementById("confirmation-guide");
     var csrfToken = "";
     var timer = null;
     var configuration = null;
@@ -21,6 +25,8 @@
     function showSaved(message) { error.textContent = ""; saved.textContent = message; }
     function showTimeError(message) { timeError.textContent = message; timeSaved.textContent = ""; }
     function showTimeSaved(message) { timeError.textContent = ""; timeSaved.textContent = message; }
+    function showIedNameError(message) { iedNameError.textContent = message; iedNameSaved.textContent = ""; }
+    function showIedNameSaved(message) { iedNameError.textContent = ""; iedNameSaved.textContent = message; }
     function api(path, options) {
         options = options || {};
         options.credentials = "same-origin";
@@ -57,10 +63,15 @@
             transactionState.innerHTML = "<i></i>无待确认事务";
             countdown.innerHTML = "<i></i>未开始";
             confirmButton.disabled = true;
+            confirmationGuide.textContent = "填写上方网口参数后，先试应用；确认按钮会在候选 IP 生效后启用。";
             return;
         }
         transactionState.innerHTML = "<i></i>事务 #" + transaction.id + " 待确认";
         confirmButton.disabled = false;
+        var stagedAddress = transaction.candidate && transaction.candidate.eth0 && transaction.candidate.eth0.address;
+        confirmationGuide.textContent = stagedAddress
+            ? "请在新标签页打开当前协议下的 " + stagedAddress + "，确认页面可访问后点击右下角“② 确认并永久保存 IP”。"
+            : "请从候选 IP 重新打开本页，确认可访问后点击右下角“② 确认并永久保存 IP”。";
         var remaining = Number(transaction.remaining_seconds || 60);
         function tick() {
             countdown.innerHTML = "<i></i>剩余 " + Math.max(0, remaining) + " 秒";
@@ -98,6 +109,7 @@
             setValue("time_sync_enabled", config.time_sync_enabled);
             setValue("sntp_server", config.sntp_server);
             timeState.textContent = config.time_sync_enabled ? "自动同步" : "手动模式";
+            iedNameState.textContent = config.iec_ied_name;
         });
     }
     function load() {
@@ -171,15 +183,24 @@
             return loadNetwork();
         }).catch(function (reason) { if (reason.message !== "auth") { showError("回滚失败：" + reason.message); } });
     });
-    document.getElementById("save-device-options").addEventListener("click", function () {
+    document.getElementById("save-ied-name").addEventListener("click", function () {
         var button = this;
         var currentPassword = password();
-        if (!currentPassword) { showTimeError("请输入当前密码进行再认证"); return; }
+        if (!currentPassword) { showIedNameError("请在页面底部输入当前管理员密码"); return; }
+        button.disabled = true;
+        saveConfiguration().then(function () {
+            iedNameState.textContent = document.getElementById("iec-ied-name").value;
+            showIedNameSaved("IED 名称已保存；正在应用到 IEC 61850 服务。");
+        }).catch(function (reason) { if (reason.message !== "auth") { showIedNameError("保存 IED 名称失败：" + reason.message); } }).then(function () { button.disabled = false; });
+    });
+    document.getElementById("save-time-options").addEventListener("click", function () {
+        var button = this;
+        var currentPassword = password();
+        if (!currentPassword) { showTimeError("请在页面底部输入当前管理员密码"); return; }
         button.disabled = true;
         saveConfiguration().then(function () {
             return applyTimeAction(document.getElementById("time-sync-enabled").checked ? "sync" : "disable");
-        }).then(function () {
-            showTimeSaved("设备标识与时间设置已保存并应用。");
+        }).then(function () { showTimeSaved("时间设置已保存并应用。");
         }).catch(function (reason) { if (reason.message !== "auth" && reason.message !== "password") { showTimeError("保存时间设置失败：" + reason.message); } }).then(function () { button.disabled = false; });
     });
     document.getElementById("sync-time").addEventListener("click", function () {

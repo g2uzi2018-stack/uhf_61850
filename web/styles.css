@@ -170,6 +170,12 @@ noscript { position: fixed; z-index: 30; inset: 0; padding: 35vh 20px; backgroun
 .settings-content { max-width: 1080px; }
 .settings-notice { display: flex; margin-bottom: 18px; padding: 13px 16px; border: 1px solid rgb(79 140 255 / 22%); border-radius: 9px; background: #eef5ff; color: #526d96; font-size: 11px; gap: 12px; }
 .settings-notice strong { color: #3568b8; white-space: nowrap; }
+.network-steps { display: grid; margin-bottom: 18px; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.network-steps > div { display: flex; min-height: 58px; align-items: center; padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); gap: 10px; }
+.network-steps b { display: grid; width: 25px; height: 25px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: var(--blue); color: white; font-size: 11px; }
+.network-steps span { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.network-steps strong { color: #425d89; font-size: 11px; }
+.network-steps small { color: var(--muted); font-size: 9px; line-height: 1.4; }
 .settings-panel { margin-bottom: 18px; }
 .settings-grid { display: grid; padding: 0 23px 22px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px 22px; }
 .settings-grid label { display: flex; flex-direction: column; gap: 6px; color: #5e6e85; font-size: 11px; }
@@ -182,6 +188,8 @@ noscript { position: fixed; z-index: 30; inset: 0; padding: 35vh 20px; backgroun
 .settings-grid small { color: var(--muted); font-size: 10px; }
 .settings-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .settings-actions .form-error { margin-right: auto; }
+.panel-actions { padding: 0 23px 22px; }
+.confirm-button:enabled { box-shadow: 0 0 0 3px rgb(79 140 255 / 13%), 0 6px 17px rgb(79 140 255 / 20%); }
 .settings-saved { color: #277d5d; font-size: 11px; }
 .toolbar { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .toolbar select { padding: 7px 8px; border: 1px solid #cbd8e9; border-radius: 6px; background: #f8fafd; color: #5e6e85; font-size: 10px; }
@@ -203,6 +211,7 @@ noscript { position: fixed; z-index: 30; inset: 0; padding: 35vh 20px; backgroun
     .settings-actions .form-error { flex-basis: 100%; }
     .storage-summary-grid { grid-template-columns: 1fr; }
     .network-interface-grid { grid-template-columns: 1fr; }
+    .network-steps { grid-template-columns: 1fr; }
     .iec-summary-grid { grid-template-columns: 1fr; }
     .toolbar { justify-content: flex-start; }
 }
