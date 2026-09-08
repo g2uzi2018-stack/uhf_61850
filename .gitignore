@@ -3,5 +3,7 @@
 CMakeUserPresets.json
 compile_commands.json
 htnice2_key
+/findings/
+/JFJC.icd
 *.swp
 *.swo
