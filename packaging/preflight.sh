@@ -139,7 +139,7 @@ if [[ "$skip_hardware" == false ]]; then
         printf 'preflight: ss is required for port validation\n' >&2
         exit 1
     fi
-    for port in 102 502 8080; do
+    for port in 21 102 502 8080; do
         if ss -H -ltn "sport = :${port}" | grep -q .; then
             if [[ "$allow_legacy" == true && "$port" == 502 ]]; then
                 printf 'preflight: allowing legacy port 502 for first cutover\n'

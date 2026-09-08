@@ -56,7 +56,8 @@ public:
                 return position_ == input_.size() &&
                     (keys_.size() == 18U || keys_.size() == 19U ||
                      keys_.size() == 22U || keys_.size() == 23U ||
-                     keys_.size() == 27U || keys_.size() == 28U);
+                     keys_.size() == 27U || keys_.size() == 28U ||
+                     keys_.size() == 29U || keys_.size() == 30U);
             }
             if (!consume(',')) {
                 return false;
@@ -315,6 +316,9 @@ private:
         if (key == "iec_enabled") {
             return parse_boolean(values.iec_enabled);
         }
+        if (key == "ftp_enabled") {
+            return parse_boolean(values.ftp_enabled);
+        }
         if (key == "time_sync_enabled") {
             return parse_boolean(values.time_sync_enabled);
         }
@@ -360,6 +364,9 @@ private:
         }
         if (key == "iec_port") {
             return assign_unsigned(value, std::uint16_t{1U}, std::uint16_t{65535U}, values.iec_port);
+        }
+        if (key == "ftp_port") {
+            return assign_unsigned(value, std::uint16_t{1U}, std::uint16_t{65535U}, values.ftp_port);
         }
         if (key == "phase_start_degree") {
             return assign_unsigned(
@@ -604,8 +611,12 @@ bool ConfigStore::validate(const Values& values) noexcept {
         values.iec_enabled && values.web_port == values.iec_port;
     const bool modbus_port_conflicts_with_iec =
         values.iec_enabled && values.modbus_tcp_port == values.iec_port;
+    const bool ftp_port_conflicts = values.ftp_enabled &&
+        (values.ftp_port == values.web_port || values.ftp_port == values.modbus_tcp_port ||
+         (values.iec_enabled && values.ftp_port == values.iec_port));
     return values.tls_enabled && !web_port_conflicts_with_modbus &&
         !web_port_conflicts_with_iec && !modbus_port_conflicts_with_iec &&
+        !ftp_port_conflicts &&
         valid_device(values.acquisition_device, "/dev/ttyS1") &&
         valid_device(values.rtu_device, "/dev/ttyS4") &&
         ::inet_pton(AF_INET, values.modbus_tcp_bind.c_str(), &address) == 1 &&
@@ -649,6 +660,8 @@ std::string ConfigStore::serialize(const Snapshot& snapshot) {
         "  \"iec_enabled\": " + std::string(values.iec_enabled ? "true" : "false") + ",\n"
         "  \"iec_port\": " + std::to_string(values.iec_port) + ",\n"
         "  \"iec_ied_name\": \"" + json_escape(values.iec_ied_name) + "\",\n"
+        "  \"ftp_enabled\": " + std::string(values.ftp_enabled ? "true" : "false") + ",\n"
+        "  \"ftp_port\": " + std::to_string(values.ftp_port) + ",\n"
         "  \"overview_title\": \"" + json_escape(values.overview_title) + "\",\n"
         "  \"overview_device\": \"" + json_escape(values.overview_device) + "\",\n"
         "  \"phase_start_degree\": " + std::to_string(values.phase_start_degree) + ",\n"

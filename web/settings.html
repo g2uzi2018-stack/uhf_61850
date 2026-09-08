@@ -43,6 +43,8 @@
                         <label>Modbus/TCP Unit ID<input name="modbus_tcp_unit_id" type="number" min="1" max="247" required><small>不匹配返回 0x0B</small></label>
                         <label>IEC 61850 服务<input name="iec_enabled" type="checkbox"><small>关闭后不监听 MMS 端口</small></label>
                         <label>IEC 61850 端口<input name="iec_port" type="number" min="1" max="65535" required><small>标准端口为 102</small></label>
+                        <label>FTP 文件传输<input name="ftp_enabled" type="checkbox"><small>使用管理员账号；仅建议在可信管理网启用</small></label>
+                        <label>FTP 端口<input name="ftp_port" type="number" min="1" max="65535" required><small>默认 21；修改或启停后需重启服务</small></label>
                     </div></section>
                     <section class="panel settings-panel"><div class="panel-header"><div><h2>存储策略</h2><p>周期帧与事件包写入数据目录，由后台清理线程维护</p></div><span class="count-badge">原子写入</span></div><div class="settings-grid">
                         <label>周期保存间隔（秒）<input name="storage_period_seconds" type="number" min="60" max="86400" required><small>默认 300 秒</small></label>

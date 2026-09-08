@@ -26,6 +26,8 @@ struct Values {
     bool iec_enabled{true};
     std::uint16_t iec_port{102U};
     std::string iec_ied_name{"UHFPD1"};
+    bool ftp_enabled{false};
+    std::uint16_t ftp_port{21U};
     std::string overview_title{"局部放电在线监测系统"};
     std::string overview_device{"1号主变"};
     std::uint16_t phase_start_degree{0U};

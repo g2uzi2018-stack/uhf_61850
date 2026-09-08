@@ -149,6 +149,8 @@ def main() -> int:
                 or loaded.get("modbus_tcp_unit_id") != 4
                 or loaded.get("modbus_tcp_bind") != "192.0.2.123"
                 or loaded.get("iec_enabled") is not False
+                or loaded.get("ftp_enabled") is not False
+                or loaded.get("ftp_port") != 21
                 or loaded.get("overview_title") != "现场😀监测"
                 or loaded.get("phase_start_degree") != 45
                 or loaded.get("time_sync_enabled") is not False

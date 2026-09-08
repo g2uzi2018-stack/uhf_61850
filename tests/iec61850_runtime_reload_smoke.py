@@ -52,6 +52,7 @@ def main() -> int:
         )
         configuration["modbus_tcp_bind"] = "192.0.2.123"
         configuration["iec_port"] = iec_port
+        configuration["ftp_enabled"] = False
         (state_dir / "config.json").write_text(
             json.dumps(configuration), encoding="utf-8"
         )

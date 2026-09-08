@@ -35,6 +35,8 @@ const char* valid_object() {
         "iec_enabled":false,
         "iec_port":15102,
         "iec_ied_name":"UHFPD2",
+        "ftp_enabled":true,
+        "ftp_port":2121,
         "overview_title":"现场局放监测",
         "overview_device":"2号主变",
         "phase_start_degree":45,
@@ -144,6 +146,20 @@ int main() {
                 "event rearm threshold must be below trigger threshold")) {
             return 1;
         }
+        const std::string conflicting_ftp_port = [] {
+            std::string value = valid_object();
+            const std::string port = "\"ftp_port\":2121";
+            const std::size_t position = value.find(port);
+            if (position != std::string::npos) {
+                value.replace(position, port.size(), "\"ftp_port\":8081");
+            }
+            return value;
+        }();
+        if (!expect(
+                store.update(1U, conflicting_ftp_port) == uhf::config::UpdateResult::invalid,
+                "conflicting FTP port accepted")) {
+            return 1;
+        }
         const uhf::config::UpdateResult updated = store.update(1U, valid_object());
         const uhf::config::Snapshot changed = store.snapshot();
         if (!expect(updated == uhf::config::UpdateResult::updated, "valid update") ||
@@ -153,6 +169,8 @@ int main() {
             !expect(changed.values.tls_enabled, "TLS remains enabled") ||
             !expect(changed.values.iec_enabled == false, "updated IEC flag") ||
             !expect(changed.values.iec_port == 15102U, "updated IEC port") ||
+            !expect(changed.values.ftp_enabled, "updated FTP flag") ||
+            !expect(changed.values.ftp_port == 2121U, "updated FTP port") ||
             !expect(changed.values.overview_device == "2号主变", "overview device") ||
             !expect(changed.values.sntp_server == "time.example.com", "SNTP server") ||
             !expect(changed.values.storage_event_threshold_dbm == -45, "event threshold") ||

@@ -15,6 +15,8 @@
   "iec_enabled": true,
   "iec_port": 102,
   "iec_ied_name": "UHFPD1",
+  "ftp_enabled": true,
+  "ftp_port": 21,
   "overview_title": "局部放电在线监测系统",
   "overview_device": "1号主变",
   "phase_start_degree": 0,

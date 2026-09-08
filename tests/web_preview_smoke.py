@@ -61,6 +61,9 @@ def main() -> int:
     for marker in ("api/v1/session", "same-origin", "登录尝试过于频繁", "location.protocol"):
         if marker not in login_javascript:
             fail(f"login.js is missing {marker!r}")
+    for marker in ("FTP 文件传输", "ftp_enabled", "ftp_port"):
+        if marker not in (web_dir / "settings.html").read_text(encoding="utf-8") and marker not in (web_dir / "settings.js").read_text(encoding="utf-8"):
+            fail(f"FTP settings are missing {marker!r}")
     for marker in (".sidebar", ".panel", "@media", ".modal"):
         if marker not in stylesheet:
             fail(f"styles.css is missing {marker!r}")

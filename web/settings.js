@@ -11,7 +11,7 @@
     var numericFields = [
         "acquisition_slave_id", "acquisition_period_ms", "acquisition_response_timeout_ms",
         "acquisition_max_retries", "rtu_unit_id", "modbus_tcp_port", "modbus_tcp_unit_id",
-        "iec_port", "storage_period_seconds", "storage_retention_days", "storage_min_free_bytes",
+        "iec_port", "ftp_port", "storage_period_seconds", "storage_retention_days", "storage_min_free_bytes",
         "storage_event_threshold_dbm", "storage_event_rearm_dbm", "storage_event_delta_db",
         "storage_event_merge_seconds",
         "web_port"
@@ -46,6 +46,7 @@
             document.getElementById("config-version").innerHTML = "<i></i>配置版本 " + version;
             numericFields.forEach(function (name) { setValue(name, config[name]); });
             setValue("iec_enabled", config.iec_enabled);
+            setValue("ftp_enabled", config.ftp_enabled);
             document.getElementById("runtime-status").textContent = "配置已加载 · 版本 " + version;
         });
     }
@@ -56,6 +57,7 @@
         delete payload.version;
         numericFields.forEach(function (name) { payload[name] = Number(form.elements[name].value); });
         payload.iec_enabled = form.elements.iec_enabled.checked;
+        payload.ftp_enabled = form.elements.ftp_enabled.checked;
         payload.iec_ied_name = configuration && configuration.iec_ied_name ? configuration.iec_ied_name : "UHFPD1";
         payload.acquisition_device = "/dev/ttyS1";
         payload.rtu_device = "/dev/ttyS4";

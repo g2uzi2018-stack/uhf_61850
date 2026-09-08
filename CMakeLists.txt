@@ -140,6 +140,7 @@ add_executable(uhf-gatewayd
     src/main.cpp
     src/config/config_store.cpp
     src/app/gateway_runtime.cpp
+    src/ftp/server.cpp
     src/acquisition/acquisition.cpp
     src/acquisition/loopback_pd1000.cpp
     src/domain/modbus.cpp
@@ -1132,6 +1133,13 @@ if(BUILD_TESTING)
             NAME uhf_config_runtime_smoke
             COMMAND "${Python3_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/tests/config_runtime_smoke.py"
+                "$<TARGET_FILE:uhf-gatewayd>"
+                "${PROJECT_SOURCE_DIR}/web"
+        )
+        add_test(
+            NAME uhf_ftp_server_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/ftp_server_smoke.py"
                 "$<TARGET_FILE:uhf-gatewayd>"
                 "${PROJECT_SOURCE_DIR}/web"
         )

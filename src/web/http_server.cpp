@@ -1045,7 +1045,9 @@ bool configuration_requires_restart(
     return previous.acquisition_device != current.acquisition_device ||
         previous.rtu_device != current.rtu_device ||
         previous.rtu_unit_id != current.rtu_unit_id ||
-        previous.iec_enabled != current.iec_enabled;
+        previous.iec_enabled != current.iec_enabled ||
+        previous.ftp_enabled != current.ftp_enabled ||
+        previous.ftp_port != current.ftp_port;
 }
 
 constexpr std::string_view kConfigSchemaJson = R"json({
@@ -1070,6 +1072,8 @@ constexpr std::string_view kConfigSchemaJson = R"json({
     "iec_enabled":{"type":"boolean"},
     "iec_port":{"type":"integer","minimum":1,"maximum":65535},
     "iec_ied_name":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9_]{0,31}$"},
+    "ftp_enabled":{"type":"boolean"},
+    "ftp_port":{"type":"integer","minimum":1,"maximum":65535},
     "overview_title":{"type":"string","minLength":1,"maxLength":64},
     "overview_device":{"type":"string","minLength":1,"maxLength":64},
     "phase_start_degree":{"type":"integer","minimum":0,"maximum":360},
@@ -1083,7 +1087,7 @@ constexpr std::string_view kConfigSchemaJson = R"json({
     "storage_event_delta_db":{"type":"integer","minimum":1,"maximum":85},
     "storage_event_merge_seconds":{"type":"integer","minimum":0,"maximum":3600}
   },
-  "required":["acquisition_device","acquisition_slave_id","acquisition_period_ms","acquisition_response_timeout_ms","acquisition_max_retries","rtu_device","rtu_unit_id","modbus_tcp_bind","modbus_tcp_unit_id","modbus_tcp_port","web_port","tls_enabled","iec_enabled","iec_port","iec_ied_name","overview_title","overview_device","phase_start_degree","time_sync_enabled","sntp_server","storage_period_seconds","storage_retention_days","storage_min_free_bytes","storage_event_threshold_dbm","storage_event_rearm_dbm","storage_event_delta_db","storage_event_merge_seconds"]
+  "required":["acquisition_device","acquisition_slave_id","acquisition_period_ms","acquisition_response_timeout_ms","acquisition_max_retries","rtu_device","rtu_unit_id","modbus_tcp_bind","modbus_tcp_unit_id","modbus_tcp_port","web_port","tls_enabled","iec_enabled","iec_port","iec_ied_name","ftp_enabled","ftp_port","overview_title","overview_device","phase_start_degree","time_sync_enabled","sntp_server","storage_period_seconds","storage_retention_days","storage_min_free_bytes","storage_event_threshold_dbm","storage_event_rearm_dbm","storage_event_delta_db","storage_event_merge_seconds"]
 })json";
 
 }  // namespace
@@ -1130,6 +1134,21 @@ HttpServer::HttpServer(
     }
     if (tls_enabled_) {
         tls_context_ = std::make_unique<TlsContext>(std::move(tls_files));
+    }
+    if (config_store_ != nullptr) {
+        const config::Values configured = config_store_->snapshot().values;
+        if (configured.ftp_enabled) {
+            ftp::ServerOptions ftp_options;
+            ftp_options.bind_address = "0.0.0.0";
+            ftp_options.port = configured.ftp_port;
+            ftp_options.root = state_directory / "ftp";
+            ftp_server_ = std::make_unique<ftp::Server>(
+                std::move(ftp_options),
+                [this](std::string_view username, std::string_view password) {
+                    std::lock_guard<std::mutex> lock(state_mutex_);
+                    return auth_store_.verify_password(username, password);
+                });
+        }
     }
 }
 
@@ -1552,6 +1571,11 @@ int HttpServer::run() {
     }
     int server_fd = initial_listener->file_descriptor;
     port_ = initial_listener->port;
+    if (ftp_server_ != nullptr && !ftp_server_->start()) {
+        ::close(server_fd);
+        std::perror("unable to open FTP listener");
+        return 1;
+    }
     std::uint64_t applied_config_version = 0U;
     if (reload_web_endpoint_ && config_store_ != nullptr) {
         applied_config_version = config_store_->snapshot().version;

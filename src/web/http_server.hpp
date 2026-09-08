@@ -3,6 +3,7 @@
 
 #include "acquisition/acquisition.hpp"
 #include "config/config_store.hpp"
+#include "ftp/server.hpp"
 #include "health/health.hpp"
 #include "iec61850/stats.hpp"
 #include "iec61850/scl_model.hpp"
@@ -97,6 +98,7 @@ private:
     config::ConfigStore* config_store_{nullptr};
     bool tls_enabled_{true};
     std::unique_ptr<TlsContext> tls_context_;
+    std::unique_ptr<ftp::Server> ftp_server_;
     logging::Logger* logger_{nullptr};
     std::filesystem::path data_root_;
     privileged::UnixSocketClient* network_client_{nullptr};
