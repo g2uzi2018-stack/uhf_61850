@@ -58,7 +58,11 @@ def main() -> int:
             fail(f"network assets are missing {marker!r}")
     if network_html.index('type="submit">① 试应用 IP') > network_html.index('id="confirm-network"'):
         fail("network confirmation action is not positioned after staging")
-    for marker in ("netmaskForPrefix", "prefixForNetmask", "legacyNetworkFormat", "网络配置已重新读取"):
+    for marker in (
+        "netmaskForPrefix", "prefixForNetmask", "legacyNetworkFormat",
+        "captureConfigurationForm", "restoreConfigurationForm", "configuration version conflict",
+        "网络配置已重新读取",
+    ):
         if marker not in network_javascript:
             fail(f"network.js is missing compatibility marker {marker!r}")
     for marker in ("api/v1/session", "same-origin", "登录尝试过于频繁", "location.protocol"):

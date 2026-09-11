@@ -314,6 +314,46 @@ def main() -> int:
                 {"Cookie": cookie, "X-CSRF-Token": csrf_token},
             )
             assert_status(confirm_status, 409, "network confirm without transaction")
+            network_candidate = {
+                "eth0_mode": "static",
+                "eth0_address": "192.168.3.230",
+                "eth0_netmask": "255.255.255.0",
+                "eth0_gateway": "192.168.3.1",
+                "eth0_dns1": "",
+                "eth0_dns2": "",
+                "eth0_hostname": "",
+                "eth0_dhcp_timeout_seconds": 15,
+                "eth1_mode": "static",
+                "eth1_address": "192.168.0.230",
+                "eth1_netmask": "255.255.255.0",
+                "eth1_gateway": "",
+                "eth1_dns1": "",
+                "eth1_dns2": "",
+                "eth1_hostname": "",
+                "eth1_dhcp_timeout_seconds": 15,
+            }
+            stage_status, _, _ = request(
+                port,
+                "POST",
+                "/api/v1/network/stage",
+                json_body({"current_password": initial_password, "candidate": network_candidate}),
+                {"Cookie": cookie, "X-CSRF-Token": csrf_token},
+            )
+            assert_status(stage_status, 200, "network stage before IED rename")
+            confirmed_status, _, _ = request(
+                port,
+                "POST",
+                "/api/v1/network/confirm",
+                json_body({"current_password": initial_password}),
+                {"Cookie": cookie, "X-CSRF-Token": csrf_token},
+            )
+            assert_status(confirmed_status, 200, "network confirm before IED rename")
+            post_network_config_status, post_network_config_body, _ = request(
+                port, "GET", "/api/v1/config", headers={"Cookie": cookie}
+            )
+            assert_status(post_network_config_status, 200, "config after network confirm")
+            if json.loads(post_network_config_body).get("iec_ied_name") != "UHFPD1":
+                fail("network confirmation changed the configured IED name")
             iec_status, iec_body, _ = request(port, "GET", "/api/v1/iec61850", headers={"Cookie": cookie})
             assert_status(iec_status, 200, "IEC status lookup")
             iec_payload = json.loads(iec_body)
@@ -339,6 +379,29 @@ def main() -> int:
                 or counters.get("report_buffer_overflows") != 0
             ):
                 fail(f"IEC resource counters are not initialized: {iec_payload!r}")
+            ied_config = json.loads(post_network_config_body)
+            ied_config_version = int(ied_config.pop("version"))
+            ied_config["iec_ied_name"] = "RENAMED1"
+            ied_update_status, ied_update_body, _ = request(
+                port,
+                "PUT",
+                "/api/v1/config",
+                json_body(ied_config),
+                {
+                    "Content-Type": "application/json",
+                    "Cookie": cookie,
+                    "X-CSRF-Token": csrf_token,
+                    "If-Match": f'"{ied_config_version}"',
+                },
+            )
+            assert_status(ied_update_status, 200, "IED rename after network confirm")
+            assert_json(ied_update_body, "version", ied_config_version + 1, "IED rename after network confirm")
+            renamed_iec_status, renamed_iec_body, _ = request(
+                port, "GET", "/api/v1/iec61850", headers={"Cookie": cookie}
+            )
+            assert_status(renamed_iec_status, 200, "renamed IEC status lookup")
+            if json.loads(renamed_iec_body).get("ied_name") != "RENAMED1":
+                fail("IED rename was not visible after network confirmation")
 
             config_status, config_body, _ = request(
                 port, "GET", "/api/v1/config", headers={"Cookie": cookie}

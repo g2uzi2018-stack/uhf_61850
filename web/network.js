@@ -171,23 +171,52 @@
         return api(path, {method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrfToken}, body: JSON.stringify(body || {})});
     }
     function password() { return document.getElementById("current-password").value; }
-    function saveConfiguration() {
-        if (!configuration) { return Promise.reject(new Error("配置尚未读取")); }
+    function captureConfigurationForm() {
+        return {
+            iec_ied_name: document.getElementById("iec-ied-name").value,
+            time_sync_enabled: document.getElementById("time-sync-enabled").checked,
+            sntp_server: document.getElementById("sntp-server").value
+        };
+    }
+    function restoreConfigurationForm(values) {
+        document.getElementById("iec-ied-name").value = values.iec_ied_name;
+        document.getElementById("time-sync-enabled").checked = values.time_sync_enabled;
+        document.getElementById("sntp-server").value = values.sntp_server;
+    }
+    function configPayloadFromForm(values) {
+        if (!configuration) { throw new Error("配置尚未读取"); }
         var payload = Object.assign({}, configuration);
         delete payload.version;
-        payload.iec_ied_name = document.getElementById("iec-ied-name").value;
-        payload.time_sync_enabled = document.getElementById("time-sync-enabled").checked;
-        payload.sntp_server = document.getElementById("sntp-server").value;
+        payload.iec_ied_name = values.iec_ied_name;
+        payload.time_sync_enabled = values.time_sync_enabled;
+        payload.sntp_server = values.sntp_server;
+        return payload;
+    }
+    function putConfiguration(payload) {
         return api("/api/v1/config", {
             method: "PUT",
             headers: {"Content-Type": "application/json", "X-CSRF-Token": csrfToken, "If-Match": '"' + configurationVersion + '"'},
             body: JSON.stringify(payload)
-        }).then(function (result) {
-            configurationVersion = Number(result.version);
-            payload.version = configurationVersion;
-            configuration = payload;
-            timeState.textContent = payload.time_sync_enabled ? "自动同步" : "手动模式";
-            return result;
+        });
+    }
+    function saveConfiguration(retried, preservedValues) {
+        var values = preservedValues || captureConfigurationForm();
+        var payload;
+        try {
+            payload = configPayloadFromForm(values);
+        } catch (reason) {
+            return Promise.reject(reason);
+        }
+        return putConfiguration(payload).then(function (result) {
+            return loadConfiguration().then(function () { return result; });
+        }).catch(function (reason) {
+            if (!retried && reason.message === "configuration version conflict") {
+                return loadConfiguration().then(function () {
+                    restoreConfigurationForm(values);
+                    return saveConfiguration(true, values);
+                });
+            }
+            throw reason;
         });
     }
     function applyTimeAction(action) {
