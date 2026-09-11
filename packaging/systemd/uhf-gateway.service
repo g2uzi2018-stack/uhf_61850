@@ -1,6 +1,6 @@
 [Unit]
 Description=UHF 61850 partial-discharge gateway
-Wants=network-online.target uhf-network-recovery.service uhf-release-guard.timer
+Wants=network-online.target uhf-network-recovery.service
 Requires=uhf-privileged.service
 OnFailure=uhf-legacy-recovery.service
 After=network-online.target uhf-network-recovery.service uhf-privileged.service

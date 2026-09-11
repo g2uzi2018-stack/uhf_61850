@@ -86,7 +86,6 @@ def main() -> int:
             "current": "smoke-1",
             "previous": "",
             "pending": "",
-            "health_mode": "relaxed",
         }:
             fail(f"unexpected first release state: {state!r}")
         if not (target / "etc/systemd/system/uhf-gateway.service").is_file():
@@ -163,7 +162,6 @@ def main() -> int:
             "current": "smoke-2",
             "previous": "smoke-1",
             "pending": "",
-            "health_mode": "relaxed",
         }:
             fail(f"unexpected upgrade state: {state!r}")
         if json.loads(network_config.read_text(encoding="utf-8"))["eth0_address"] != "192.168.3.231":

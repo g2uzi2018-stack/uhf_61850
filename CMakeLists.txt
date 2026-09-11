@@ -1239,12 +1239,6 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}"
         )
         add_test(
-            NAME uhf_release_guard_smoke
-            COMMAND "${Python3_EXECUTABLE}"
-                "${PROJECT_SOURCE_DIR}/tests/release_guard_smoke.py"
-                "${PROJECT_SOURCE_DIR}"
-        )
-        add_test(
             NAME uhf_legacy_cutover_smoke
             COMMAND "${Python3_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/tests/legacy_cutover_smoke.py"
@@ -1352,7 +1346,6 @@ install(FILES
     DESTINATION config
 )
 install(PROGRAMS packaging/dhclient/uhf-gateway-hook DESTINATION libexec/uhf-gateway)
-install(PROGRAMS packaging/release-guard.sh DESTINATION libexec/uhf-gateway)
 install(PROGRAMS
     packaging/legacy-cutover.sh
     packaging/legacy-recovery.sh

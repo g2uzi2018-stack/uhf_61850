@@ -55,7 +55,7 @@ bash "$release/install.sh" --package "$release"
 '
 ```
 
-安装脚本会把 release 放到 `/opt/uhf-gateway/releases/VERSION`，原子更新 `current`，记录 `previous`，并重启 `uhf-gateway.service`。不要手动停止或重启 `frpc.service`、`4g_server`、`sysrst` 或 watchdog。
+安装脚本会把 release 放到 `/opt/uhf-gateway/releases/VERSION`，原子更新 `current`，记录 `previous`，停用旧的 release guard，并重启 `uhf-gateway.service`。不要手动停止或重启 `frpc.service`、`4g_server`、`sysrst` 或 watchdog。
 
 注意：`uhf-privileged.service` 启动时会根据 `/etc/uhf-gateway/network.json` 应用持久网络配置。现场网络未确认前，不要为了刷新网页而单独重启该服务。
 
@@ -76,7 +76,7 @@ curl -kfsS --connect-timeout 5 https://127.0.0.1:8080/healthz
 '
 ```
 
-`release-state.json` 中 `pending` 为空表示 release guard 已确认或当前无待确认 release。健康接口应返回 `acquisition`、`storage`、`modbus_tcp`、`modbus_rtu` 和 `iec61850` 为 `up`。
+`release-state.json` 中 `pending` 保持为空；当前发布流程不再启用 release guard 自动回滚。接入采集链路的正式验收环境中，健康接口应返回 `acquisition`、`storage`、`modbus_tcp`、`modbus_rtu` 和 `iec61850` 为 `up`。
 
 ## 5. 清理临时文件
 

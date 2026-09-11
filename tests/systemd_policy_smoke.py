@@ -24,8 +24,6 @@ def main() -> int:
         "uhf-network-rollback.service",
         "uhf-network-rollback.timer",
         "uhf-network-recovery.service",
-        "uhf-release-guard.service",
-        "uhf-release-guard.timer",
         "uhf-legacy-recovery.service",
     )
     units = {}
@@ -92,12 +90,8 @@ def main() -> int:
             fail(f"{unit}: oneshot must not own the shared privileged runtime directory")
     require(units["uhf-network-rollback.timer"], "OnUnitActiveSec=5s", "uhf-network-rollback.timer")
     require(units["uhf-network-rollback.timer"], "Persistent=true", "uhf-network-rollback.timer")
-    guard = units["uhf-release-guard.service"]
-    require(guard, "ExecStart=/usr/lib/uhf-gateway/release-guard.sh", "uhf-release-guard.service")
-    require(guard, "ReadWritePaths=/opt/uhf-gateway /var/lib/uhf-gateway", "uhf-release-guard.service")
-    require(guard, "CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE", "uhf-release-guard.service")
-    require(guard, "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6", "uhf-release-guard.service")
-    require(units["uhf-release-guard.timer"], "OnUnitActiveSec=5s", "uhf-release-guard.timer")
+    if "uhf-release-guard" in gateway:
+        fail("uhf-gateway.service still references the removed release guard")
     require(units["uhf-gateway.service"], "OnFailure=uhf-legacy-recovery.service", "uhf-gateway.service")
     legacy = units["uhf-legacy-recovery.service"]
     require(legacy, "ExecStart=/usr/lib/uhf-gateway/legacy-recovery.sh", "uhf-legacy-recovery.service")

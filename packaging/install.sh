@@ -79,10 +79,6 @@ if [[ "$no_systemd" == false && "$root_prefix" != "/" ]]; then
     printf '%s\n' '--no-systemd is required when --root is not /' >&2
     exit 2
 fi
-health_mode=strict
-if [[ "$skip_hardware" == true ]]; then
-    health_mode=relaxed
-fi
 install_root="${path_prefix}/opt/uhf-gateway"
 releases_root="${install_root}/releases"
 release_dir="${releases_root}/${version}"
@@ -222,8 +218,6 @@ fi
 install -m 0644 "$release_dir/config/UHFPD1.icd" "${path_prefix}/etc/uhf-gateway/UHFPD1.icd"
 install -m 0755 "$release_dir/libexec/uhf-gateway/uhf-gateway-hook" \
     "${path_prefix}/usr/lib/uhf-gateway/dhclient-hook"
-install -m 0755 "$release_dir/libexec/uhf-gateway/release-guard.sh" \
-    "${path_prefix}/usr/lib/uhf-gateway/release-guard.sh"
 install -m 0755 "$release_dir/libexec/uhf-gateway/legacy-cutover.sh" \
     "${path_prefix}/usr/lib/uhf-gateway/legacy-cutover.sh"
 install -m 0755 "$release_dir/libexec/uhf-gateway/legacy-recovery.sh" \
@@ -254,19 +248,18 @@ fi
 atomic_link "$release_dir" "$current_link"
 
 write_state() {
-    local pending=$1
     local previous=
     if [[ -n "$old_current_target" ]]; then
         previous=$(basename "$old_current_target")
     fi
     local temporary="${state_file}.tmp.$$"
-    printf '{"version":1,"current":"%s","previous":"%s","pending":"%s","health_mode":"%s"}\n' \
-        "$version" "$previous" "$pending" "$health_mode" >"$temporary"
+    printf '{"version":1,"current":"%s","previous":"%s","pending":""}\n' \
+        "$version" "$previous" >"$temporary"
     chmod 0600 "$temporary"
     mv -Tf "$temporary" "$state_file"
 }
 
-write_state "$version"
+write_state
 if [[ "$no_systemd" == false ]]; then
     if [[ "$first_install" == true && -d "${path_prefix}/data" ]]; then
         bash "${path_prefix}/usr/lib/uhf-gateway/legacy-cutover.sh"
@@ -280,15 +273,20 @@ if [[ "$no_systemd" == false ]]; then
         fi
         bash "${script_dir}/preflight.sh" "${postflight_args[@]}"
     fi
+    systemctl disable --now uhf-release-guard.timer uhf-release-guard.service >/dev/null 2>&1 || true
+    rm -f -- \
+        "${path_prefix}/etc/systemd/system/uhf-release-guard.service" \
+        "${path_prefix}/etc/systemd/system/uhf-release-guard.timer" \
+        "${path_prefix}/usr/lib/uhf-gateway/release-guard.sh"
+    rm -f -- "${path_prefix}/var/lib/uhf-gateway/legacy/recovery-enabled"
     systemctl daemon-reload
     systemctl enable --now uhf-network-recovery.service
     systemctl enable --now uhf-network-rollback.timer
-    systemctl enable --now uhf-release-guard.timer
     systemctl enable --now uhf-privileged.service
     systemctl enable uhf-gateway.service
     systemctl restart uhf-gateway.service
     legacy_cutover_done=false
 else
-    write_state ""
+    write_state
 fi
 printf 'release installed: %s\n' "$release_dir"

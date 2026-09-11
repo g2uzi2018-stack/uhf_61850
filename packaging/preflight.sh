@@ -78,9 +78,6 @@ required_files=(
     "share/uhf-gateway/systemd/uhf-network-rollback.service"
     "share/uhf-gateway/systemd/uhf-network-rollback.timer"
     "share/uhf-gateway/systemd/uhf-network-recovery.service"
-    "share/uhf-gateway/systemd/uhf-release-guard.service"
-    "share/uhf-gateway/systemd/uhf-release-guard.timer"
-    "libexec/uhf-gateway/release-guard.sh"
     "share/uhf-gateway/systemd/uhf-legacy-recovery.service"
     "libexec/uhf-gateway/legacy-cutover.sh"
     "libexec/uhf-gateway/legacy-recovery.sh"
@@ -106,14 +103,6 @@ fi
 
 if ! sh -n "${release_dir}/libexec/uhf-gateway/uhf-gateway-hook"; then
     printf 'preflight: DHCP hook syntax check failed\n' >&2
-    exit 1
-fi
-if ! sh -n "${release_dir}/libexec/uhf-gateway/release-guard.sh"; then
-    printf 'preflight: release guard syntax check failed\n' >&2
-    exit 1
-fi
-if ! command -v curl >/dev/null 2>&1; then
-    printf 'preflight: curl is required for release health checks\n' >&2
     exit 1
 fi
 if ! bash -n "${release_dir}/libexec/uhf-gateway/legacy-cutover.sh"; then
