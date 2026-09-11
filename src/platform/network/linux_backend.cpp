@@ -24,7 +24,7 @@ namespace {
 
 constexpr char kIpCommand[] = "/usr/sbin/ip";
 constexpr std::size_t kMaxConfigBytes = 16U * 1024U;
-constexpr mode_t kDirectoryMode = S_IRWXU;
+constexpr mode_t kDirectoryMode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
 constexpr mode_t kFileMode = S_IRUSR | S_IWUSR;
 constexpr std::string_view kCandidateRouteMetric = "42700";
 

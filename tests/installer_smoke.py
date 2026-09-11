@@ -95,9 +95,19 @@ def main() -> int:
             fail("DHCP hook was not installed")
         if not (target / "etc/uhf-gateway/defaults.json").is_file():
             fail("default configuration was not installed")
+        config_directory = target / "etc/uhf-gateway"
+        if config_directory.stat().st_mode & 0o777 != 0o755:
+            fail("configuration directory must be readable by the service user")
+        icd_config = target / "etc/uhf-gateway/UHFPD1.icd"
+        if not icd_config.is_file():
+            fail("ICD configuration was not installed")
+        if icd_config.stat().st_mode & 0o777 != 0o644:
+            fail("ICD configuration must be service-readable")
         network_config = target / "etc/uhf-gateway/network.json"
         if not network_config.is_file():
             fail("default network configuration was not installed")
+        if network_config.stat().st_mode & 0o777 != 0o600:
+            fail("network configuration must remain private")
         if json.loads(network_config.read_text(encoding="utf-8"))["eth0_address"] != "192.168.3.230":
             fail("unexpected default network configuration")
         bootstrap = target / "var/lib/uhf-gateway/initial-password"

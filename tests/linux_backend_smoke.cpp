@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <sys/stat.h>
 #include <vector>
 
 namespace {
@@ -100,6 +101,12 @@ std::string read_text(const std::filesystem::path& path) {
     return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
 }
 
+mode_t file_mode(const std::filesystem::path& path) {
+    struct stat status {};
+    assert(::stat(path.c_str(), &status) == 0);
+    return status.st_mode & 0777;
+}
+
 }  // namespace
 
 int main() {
@@ -161,6 +168,8 @@ int main() {
         vendor_network, runner, nullptr, vendor_paths);
     uhf::network::NetworkConfig vendor_current;
     assert(vendor_backend.read_current(vendor_current));
+    assert(file_mode(vendor_network.parent_path()) == 0755);
+    assert(file_mode(vendor_network) == 0600);
     assert(read_text(vendor_paths.eth0_config).find(
                "METHOD=STATIC\nIPADDR=192.168.3.230\nNETMASK=255.255.255.0\nGATEWAY=192.168.3.1\n") == 0U);
     assert(read_text(vendor_paths.eth1_config).find(
@@ -172,7 +181,11 @@ int main() {
     vendor_candidate.eth0.address = "192.168.3.232";
     vendor_candidate.eth0.gateway = "192.168.3.2";
     assert(vendor_backend.apply_stage(vendor_current, vendor_candidate));
+    assert(file_mode(vendor_network.parent_path()) == 0755);
+    assert(file_mode(vendor_network) == 0600);
     assert(vendor_backend.confirm(vendor_current, vendor_candidate));
+    assert(file_mode(vendor_network.parent_path()) == 0755);
+    assert(file_mode(vendor_network) == 0600);
     assert(read_text(vendor_paths.eth0_config).find(
                "METHOD=STATIC\nIPADDR=192.168.3.232\nNETMASK=255.255.255.0\nGATEWAY=192.168.3.2\n") == 0U);
     std::filesystem::remove(vendor_network);

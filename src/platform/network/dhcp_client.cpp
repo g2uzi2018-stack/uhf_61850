@@ -28,7 +28,8 @@
 namespace {
 
 constexpr std::size_t kMaxLeaseBytes = 4096U;
-constexpr mode_t kDirectoryMode = S_IRWXU;
+constexpr mode_t kSharedDirectoryMode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
+constexpr mode_t kPrivateDirectoryMode = S_IRWXU;
 constexpr mode_t kFileMode = S_IRUSR | S_IWUSR;
 
 bool valid_ipv4(std::string_view value) noexcept {
@@ -69,7 +70,7 @@ bool write_atomic(const std::filesystem::path& path, std::string_view contents) 
     std::error_code error;
     std::filesystem::create_directories(directory, error);
     if (error || !std::filesystem::is_directory(directory, error) || error ||
-        ::chmod(directory.c_str(), kDirectoryMode) < 0) {
+        ::chmod(directory.c_str(), kSharedDirectoryMode) < 0) {
         return false;
     }
     const std::filesystem::path temporary = path.string() + ".tmp";
@@ -606,7 +607,7 @@ bool ExecDhcpClient::acquire(const InterfaceConfig& config, DhcpLease& lease) {
     std::error_code error;
     std::filesystem::create_directories(state_directory_, error);
     if (error || !std::filesystem::is_directory(state_directory_, error) || error ||
-        ::chmod(state_directory_.c_str(), kDirectoryMode) < 0) {
+        ::chmod(state_directory_.c_str(), kPrivateDirectoryMode) < 0) {
         return false;
     }
     const std::filesystem::path result = probe_result_path(config);
@@ -737,7 +738,7 @@ bool ExecDhcpClient::start(
     std::error_code error;
     std::filesystem::create_directories(state_directory_, error);
     if (error || !std::filesystem::is_directory(state_directory_, error) || error ||
-        ::chmod(state_directory_.c_str(), kDirectoryMode) < 0) {
+        ::chmod(state_directory_.c_str(), kPrivateDirectoryMode) < 0) {
         return false;
     }
 
