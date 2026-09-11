@@ -63,6 +63,18 @@ def main() -> int:
         fail("installer does not normalize the host root before constructing paths")
     if "preflight_args+=(--allow-current-product)" not in installer:
         fail("installer does not authorize the verified current product during upgrades")
+    if "systemctl enable --now uhf-privileged.service" in installer:
+        fail("installer only enables the privileged service instead of restarting it")
+    if "restart_release_service uhf-privileged.service uhf-privilegedd" not in installer:
+        fail("installer does not force the privileged service onto the installed release")
+    if "restart_release_service uhf-gateway.service uhf-gatewayd" not in installer:
+        fail("installer does not verify the gateway service executable after restart")
+    if installer.find("restart_release_service uhf-privileged.service uhf-privilegedd") > installer.find(
+        "restart_release_service uhf-gateway.service uhf-gatewayd"
+    ):
+        fail("installer must refresh the privileged helper before restarting the gateway")
+    if 'readlink -f "/proc/${main_pid}/exe"' not in installer:
+        fail("installer does not verify the running service executable")
     with tempfile.TemporaryDirectory(prefix="uhf-installer-") as temporary:
         temporary_root = Path(temporary)
         packages = temporary_root / "packages"

@@ -253,6 +253,35 @@ write_state() {
     mv -Tf "$temporary" "$state_file"
 }
 
+restart_release_service() {
+    local unit=$1
+    local binary=$2
+    local expected_executable=
+    local main_pid=
+    local actual_executable=
+    local attempt=
+    expected_executable=$(readlink -f "${release_dir}/bin/${binary}" 2>/dev/null || true)
+    if [[ -z "$expected_executable" ]]; then
+        printf 'installed executable is missing: %s\n' "${release_dir}/bin/${binary}" >&2
+        exit 1
+    fi
+    systemctl restart "$unit"
+    for attempt in 1 2 3 4 5; do
+        main_pid=$(systemctl show "$unit" -p MainPID --value 2>/dev/null || true)
+        if [[ "$main_pid" =~ ^[1-9][0-9]*$ ]]; then
+            actual_executable=$(readlink -f "/proc/${main_pid}/exe" 2>/dev/null || true)
+            if [[ "$actual_executable" == "$expected_executable" ]]; then
+                return 0
+            fi
+        fi
+        sleep 1
+    done
+    systemctl status "$unit" --no-pager --lines=20 >&2 || true
+    printf 'service %s is not running the installed release executable: expected %s, got %s (pid %s)\n' \
+        "$unit" "$expected_executable" "${actual_executable:-unknown}" "${main_pid:-unknown}" >&2
+    exit 1
+}
+
 write_state
 if [[ "$no_systemd" == false ]]; then
     if [[ "$first_install" == true && -d "${path_prefix}/data" ]]; then
@@ -278,9 +307,10 @@ if [[ "$no_systemd" == false ]]; then
     systemctl daemon-reload
     systemctl enable --now uhf-network-recovery.service
     systemctl enable --now uhf-network-rollback.timer
-    systemctl enable --now uhf-privileged.service
+    systemctl enable uhf-privileged.service
+    restart_release_service uhf-privileged.service uhf-privilegedd
     systemctl enable uhf-gateway.service
-    systemctl restart uhf-gateway.service
+    restart_release_service uhf-gateway.service uhf-gatewayd
 else
     write_state
 fi

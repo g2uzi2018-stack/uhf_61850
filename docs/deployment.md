@@ -55,7 +55,7 @@ bash "$release/install.sh" --package "$release"
 '
 ```
 
-安装脚本会把 release 放到 `/opt/uhf-gateway/releases/VERSION`，原子更新 `current`，记录 `previous`，停用旧的 release guard 和 legacy recovery，并重启 `uhf-gateway.service`。不要手动停止或重启 `frpc.service`、`4g_server`、`sysrst` 或 watchdog。
+安装脚本会把 release 放到 `/opt/uhf-gateway/releases/VERSION`，原子更新 `current`，记录 `previous`，停用旧的 release guard 和 legacy recovery，并重启 `uhf-privileged.service` 与 `uhf-gateway.service`。脚本会校验两个服务的实际进程都来自本次 release；若仍跑旧二进制，安装会失败。不要手动停止或重启 `frpc.service`、`4g_server`、`sysrst` 或 watchdog。
 
 注意：`uhf-privileged.service` 启动时会根据 `/etc/uhf-gateway/network.json` 应用持久网络配置。现场网络未确认前，不要为了刷新网页而单独重启该服务。
 
