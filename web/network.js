@@ -19,6 +19,7 @@
     var timer = null;
     var configuration = null;
     var configurationVersion = 0;
+    var legacyNetworkFormat = false;
 
     function redirect() { window.location.replace("/login"); }
     function showError(message) { error.textContent = message; saved.textContent = ""; }
@@ -27,6 +28,34 @@
     function showTimeSaved(message) { timeError.textContent = ""; timeSaved.textContent = message; }
     function showIedNameError(message) { iedNameError.textContent = message; iedNameSaved.textContent = ""; }
     function showIedNameSaved(message) { iedNameError.textContent = ""; iedNameSaved.textContent = message; }
+    function netmaskForPrefix(prefix) {
+        var remaining = Number(prefix);
+        if (!Number.isInteger(remaining) || remaining < 1 || remaining > 32) { return ""; }
+        var parts = [];
+        for (var index = 0; index < 4; index += 1) {
+            var bits = Math.min(8, remaining);
+            parts.push(bits === 0 ? 0 : 256 - Math.pow(2, 8 - bits));
+            remaining -= bits;
+        }
+        return parts.join(".");
+    }
+    function prefixForNetmask(value) {
+        var parts = String(value || "").trim().split(".");
+        if (parts.length !== 4) { return null; }
+        var prefix = 0;
+        var zeroSeen = false;
+        for (var index = 0; index < parts.length; index += 1) {
+            if (!/^\d+$/.test(parts[index])) { return null; }
+            var octet = Number(parts[index]);
+            if (octet < 0 || octet > 255) { return null; }
+            for (var bit = 7; bit >= 0; bit -= 1) {
+                var one = (octet & (1 << bit)) !== 0;
+                if (one && zeroSeen) { return null; }
+                if (one) { prefix += 1; } else { zeroSeen = true; }
+            }
+        }
+        return prefix === 0 ? null : prefix;
+    }
     function api(path, options) {
         options = options || {};
         options.credentials = "same-origin";
@@ -45,7 +74,9 @@
     }
     function setInterface(prefix, config) {
         ["mode", "address", "netmask", "gateway", "hostname", "dhcp_timeout_seconds"].forEach(function (suffix) {
-            setValue(prefix + "_" + suffix, suffix === "netmask" ? config.netmask : config[suffix]);
+            setValue(prefix + "_" + suffix, suffix === "netmask"
+                ? (config.netmask || netmaskForPrefix(config.prefix))
+                : config[suffix]);
         });
         setValue(prefix + "_dns1", config.dns && config.dns[0]);
         setValue(prefix + "_dns2", config.dns && config.dns[1]);
@@ -92,6 +123,8 @@
     function loadNetwork() {
         return api("/api/v1/network").then(function (payload) {
             state.textContent = "网络 helper 已连接";
+            legacyNetworkFormat = !Object.prototype.hasOwnProperty.call(payload.config.eth0, "netmask") ||
+                !Object.prototype.hasOwnProperty.call(payload.config.eth1, "netmask");
             setInterface("eth0", payload.config.eth0);
             setInterface("eth1", payload.config.eth1);
             document.getElementById("eth0-actual").textContent = actualText(payload.actual && payload.actual.eth0) + " · 配置 " + payload.config.eth0.mode;
@@ -119,9 +152,15 @@
     function candidate() {
         var result = {};
         ["eth0", "eth1"].forEach(function (prefix) {
-            ["mode", "address", "netmask", "gateway", "hostname"].forEach(function (suffix) {
+            ["mode", "address", "gateway", "hostname"].forEach(function (suffix) {
                 result[prefix + "_" + suffix] = form.elements[prefix + "_" + suffix].value;
             });
+            var netmask = form.elements[prefix + "_netmask"].value;
+            if (legacyNetworkFormat) {
+                result[prefix + "_prefix"] = prefixForNetmask(netmask);
+            } else {
+                result[prefix + "_netmask"] = netmask;
+            }
             result[prefix + "_dns1"] = form.elements[prefix + "_dns1"].value;
             result[prefix + "_dns2"] = form.elements[prefix + "_dns2"].value;
             result[prefix + "_dhcp_timeout_seconds"] = 15;
@@ -160,7 +199,12 @@
         event.preventDefault();
         var currentPassword = password();
         if (!currentPassword) { showError("请输入当前密码进行再认证"); return; }
-        post("/api/v1/network/stage", {current_password: currentPassword, candidate: candidate()}).then(function () {
+        var networkCandidate = candidate();
+        if (networkCandidate.eth0_prefix === null || networkCandidate.eth1_prefix === null) {
+            showError("子网掩码必须是有效的 IPv4 掩码");
+            return;
+        }
+        post("/api/v1/network/stage", {current_password: currentPassword, candidate: networkCandidate}).then(function () {
             showSaved("候选地址已试应用，请确认新地址仍可访问。");
             return loadNetwork();
         }).catch(function (reason) { if (reason.message !== "auth") { showError("试应用失败：" + reason.message); } });
@@ -225,7 +269,15 @@
             showTimeSaved("设备时间设置请求已提交，自动同步已停用。");
         }).catch(function (reason) { if (reason.message !== "auth") { showTimeError("手动校时失败：" + reason.message); } }).then(function () { button.disabled = false; });
     });
-    document.getElementById("reload-network").addEventListener("click", load);
+    document.getElementById("reload-network").addEventListener("click", function () {
+        var button = this;
+        button.disabled = true;
+        load().then(function () {
+            showSaved("网络配置已重新读取。");
+        }).finally(function () {
+            button.disabled = false;
+        });
+    });
     ["eth0", "eth1"].forEach(function (prefix) { form.elements[prefix + "_mode"].addEventListener("change", function () { toggleInterface(prefix); }); });
     document.querySelectorAll('[data-action="logout"]').forEach(function (button) {
         button.addEventListener("click", function () { fetch("/api/v1/session", {method: "DELETE", credentials: "same-origin", headers: {"X-CSRF-Token": csrfToken}}).then(redirect).catch(redirect); });
