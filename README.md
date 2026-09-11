@@ -12,6 +12,7 @@
 - [实施与验收计划](docs/implementation-plan.md)：供后续 Luna Max 执行的工作包、测试矩阵和交付门槛。
 - [Luna Max 小步实现简报](docs/luna-implementation-brief.md)：已确认决策、通用 IEC 61850 映射和逐提交开发顺序。
 - [本地构建](docs/build.md)：host/AArch64 构建、CTest 和发布材料说明。
+- [部署简明流程](docs/deployment.md)：发布包上传、预检、安装、验收和临时文件清理。
 
 ## 当前结论
 
