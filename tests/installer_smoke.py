@@ -134,7 +134,6 @@ def main() -> int:
             fail("gateway state directory is not private")
         for path in (
             target / "usr/lib/uhf-gateway/legacy-cutover.sh",
-            target / "usr/lib/uhf-gateway/legacy-recovery.sh",
             target / "etc/rsyslog.d/uhf-gateway.conf",
             target / "etc/logrotate.d/uhf-gateway",
         ):

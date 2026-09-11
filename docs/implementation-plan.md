@@ -128,10 +128,10 @@ IEC 许可、通用模型和 V1 事件规则已经确认。实现可以直接使
 
 - 版本目录、current/previous、显式回退、systemd restart/start-limit/watchdog、用户/组、capability、rsyslog/logrotate、配置迁移和回滚。
 - 安装前检查 502/102/8080、ttyS1/ttyS4、磁盘、架构、NTP、受保护进程。
-- 备份 root crontab并只精确禁用 `/data/run.sh` 那一行，验证其他条目未变；只停止工作目录为 `/data` 的旧 Web.py/Main.py；首次切换保留受控 legacy recovery unit，安装成功后清除恢复标记，后续升级只做显式回退。
+- 备份 root crontab并只精确禁用 `/data/run.sh` 那一行，验证其他条目未变；只停止工作目录为 `/data` 的旧 Web.py/Main.py；不安装 legacy recovery unit，后续升级只做显式回退。
 - 首次默认管理员密码为 `admin`，管理员可在登录后主动改密。
 
-验收：安装、显式回退、损坏配置、连续崩溃、断电后启动、整机重启；首次切换可恢复 legacy；frpc、4G、sysrst/watchdog 不受影响。
+验收：安装、显式回退、损坏配置、连续崩溃、断电后启动、整机重启；legacy 恢复不会自动触发；frpc、4G、sysrst/watchdog 不受影响。
 
 ### WP8：实机和长期验收
 

@@ -5,7 +5,6 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-import time
 
 
 def fail(message: str) -> None:
@@ -81,12 +80,9 @@ def main() -> int:
         fail("expected repository root")
     repo = Path(sys.argv[1])
     cutover = repo / "packaging/legacy-cutover.sh"
-    recovery = repo / "packaging/legacy-recovery.sh"
     normalized_legacy_root = 'legacy_root="${path_prefix}/data"'
     if normalized_legacy_root not in cutover.read_text(encoding="utf-8"):
         fail("cutover does not normalize the root path before matching /data")
-    if normalized_legacy_root not in recovery.read_text(encoding="utf-8"):
-        fail("recovery does not normalize the root path before launching /data/run.sh")
     with tempfile.TemporaryDirectory(prefix="uhf-legacy-cutover-") as temporary:
         root = Path(temporary)
         cron_text = (
@@ -146,8 +142,8 @@ def main() -> int:
         if kill_log.read_text(encoding="utf-8").splitlines() != ["-TERM 101", "-TERM 102"]:
             fail("unexpected process termination set")
         marker = root / "var/lib/uhf-gateway/legacy/recovery-enabled"
-        if not marker.exists():
-            fail("recovery marker was not created")
+        if marker.exists():
+            fail("legacy recovery marker was created")
 
         result = run(
             cutover,
@@ -166,51 +162,6 @@ def main() -> int:
             "-TERM 102",
         ]:
             fail("idempotent cutover was not preserved")
-
-        result = run(recovery, "--root", str(root), "--crontab", str(crontab))
-        if result.returncode != 0:
-            fail(f"legacy recovery failed: {result.stderr.strip()}")
-        for _ in range(20):
-            if (data / "recovered").exists():
-                break
-            time.sleep(0.025)
-        if (root / "tools/crontab").read_text(encoding="utf-8") != cron_text:
-            fail("legacy recovery did not restore the original crontab")
-        if not (data / "recovered").exists() or marker.exists():
-            fail("legacy launcher was not restored exactly once")
-
-        guarded_root = root / "guarded-upgrade"
-        guarded_root.mkdir()
-        guarded_data, _, guarded_crontab, _ = setup_root(
-            guarded_root,
-            "@reboot sudo /data/run.sh &\n",
-        )
-        guarded_run = guarded_data / "run.sh"
-        guarded_run.write_text(
-            "#!/bin/sh\n"
-            f"printf unexpected > {guarded_data / 'recovered'}\n",
-            encoding="utf-8",
-        )
-        guarded_run.chmod(0o700)
-        guarded_state = guarded_root / "var/lib/uhf-gateway"
-        guarded_state.mkdir(parents=True)
-        (guarded_state / "legacy").mkdir()
-        (guarded_state / "legacy/recovery-enabled").touch()
-        (guarded_state / "release-state.json").write_text(
-            '{"version":1,"current":"new","previous":"old","pending":"new"}\n',
-            encoding="utf-8",
-        )
-        (guarded_root / "opt/uhf-gateway/releases/old").mkdir(parents=True)
-        (guarded_root / "opt/uhf-gateway/releases/new").mkdir()
-        guarded_result = run(recovery, "--root", str(guarded_root), "--crontab", str(guarded_crontab))
-        if guarded_result.returncode != 0:
-            fail(f"legacy recovery rejected a valid previous release: {guarded_result.stderr.strip()}")
-        if (guarded_data / "recovered").exists():
-            fail("legacy recovery launched /data/run.sh during an upgrade")
-        if (guarded_state / "legacy/recovery-enabled").exists():
-            fail("stale legacy recovery marker was not removed during an upgrade")
-        if (guarded_root / "tools/crontab").read_text(encoding="utf-8") != "@reboot sudo /data/run.sh &\n":
-            fail("upgrade recovery changed the legacy crontab")
 
         duplicate_root = root / "duplicate"
         duplicate_root.mkdir()

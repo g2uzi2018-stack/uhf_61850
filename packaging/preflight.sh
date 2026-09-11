@@ -78,9 +78,7 @@ required_files=(
     "share/uhf-gateway/systemd/uhf-network-rollback.service"
     "share/uhf-gateway/systemd/uhf-network-rollback.timer"
     "share/uhf-gateway/systemd/uhf-network-recovery.service"
-    "share/uhf-gateway/systemd/uhf-legacy-recovery.service"
     "libexec/uhf-gateway/legacy-cutover.sh"
-    "libexec/uhf-gateway/legacy-recovery.sh"
     "share/uhf-gateway/rsyslog/uhf-gateway.conf"
     "share/uhf-gateway/logrotate/uhf-gateway"
 )
@@ -107,10 +105,6 @@ if ! sh -n "${release_dir}/libexec/uhf-gateway/uhf-gateway-hook"; then
 fi
 if ! bash -n "${release_dir}/libexec/uhf-gateway/legacy-cutover.sh"; then
     printf 'preflight: legacy cutover syntax check failed\n' >&2
-    exit 1
-fi
-if ! bash -n "${release_dir}/libexec/uhf-gateway/legacy-recovery.sh"; then
-    printf 'preflight: legacy recovery syntax check failed\n' >&2
     exit 1
 fi
 

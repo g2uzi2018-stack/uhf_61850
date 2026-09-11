@@ -2,7 +2,6 @@
 Description=UHF 61850 partial-discharge gateway
 Wants=network-online.target uhf-network-recovery.service
 Requires=uhf-privileged.service
-OnFailure=uhf-legacy-recovery.service
 After=network-online.target uhf-network-recovery.service uhf-privileged.service
 ConditionFileIsExecutable=/opt/uhf-gateway/current/bin/uhf-gatewayd
 StartLimitIntervalSec=120s

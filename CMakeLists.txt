@@ -1348,7 +1348,6 @@ install(FILES
 install(PROGRAMS packaging/dhclient/uhf-gateway-hook DESTINATION libexec/uhf-gateway)
 install(PROGRAMS
     packaging/legacy-cutover.sh
-    packaging/legacy-recovery.sh
     DESTINATION libexec/uhf-gateway
 )
 install(DIRECTORY packaging/systemd/ DESTINATION share/uhf-gateway/systemd)

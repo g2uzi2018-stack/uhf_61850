@@ -62,13 +62,12 @@ backup_file="${state_root}/root-crontab.before-cutover"
 disabled_file="${state_root}/root-crontab.disabled"
 processes_file="${state_root}/processes.tsv"
 state_file="${state_root}/cutover.state"
-recovery_marker="${state_root}/recovery-enabled"
 
-if [[ -e "$recovery_marker" ]]; then
+if [[ -e "$state_file" ]]; then
     printf 'legacy cutover: already prepared\n'
     exit 0
 fi
-if [[ -e "$backup_file" || -e "$disabled_file" || -e "$state_file" ]]; then
+if [[ -e "$backup_file" || -e "$disabled_file" ]]; then
     printf 'legacy cutover: incomplete prior state requires manual review\n' >&2
     exit 1
 fi
@@ -216,7 +215,5 @@ state_temporary="${state_file}.tmp.$$"
 } >"$state_temporary"
 chmod 0600 "$state_temporary"
 mv -Tf "$state_temporary" "$state_file"
-: >"$recovery_marker"
-chmod 0600 "$recovery_marker"
 operation_ok=true
 printf 'legacy cutover: OK (stopped %s matching processes)\n' "${#pids[@]}"

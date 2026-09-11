@@ -265,5 +265,5 @@ V1 事件检测只读取 ServingView 中 fresh/valid 的 10003。强放电状态
 
 - 发布包包含二进制、静态资源、模型、许可证清单、默认配置、systemd/rsyslog/logrotate 文件和安装脚本。
 - 升级先安装新 release，执行离线配置迁移和端口/架构自检，记录 `current/previous`，再原子切换。发布流程不再启用 release guard 自动回滚；需要回退时由运维显式切换到 previous release。
-- 首次切换先备份 root crontab，只精确禁用 `@reboot sudo /data/run.sh &`，验证其他行逐字未变；再停止工作目录为 `/data` 的旧 `Web.py/Main.py`，释放 502、8889、ttyS1/ttyS2/ttyS4。首次没有 previous release 时保留一个显式 legacy recovery unit；安装成功后清除恢复标记。不得停止 `frpc.service` 或 `4g_server`。
+- 首次切换先备份 root crontab，只精确禁用 `@reboot sudo /data/run.sh &`，验证其他行逐字未变；再停止工作目录为 `/data` 的旧 `Web.py/Main.py`，释放 502、8889、ttyS1/ttyS2/ttyS4。不再安装或触发 legacy recovery；需要恢复旧 `/data` 时只能由运维显式操作。不得停止 `frpc.service` 或 `4g_server`。
 - `/data` 在新服务通过实机验收前保留为只读回退参考；之后是否删除由独立清理步骤决定。

@@ -144,11 +144,7 @@ if [[ -e "$release_dir" || -L "$release_dir" || -e "$temporary_release" || -L "$
     exit 1
 fi
 
-legacy_cutover_done=false
 cleanup() {
-    if [[ "$legacy_cutover_done" == true ]]; then
-        bash "${path_prefix}/usr/lib/uhf-gateway/legacy-recovery.sh" >/dev/null 2>&1 || true
-    fi
     if [[ -d "$temporary_release" ]]; then
         rm -rf -- "$temporary_release"
     fi
@@ -220,8 +216,6 @@ install -m 0755 "$release_dir/libexec/uhf-gateway/uhf-gateway-hook" \
     "${path_prefix}/usr/lib/uhf-gateway/dhclient-hook"
 install -m 0755 "$release_dir/libexec/uhf-gateway/legacy-cutover.sh" \
     "${path_prefix}/usr/lib/uhf-gateway/legacy-cutover.sh"
-install -m 0755 "$release_dir/libexec/uhf-gateway/legacy-recovery.sh" \
-    "${path_prefix}/usr/lib/uhf-gateway/legacy-recovery.sh"
 install -m 0644 "$release_dir/share/uhf-gateway/rsyslog/uhf-gateway.conf" \
     "${path_prefix}/etc/rsyslog.d/uhf-gateway.conf"
 install -m 0644 "$release_dir/share/uhf-gateway/logrotate/uhf-gateway" \
@@ -263,7 +257,6 @@ write_state
 if [[ "$no_systemd" == false ]]; then
     if [[ "$first_install" == true && -d "${path_prefix}/data" ]]; then
         bash "${path_prefix}/usr/lib/uhf-gateway/legacy-cutover.sh"
-        legacy_cutover_done=true
         postflight_args=(--release "$release_dir")
         if [[ "$skip_arch" == true ]]; then
             postflight_args+=(--skip-arch)
@@ -274,10 +267,13 @@ if [[ "$no_systemd" == false ]]; then
         bash "${script_dir}/preflight.sh" "${postflight_args[@]}"
     fi
     systemctl disable --now uhf-release-guard.timer uhf-release-guard.service >/dev/null 2>&1 || true
+    systemctl disable --now uhf-legacy-recovery.service >/dev/null 2>&1 || true
     rm -f -- \
         "${path_prefix}/etc/systemd/system/uhf-release-guard.service" \
         "${path_prefix}/etc/systemd/system/uhf-release-guard.timer" \
-        "${path_prefix}/usr/lib/uhf-gateway/release-guard.sh"
+        "${path_prefix}/usr/lib/uhf-gateway/release-guard.sh" \
+        "${path_prefix}/etc/systemd/system/uhf-legacy-recovery.service" \
+        "${path_prefix}/usr/lib/uhf-gateway/legacy-recovery.sh"
     rm -f -- "${path_prefix}/var/lib/uhf-gateway/legacy/recovery-enabled"
     systemctl daemon-reload
     systemctl enable --now uhf-network-recovery.service
@@ -285,7 +281,6 @@ if [[ "$no_systemd" == false ]]; then
     systemctl enable --now uhf-privileged.service
     systemctl enable uhf-gateway.service
     systemctl restart uhf-gateway.service
-    legacy_cutover_done=false
 else
     write_state
 fi

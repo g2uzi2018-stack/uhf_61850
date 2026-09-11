@@ -24,7 +24,6 @@ def main() -> int:
         "uhf-network-rollback.service",
         "uhf-network-rollback.timer",
         "uhf-network-recovery.service",
-        "uhf-legacy-recovery.service",
     )
     units = {}
     for name in names:
@@ -92,11 +91,8 @@ def main() -> int:
     require(units["uhf-network-rollback.timer"], "Persistent=true", "uhf-network-rollback.timer")
     if "uhf-release-guard" in gateway:
         fail("uhf-gateway.service still references the removed release guard")
-    require(units["uhf-gateway.service"], "OnFailure=uhf-legacy-recovery.service", "uhf-gateway.service")
-    legacy = units["uhf-legacy-recovery.service"]
-    require(legacy, "ExecStart=/usr/lib/uhf-gateway/legacy-recovery.sh", "uhf-legacy-recovery.service")
-    require(legacy, "ConditionPathExists=/var/lib/uhf-gateway/legacy/recovery-enabled", "uhf-legacy-recovery.service")
-    require(legacy, "ReadWritePaths=/var/lib/uhf-gateway /var/spool/cron", "uhf-legacy-recovery.service")
+    if "uhf-legacy-recovery" in gateway:
+        fail("uhf-gateway.service still references the removed legacy recovery")
     print("systemd policy smoke: OK")
     return 0
 
