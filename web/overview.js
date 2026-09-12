@@ -126,8 +126,6 @@
         context.clearRect(0, 0, setup.width, setup.height);
         context.fillStyle = "#f7faff";
         context.fillRect(0, 0, setup.width, setup.height);
-        var cellWidth = setup.width / 72;
-        var cellHeight = setup.height / 50;
         var startBin = phaseStartBin();
         for (var cycle = 0; cycle < 50; cycle += 1) {
             for (var phase = 0; phase < 72; phase += 1) {
@@ -135,7 +133,11 @@
                 if (valid[index] && values[index] !== null) {
                     context.fillStyle = colorFor(values[index]);
                     var displayPhase = (phase - startBin + 72) % 72;
-                    context.fillRect(displayPhase * cellWidth, cycle * cellHeight, cellWidth + 0.5, cellHeight + 0.5);
+                    // PRPD convention: phase on X, discharge amplitude on Y.
+                    var amplitude = Math.max(-70, Math.min(15, values[index]));
+                    var amplitudeY = setup.height - ((amplitude + 70) / 85) * setup.height;
+                    context.fillRect(displayPhase * setup.width / 72, amplitudeY - 1.5,
+                        setup.width / 72 + 0.5, 3);
                 }
             }
         }

@@ -65,12 +65,12 @@
 
                 <div class="overview-grid">
                     <section class="panel chart-panel">
-                        <div class="panel-header"><div><h2>PRPD 相位分布</h2><p>50 个周期 × 72 个相位分箱，颜色表示幅值 dBm</p></div><span class="count-badge" id="snapshot-generation">generation --</span></div>
+                        <div class="panel-header"><div><h2>PRPD 相位分布</h2><p>横轴相位，纵轴放电幅值（dBm）</p></div><span class="count-badge" id="snapshot-generation">generation --</span></div>
                         <div class="chart-wrap"><canvas id="prpd-canvas" aria-label="PRPD 热力图"></canvas></div>
                         <div class="chart-axis"><span id="prpd-axis-start">0°</span><span id="prpd-axis-middle">180°</span><span id="prpd-axis-end">360°</span></div>
                     </section>
                     <section class="panel chart-panel">
-                        <div class="panel-header"><div><h2>PRPS 时序散点</h2><p>按周期和相位显示有效局放点</p></div><span class="count-badge" id="snapshot-time">--</span></div>
+                        <div class="panel-header"><div><h2>PRPS 时序散点</h2><p>横轴相位，纵轴脉冲时序，颜色表示幅值（dBm）</p></div><span class="count-badge" id="snapshot-time">--</span></div>
                         <div class="chart-wrap"><canvas id="prps-canvas" aria-label="PRPS 散点图"></canvas></div>
                         <div class="chart-axis"><span>早期周期</span><span>时间 / 周期</span><span>最新周期</span></div>
                     </section>
