@@ -52,6 +52,8 @@ class Device:
         self.thread.start()
 
     def close(self):
+        if self.stop.is_set():
+            return
         self.stop.set()
         self.thread.join(timeout=1)
         os.close(self.master)
@@ -457,6 +459,8 @@ def main():
         time.sleep(0.1)
         pd_request_offset = len(devices[0].requests())
         runtime_rtu_device = os.path.join(root, "modbus-rtu-device")
+        runtime_current_device = os.path.join(root, "current-device")
+        os.symlink(devices[1].path, runtime_current_device)
         command = [binary, "--web", "--http-recovery", "--v3",
                    "--web-root", web_root, "--state-dir", root,
                    "--data-dir", os.path.join(root, "data"),
@@ -464,7 +468,7 @@ def main():
                    "--modbus-tcp-listen", f"127.0.0.1:{modbus_port}",
                    "--modbus-rtu-device", runtime_rtu_device,
                    "--v3-pd-device", devices[0].path,
-                   "--v3-current-device", devices[1].path,
+                   "--v3-current-device", runtime_current_device,
                    "--v3-temperature-device", devices[2].path,
                    "--v3-current-serial", "115200/8N1",
                    "--v3-temperature-serial", "115200/8N1",
@@ -829,6 +833,97 @@ def main():
             assert struct.unpack(">HHH", response[:6]) == (0x5630, 0, 7)
             assert response[6:9] == bytes((rtu_unit_id, 3, 4))
             assert abs(struct.unpack(">f", response[9:13])[0] - expected_current) < 0.01
+
+            devices[1].close()
+            replacement_current = Device("current")
+            replacement_current.set_current_base(42)
+            replacement_current.start()
+            devices[1] = replacement_current
+            os.unlink(runtime_current_device)
+
+            failure_deadline = time.monotonic() + 8
+            while time.monotonic() < failure_deadline:
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", web_port, timeout=2
+                )
+                connection.request("GET", "/api/v1/snapshot/latest")
+                failure_response = connection.getresponse()
+                failed_snapshot = json.loads(failure_response.read())
+                connection.close()
+                assert failure_response.status == 200
+                current_source = failed_snapshot["sources"]["current"]
+                if current_source["communication_alarm"]:
+                    break
+                time.sleep(0.05)
+            else:
+                raise AssertionError("current disconnect did not raise communication alarm")
+            assert current_source["online"] is False
+            assert current_source["consecutive_failures"] >= 3
+            assert failed_snapshot["sources"]["pd"]["online"] is True
+            assert failed_snapshot["sources"]["temperature"]["online"] is True
+            failed_measurements = {
+                entry["name"]: entry["value"]
+                for entry in failed_snapshot["measurements"]
+            }
+            assert failed_measurements["Ia"]["valid"] is False
+            assert failed_measurements["Ia"]["value"] is None
+            failed_health = read_health(web_port, cookie)
+            assert failed_health["acquisition"]["status"] == "down"
+
+            with socket.create_connection(("127.0.0.1", modbus_port), timeout=2) as sock:
+                sock.sendall(
+                    struct.pack(">HHHBBHH", 0x5631, 0, 6, rtu_unit_id, 2, 1, 1)
+                )
+                fault_response = receive_socket_exact(sock, 10)
+            assert struct.unpack(">HHH", fault_response[:6]) == (0x5631, 0, 4)
+            assert fault_response[6:10] == bytes((rtu_unit_id, 2, 1, 1))
+
+            os.symlink(replacement_current.path, runtime_current_device)
+            recovery_deadline = time.monotonic() + 5
+            while time.monotonic() < recovery_deadline:
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", web_port, timeout=2
+                )
+                connection.request("GET", "/api/v1/snapshot/latest")
+                recovery_response = connection.getresponse()
+                recovered_snapshot = json.loads(recovery_response.read())
+                connection.close()
+                assert recovery_response.status == 200
+                current_source = recovered_snapshot["sources"]["current"]
+                recovered_measurements = {
+                    entry["name"]: entry["value"]
+                    for entry in recovered_snapshot["measurements"]
+                }
+                if (current_source["online"] and
+                        recovered_measurements["Ia"]["value"] == 42.0):
+                    break
+                time.sleep(0.05)
+            else:
+                raise AssertionError("replacement current device did not recover")
+            assert current_source["communication_alarm"] is False
+            assert current_source["consecutive_failures"] == 0
+            assert recovered_measurements["Ia"]["valid"] is True
+            recovered_health = read_health(web_port, cookie)
+            assert recovered_health["acquisition"]["status"] == "up"
+
+            with socket.create_connection(("127.0.0.1", modbus_port), timeout=2) as sock:
+                sock.sendall(
+                    struct.pack(">HHHBBHH", 0x5632, 0, 6, rtu_unit_id, 2, 1, 1)
+                )
+                recovered_fault_response = receive_socket_exact(sock, 10)
+                sock.sendall(
+                    struct.pack(">HHHBBHH", 0x5633, 0, 6, rtu_unit_id, 3, 1, 2)
+                )
+                recovered_value_response = receive_socket_exact(sock, 13)
+            assert struct.unpack(">HHH", recovered_fault_response[:6]) == (
+                0x5632, 0, 4
+            )
+            assert recovered_fault_response[6:10] == bytes((rtu_unit_id, 2, 1, 0))
+            assert struct.unpack(">HHH", recovered_value_response[:6]) == (0x5633, 0, 7)
+            assert recovered_value_response[6:9] == bytes((rtu_unit_id, 3, 4))
+            assert abs(
+                struct.unpack(">f", recovered_value_response[9:13])[0] - 42.0
+            ) < 0.01
         finally:
             process.send_signal(signal.SIGTERM)
             try:
