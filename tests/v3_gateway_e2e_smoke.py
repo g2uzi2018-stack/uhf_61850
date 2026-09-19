@@ -138,6 +138,23 @@ def distinct_free_port(*excluded):
             return port
 
 
+def receive_exact(file_descriptor, size, timeout=2):
+    payload = bytearray()
+    deadline = time.monotonic() + timeout
+    while len(payload) < size:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError("timed out waiting for v3 RTU response")
+        ready, _, _ = select.select([file_descriptor], [], [], remaining)
+        if not ready:
+            raise AssertionError("timed out waiting for v3 RTU response")
+        chunk = os.read(file_descriptor, size - len(payload))
+        if not chunk:
+            raise AssertionError("v3 RTU PTY closed before response")
+        payload.extend(chunk)
+    return bytes(payload)
+
+
 def main():
     binary, web_root = sys.argv[1:3]
     iec_probe = sys.argv[3] if len(sys.argv) > 3 else None
@@ -172,6 +189,10 @@ def main():
     devices = [Device("pd"), Device("current"), Device("temperature")]
     for device in devices:
         device.start()
+    rtu_master, rtu_slave = pty.openpty()
+    tty.setraw(rtu_master)
+    tty.setraw(rtu_slave)
+    rtu_device = os.ttyname(rtu_slave)
     web_port = free_port()
     modbus_port = distinct_free_port(web_port)
     iec_port = distinct_free_port(web_port, modbus_port) if iec_probe else None
@@ -237,7 +258,7 @@ def main():
                    "--data-dir", os.path.join(root, "data"),
                    "--listen", f"127.0.0.1:{web_port}",
                    "--modbus-tcp-listen", f"127.0.0.1:{modbus_port}",
-                   "--no-modbus-rtu",
+                   "--modbus-rtu-device", rtu_device,
                    "--v3-pd-device", devices[0].path,
                    "--v3-current-device", devices[1].path,
                    "--v3-temperature-device", devices[2].path,
@@ -337,6 +358,7 @@ def main():
             assert configuration["v3_pd_freshness_ms"] == 600000
             assert configuration["v3_current_freshness_ms"] == 5000
             assert configuration["v3_temperature_freshness_ms"] == 5000
+            rtu_unit_id = configuration["rtu_unit_id"]
             connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
             connection.request("GET", "/api/v1/events", headers={"Cookie": cookie})
             events_response = connection.getresponse()
@@ -450,6 +472,27 @@ def main():
                     if probe.poll() is None:
                         probe.kill()
                         probe.wait(timeout=2)
+            expected_current = 30.0 if iec_probe else 10.0
+            rtu_request_body = bytes((rtu_unit_id, 3, 0, 1, 0, 2))
+            rtu_crc = crc16(rtu_request_body)
+            os.write(
+                rtu_master,
+                rtu_request_body + bytes((rtu_crc & 0xFF, rtu_crc >> 8)),
+            )
+            rtu_response = receive_exact(rtu_master, 9)
+            assert rtu_response[:3] == bytes((rtu_unit_id, 3, 4))
+            assert abs(struct.unpack(">f", rtu_response[3:7])[0] - expected_current) < 0.01
+            assert crc16(rtu_response[:-2]) == rtu_response[-2] | rtu_response[-1] << 8
+
+            alarm_request_body = bytes((rtu_unit_id, 2, 0, 6, 0, 1))
+            alarm_crc = crc16(alarm_request_body)
+            os.write(
+                rtu_master,
+                alarm_request_body + bytes((alarm_crc & 0xFF, alarm_crc >> 8)),
+            )
+            alarm_response = receive_exact(rtu_master, 6)
+            assert alarm_response[:4] == bytes((rtu_unit_id, 2, 1, 1))
+            assert crc16(alarm_response[:-2]) == alarm_response[-2] | alarm_response[-1] << 8
             connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
             connection.request("GET", "/api/v1/packets", headers={"Cookie": cookie})
             packet_response = connection.getresponse()
@@ -501,6 +544,8 @@ def main():
                 process.wait(timeout=2)
     for device in devices:
         device.close()
+    os.close(rtu_master)
+    os.close(rtu_slave)
 
 
 if __name__ == "__main__":
