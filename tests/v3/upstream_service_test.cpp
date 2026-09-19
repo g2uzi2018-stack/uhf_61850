@@ -89,18 +89,29 @@ int main() {
               "v3 Web current value");
         check(json.find("\"spectrum\"") != std::string::npos,
               "v3 Web spectrum data");
+        uhf::v3::FreshnessLimits initial_freshness;
+        initial_freshness.pd = initial_freshness.current =
+            initial_freshness.temperature = std::chrono::milliseconds(10);
+        uhf::v3::SnapshotStore expiring(3U, thresholds, initial_freshness);
+        const auto sample_utc = std::chrono::system_clock::time_point(
+            std::chrono::milliseconds(123456));
+        const auto old_sample = now - std::chrono::seconds(1);
+        expiring.publish_current(current, old_sample, sample_utc);
+        expiring.publish_temperature(temperature, old_sample, sample_utc);
+        for (std::size_t channel = 0U; channel < 3U; ++channel) {
+            expiring.publish_pd_channel(channel, pd, old_sample, sample_utc);
+        }
+        const auto initially_fresh = expiring.snapshot(
+            old_sample + std::chrono::milliseconds(2));
+        check(!initially_fresh.pd_status.stale &&
+                  initially_fresh.current_status.freshness_limit_ms == 10U,
+              "configured freshness is exposed with the source state");
         uhf::v3::FreshnessLimits short_freshness;
         short_freshness.pd = short_freshness.current = short_freshness.temperature =
             std::chrono::milliseconds(1);
-        uhf::v3::SnapshotStore expiring(3U, thresholds, short_freshness);
-        const auto sample_utc = std::chrono::system_clock::time_point(
-            std::chrono::milliseconds(123456));
-        expiring.publish_current(current, now, sample_utc);
-        expiring.publish_temperature(temperature, now, sample_utc);
-        for (std::size_t channel = 0U; channel < 3U; ++channel) {
-            expiring.publish_pd_channel(channel, pd, now, sample_utc);
-        }
-        const auto expired = expiring.snapshot(now + std::chrono::milliseconds(2));
+        expiring.update_freshness_limits(short_freshness);
+        const auto expired = expiring.snapshot(
+            old_sample + std::chrono::milliseconds(2));
         check(expired.pd_status.stale && expired.current_status.stale &&
                   expired.temperature_status.stale && !expired.pd_valid[0] &&
                   !expired.current[0].valid() && !expired.temperature[0].valid() &&
@@ -108,6 +119,7 @@ int main() {
               "expired source values are not served as fresh");
         const std::string expired_json = uhf::web::render_v3_snapshot_json(expired);
         check(expired_json.find("\"stale\":true") != std::string::npos &&
+                  expired_json.find("\"freshness_limit_ms\":1") != std::string::npos &&
                   expired_json.find("\"last_success_ms\":123456") != std::string::npos &&
                   expired_json.find(
                       "\"raw\":456,\"valid\":false,\"value\":null") !=

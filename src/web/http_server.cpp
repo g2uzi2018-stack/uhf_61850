@@ -1098,9 +1098,12 @@ constexpr std::string_view kConfigSchemaJson = R"json({
     "v3_temperature_multiplier":{"type":["number","null"],"exclusiveMinimum":0},
     "v3_temperature_offset":{"type":["number","null"]},
     "v3_current_serial":{"type":"string","pattern":"^(unconfigured|(1200|2400|4800|9600|19200|38400|57600|115200|230400)/[78][NEO][12])$"},
-    "v3_temperature_serial":{"type":"string","pattern":"^(unconfigured|(1200|2400|4800|9600|19200|38400|57600|115200|230400)/[78][NEO][12])$"}
+    "v3_temperature_serial":{"type":"string","pattern":"^(unconfigured|(1200|2400|4800|9600|19200|38400|57600|115200|230400)/[78][NEO][12])$"},
+    "v3_pd_freshness_ms":{"type":"integer","minimum":1000,"maximum":86400000},
+    "v3_current_freshness_ms":{"type":"integer","minimum":1000,"maximum":86400000},
+    "v3_temperature_freshness_ms":{"type":"integer","minimum":1000,"maximum":86400000}
   },
-  "required":["acquisition_device","acquisition_slave_id","acquisition_period_ms","acquisition_response_timeout_ms","acquisition_max_retries","rtu_device","rtu_unit_id","modbus_tcp_bind","modbus_tcp_unit_id","modbus_tcp_port","web_port","tls_enabled","iec_enabled","iec_port","iec_ied_name","ftp_enabled","ftp_port","overview_title","overview_device","phase_start_degree","time_sync_enabled","sntp_server","storage_period_seconds","storage_retention_days","storage_min_free_bytes","storage_event_threshold_dbm","storage_event_rearm_dbm","storage_event_delta_db","storage_event_merge_seconds","v3_alarm_thresholds","v3_current_encoding","v3_current_multiplier","v3_current_offset","v3_temperature_multiplier","v3_temperature_offset","v3_current_serial","v3_temperature_serial"]
+  "required":["acquisition_device","acquisition_slave_id","acquisition_period_ms","acquisition_response_timeout_ms","acquisition_max_retries","rtu_device","rtu_unit_id","modbus_tcp_bind","modbus_tcp_unit_id","modbus_tcp_port","web_port","tls_enabled","iec_enabled","iec_port","iec_ied_name","ftp_enabled","ftp_port","overview_title","overview_device","phase_start_degree","time_sync_enabled","sntp_server","storage_period_seconds","storage_retention_days","storage_min_free_bytes","storage_event_threshold_dbm","storage_event_rearm_dbm","storage_event_delta_db","storage_event_merge_seconds","v3_alarm_thresholds","v3_current_encoding","v3_current_multiplier","v3_current_offset","v3_temperature_multiplier","v3_temperature_offset","v3_current_serial","v3_temperature_serial","v3_pd_freshness_ms","v3_current_freshness_ms","v3_temperature_freshness_ms"]
 })json";
 
 }  // namespace

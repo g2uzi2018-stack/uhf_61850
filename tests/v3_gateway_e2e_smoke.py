@@ -267,6 +267,9 @@ def main():
             assert configuration["v3_current_encoding"] == "unconfigured"
             assert configuration["v3_current_multiplier"] is None
             assert configuration["v3_temperature_multiplier"] is None
+            assert configuration["v3_pd_freshness_ms"] == 600000
+            assert configuration["v3_current_freshness_ms"] == 5000
+            assert configuration["v3_temperature_freshness_ms"] == 5000
             config_version = configuration.pop("version")
             configuration["v3_alarm_thresholds"] = [
                 None, None, None, 9, None, None, None, None, None, 19, None, None
@@ -276,6 +279,9 @@ def main():
             configuration["v3_current_offset"] = 0
             configuration["v3_temperature_multiplier"] = 0.1
             configuration["v3_temperature_offset"] = 0
+            configuration["v3_pd_freshness_ms"] = 610000
+            configuration["v3_current_freshness_ms"] = 6000
+            configuration["v3_temperature_freshness_ms"] = 7000
             connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
             connection.request(
                 "PUT",
@@ -309,7 +315,10 @@ def main():
                     alarms[index]["valid"] and alarms[index]["active"]
                     for index in (3, 9)
                 ) and live_measurements.get("Ia", {}).get("value") == 10.0
-                    and live_measurements.get("TA", {}).get("value") == 20.0):
+                    and live_measurements.get("TA", {}).get("value") == 20.0
+                    and alarm_payload["sources"]["pd"]["freshness_limit_ms"] == 610000
+                    and alarm_payload["sources"]["current"]["freshness_limit_ms"] == 6000
+                    and alarm_payload["sources"]["temperature"]["freshness_limit_ms"] == 7000):
                     break
                 time.sleep(0.05)
             else:

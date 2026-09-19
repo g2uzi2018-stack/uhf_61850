@@ -32,6 +32,8 @@ void append_status(std::string& body, const v3::SourceStatus& status) {
     body.append(status.stale ? "true" : "false");
     body.append(",\"consecutive_failures\":");
     body.append(std::to_string(status.consecutive_failures));
+    body.append(",\"freshness_limit_ms\":");
+    body.append(std::to_string(status.freshness_limit_ms));
     const auto attempt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         status.last_attempt_utc.time_since_epoch()).count();
     const auto success_ms = std::chrono::duration_cast<std::chrono::milliseconds>(

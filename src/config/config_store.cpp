@@ -69,7 +69,9 @@ public:
                      keys_.size() == 31U || keys_.size() == 32U ||
                      keys_.size() == 33U || keys_.size() == 34U ||
                      keys_.size() == 35U || keys_.size() == 36U ||
-                     keys_.size() == 37U || keys_.size() == 38U);
+                     keys_.size() == 37U || keys_.size() == 38U ||
+                     keys_.size() == 39U || keys_.size() == 40U ||
+                     keys_.size() == 41U);
             }
             if (!consume(',')) {
                 return false;
@@ -466,6 +468,21 @@ private:
         }
         if (key == "acquisition_max_retries") {
             return assign_unsigned(value, std::uint8_t{0U}, std::uint8_t{3U}, values.acquisition_max_retries);
+        }
+        if (key == "v3_pd_freshness_ms") {
+            return assign_unsigned(
+                value, std::uint32_t{1000U}, std::uint32_t{86400000U},
+                values.v3_pd_freshness_ms);
+        }
+        if (key == "v3_current_freshness_ms") {
+            return assign_unsigned(
+                value, std::uint32_t{1000U}, std::uint32_t{86400000U},
+                values.v3_current_freshness_ms);
+        }
+        if (key == "v3_temperature_freshness_ms") {
+            return assign_unsigned(
+                value, std::uint32_t{1000U}, std::uint32_t{86400000U},
+                values.v3_temperature_freshness_ms);
         }
         if (key == "rtu_unit_id") {
             return assign_unsigned(value, std::uint8_t{1U}, std::uint8_t{247U}, values.rtu_unit_id);
@@ -869,7 +886,11 @@ std::string ConfigStore::serialize(const Snapshot& snapshot) {
         "  \"v3_temperature_multiplier\": " + nullable_float_json(values.v3_temperature_multiplier) + ",\n"
         "  \"v3_temperature_offset\": " + nullable_float_json(values.v3_temperature_offset) + ",\n"
         "  \"v3_current_serial\": \"" + json_escape(values.v3_current_serial) + "\",\n"
-        "  \"v3_temperature_serial\": \"" + json_escape(values.v3_temperature_serial) + "\"\n"
+        "  \"v3_temperature_serial\": \"" + json_escape(values.v3_temperature_serial) + "\",\n"
+        "  \"v3_pd_freshness_ms\": " + std::to_string(values.v3_pd_freshness_ms) + ",\n"
+        "  \"v3_current_freshness_ms\": " + std::to_string(values.v3_current_freshness_ms) + ",\n"
+        "  \"v3_temperature_freshness_ms\": " +
+            std::to_string(values.v3_temperature_freshness_ms) + "\n"
         "}\n";
 }
 

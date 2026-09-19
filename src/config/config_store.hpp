@@ -52,6 +52,9 @@ struct Values {
     std::optional<float> v3_temperature_offset;
     std::string v3_current_serial{"unconfigured"};
     std::string v3_temperature_serial{"unconfigured"};
+    std::uint32_t v3_pd_freshness_ms{600000U};
+    std::uint32_t v3_current_freshness_ms{5000U};
+    std::uint32_t v3_temperature_freshness_ms{5000U};
 };
 
 struct Snapshot {

@@ -91,6 +91,13 @@ v3::AlarmThresholds alarm_thresholds_from_config(const config::Values& values) {
     return thresholds;
 }
 
+v3::FreshnessLimits freshness_limits_from_config(const config::Values& values) {
+    return v3::FreshnessLimits{
+        std::chrono::milliseconds(values.v3_pd_freshness_ms),
+        std::chrono::milliseconds(values.v3_current_freshness_ms),
+        std::chrono::milliseconds(values.v3_temperature_freshness_ms)};
+}
+
 struct V3Conversion {
     v3::WordEncoding current_encoding{v3::WordEncoding::unsigned16};
     v3::LinearScale current_scale{
@@ -178,9 +185,11 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
             *v3_current_serial_port_, *v3_packet_trace_, v3::PacketSource::current);
         v3_temperature_adapter_ = std::make_unique<V3SerialAdapter>(
             *v3_temperature_serial_port_, *v3_packet_trace_, v3::PacketSource::temperature);
+        const config::Snapshot initial_config = options_.config_store != nullptr
+            ? options_.config_store->snapshot() : config::Snapshot{};
         if (options_.config_store != nullptr) {
             const V3Conversion conversion = conversion_from_config(
-                options_.config_store->snapshot().values);
+                initial_config.values);
             if (options_.reload_v3_current_conversion) {
                 options_.v3_scheduler_options.collector.current_encoding =
                     conversion.current_encoding;
@@ -192,11 +201,11 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
                     conversion.temperature_scale;
             }
         }
-        const v3::AlarmThresholds alarm_thresholds = options_.config_store != nullptr
-            ? alarm_thresholds_from_config(options_.config_store->snapshot().values)
-            : v3::AlarmThresholds{};
+        const v3::AlarmThresholds alarm_thresholds =
+            alarm_thresholds_from_config(initial_config.values);
         v3_snapshot_store_ = std::make_unique<v3::SnapshotStore>(
-            3U, alarm_thresholds);
+            3U, alarm_thresholds,
+            freshness_limits_from_config(initial_config.values));
         v3_scheduler_ = std::make_unique<v3::AcquisitionScheduler>(
             *v3_pd_adapter_, *v3_current_adapter_, *v3_temperature_adapter_,
             *v3_snapshot_store_, options_.v3_scheduler_options);
@@ -607,6 +616,8 @@ void GatewayRuntime::apply_runtime_configuration(std::uint64_t& applied_version)
             reset_current, reset_temperature);
         v3_snapshot_store_->update_alarm_thresholds(
             alarm_thresholds_from_config(configured.values));
+        v3_snapshot_store_->update_freshness_limits(
+            freshness_limits_from_config(configured.values));
     }
     if (modbus_tcp_server_) {
         modbus::ModbusTcpOptions modbus_options;

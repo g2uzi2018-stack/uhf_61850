@@ -66,6 +66,7 @@ struct SourceStatus {
     std::chrono::steady_clock::time_point last_success{};
     std::chrono::system_clock::time_point last_attempt_utc{};
     std::chrono::system_clock::time_point last_success_utc{};
+    std::uint32_t freshness_limit_ms{0U};
     std::string last_error;
 };
 
@@ -117,6 +118,7 @@ public:
                         std::chrono::system_clock::time_point utc =
                             std::chrono::system_clock::now());
     void update_alarm_thresholds(AlarmThresholds thresholds);
+    void update_freshness_limits(FreshnessLimits freshness);
     void reset_engineering_values(bool reset_current, bool reset_temperature);
     UnifiedSnapshot snapshot() const;
     UnifiedSnapshot snapshot(std::chrono::steady_clock::time_point now) const;

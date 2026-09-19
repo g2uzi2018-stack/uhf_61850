@@ -29,7 +29,7 @@
             <div class="page-content settings-content">
                 <div class="breadcrumb"><span>设备配置</span><b>/</b><strong>采集与转发</strong></div>
                 <div class="page-heading"><div><div class="heading-kicker">COMMUNICATION &amp; STORAGE</div><h1>采集与转发</h1><p>配置采集、Modbus 转发、IEC 61850 和本地存储参数。</p></div><span class="heading-badge" id="config-version"><i></i>版本读取中</span></div>
-                <div class="settings-notice"><strong>生效范围</strong><span>采集参数、v3 报警阈值和存储策略保存后由后台运行线程热加载；串口设备、RTU 地址和监听端口等项目会先原子落盘，并在下次安全重启时应用。IED 名称已移至网络设置。</span></div>
+                <div class="settings-notice"><strong>生效范围</strong><span>采集参数、v3 时效/报警阈值和存储策略保存后由后台运行线程热加载；串口 profile、RTU 地址和监听端口等项目会先原子落盘，并在下次安全重启时应用。IED 名称已移至网络设置。</span></div>
                 <form id="settings-form">
                     <section class="panel settings-panel"><div class="panel-header"><div><h2>PD1000 采集主站</h2><p>485-1 固定使用 /dev/ttyS1、115200 / 8N1、功能码 0x04</p></div><span class="count-badge">31 笔 / 轮</span></div><div class="settings-grid">
                         <label>从站地址<input name="acquisition_slave_id" type="number" min="1" max="247" required><small>默认 1，范围 1–247</small></label>
@@ -46,7 +46,7 @@
                         <label>FTP 文件传输<input name="ftp_enabled" type="checkbox"><small>使用管理员账号；仅建议在可信管理网启用</small></label>
                         <label>FTP 端口<input name="ftp_port" type="number" min="1" max="65535" required><small>默认 21；修改或启停后需重启服务</small></label>
                     </div><div class="settings-actions panel-actions"><span></span><a class="outline-button link-button" href="/api/v1/point-table/export.csv">下载 v3 Modbus 点表 CSV</a></div></section>
-                    <section class="panel settings-panel"><div class="panel-header"><div><h2>v3 工程值换算</h2><p>仅在取得厂商编码和倍率后填写；未配置时仍采集报文，但不发布看似正常的工程值</p></div><span class="count-badge">保存后热生效</span></div><div class="settings-grid">
+                    <section class="panel settings-panel"><div class="panel-header"><div><h2>v3 工程值换算</h2><p>仅在取得厂商编码和倍率后填写；未配置时仍采集报文，但不发布看似正常的工程值</p></div><span class="count-badge">换算热生效 · 串口需重启</span></div><div class="settings-grid">
                         <label>电流串口 profile<input name="v3_current_serial" list="v3-serial-profiles" autocomplete="off"><small>例如 9600/8E1；未知填 unconfigured；修改后重启生效</small></label>
                         <label>温度串口 profile<input name="v3_temperature_serial" list="v3-serial-profiles" autocomplete="off"><small>例如 19200/8N2；未知填 unconfigured；修改后重启生效</small></label>
                         <datalist id="v3-serial-profiles"><option value="unconfigured"><option value="9600/8N1"><option value="19200/8N1"><option value="38400/8N1"><option value="57600/8N1"><option value="115200/8N1"></datalist>
@@ -55,6 +55,11 @@
                         <label>电流偏移<input name="v3_current_offset" type="number" step="any"><small>有限数；与倍率成组配置</small></label>
                         <label>温度倍率<input name="v3_temperature_multiplier" type="number" min="0" step="any"><small>必须为正有限数；例如 0.1 仅可由厂商确认后填写</small></label>
                         <label>温度偏移<input name="v3_temperature_offset" type="number" step="any"><small>有限数；与倍率成组配置</small></label>
+                    </div></section>
+                    <section class="panel settings-panel"><div class="panel-header"><div><h2>v3 数据时效</h2><p>每路按自己的最近成功采样时间判断；过期值不会作为正常测量上送</p></div><span class="count-badge">保存后热生效</span></div><div class="settings-grid">
+                        <label>局放时效（毫秒）<input name="v3_pd_freshness_ms" type="number" min="1000" max="86400000" required><small>暂定默认 600000；范围 1 秒–24 小时</small></label>
+                        <label>电流时效（毫秒）<input name="v3_current_freshness_ms" type="number" min="1000" max="86400000" required><small>暂定默认 5000；按电流源独立计时</small></label>
+                        <label>温度时效（毫秒）<input name="v3_temperature_freshness_ms" type="number" min="1000" max="86400000" required><small>暂定默认 5000；按温度源独立计时</small></label>
                     </div></section>
                     <section class="panel settings-panel"><div class="panel-header"><div><h2>v3 测量报警阈值</h2><p>严格按“测量值 &gt; 阈值”置位；留空表示该点未配置，遥信质量保持无效</p></div><span class="count-badge">保存后热生效</span></div><div class="settings-grid">
                         <label>局放 1 峰值<input name="v3_alarm_pd1" type="number" step="any"><small>对应报警 1；局放特征峰值</small></label>

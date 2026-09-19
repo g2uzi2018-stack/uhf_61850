@@ -56,7 +56,10 @@ const char* valid_object() {
         "v3_temperature_multiplier":0.1,
         "v3_temperature_offset":0,
         "v3_current_serial":"9600/8E1",
-        "v3_temperature_serial":"19200/8N2"
+        "v3_temperature_serial":"19200/8N2",
+        "v3_pd_freshness_ms":610000,
+        "v3_current_freshness_ms":6000,
+        "v3_temperature_freshness_ms":7000
     })";
 }
 
@@ -97,6 +100,12 @@ int main() {
                     "v3 current serial profile") ||
             !expect(initial.values.v3_temperature_serial == "19200/8N2",
                     "v3 temperature serial profile") ||
+            !expect(initial.values.v3_pd_freshness_ms == 610000U,
+                    "v3 PD freshness") ||
+            !expect(initial.values.v3_current_freshness_ms == 6000U,
+                    "v3 current freshness") ||
+            !expect(initial.values.v3_temperature_freshness_ms == 7000U,
+                    "v3 temperature freshness") ||
             !expect(std::filesystem::is_regular_file(path), "initial file") ||
             !expect(std::filesystem::file_size(path) < 16U * 1024U, "bounded file")) {
             return 1;
@@ -247,15 +256,46 @@ int main() {
                 "unsupported v3 serial profile accepted")) {
             return 1;
         }
+        const std::string invalid_freshness = [] {
+            std::string value = valid_object();
+            const std::string freshness = "\"v3_current_freshness_ms\":6000";
+            const std::size_t position = value.find(freshness);
+            if (position != std::string::npos) {
+                value.replace(
+                    position, freshness.size(),
+                    "\"v3_current_freshness_ms\":999");
+            }
+            return value;
+        }();
+        if (!expect(
+                store.update(1U, invalid_freshness) ==
+                    uhf::config::UpdateResult::invalid,
+                "out-of-range v3 freshness accepted")) {
+            return 1;
+        }
         const std::filesystem::path blocked_temporary = path.string() + ".tmp";
         std::filesystem::create_directory(blocked_temporary);
-        const uhf::config::UpdateResult storage_failure = store.update(1U, valid_object());
+        const std::string changed_freshness = [] {
+            std::string value = valid_object();
+            const std::string freshness = "\"v3_current_freshness_ms\":6000";
+            const std::size_t position = value.find(freshness);
+            if (position != std::string::npos) {
+                value.replace(
+                    position, freshness.size(),
+                    "\"v3_current_freshness_ms\":8000");
+            }
+            return value;
+        }();
+        const uhf::config::UpdateResult storage_failure =
+            store.update(1U, changed_freshness);
         if (!expect(storage_failure == uhf::config::UpdateResult::storage_error,
                     "atomic config write failure was not surfaced") ||
             !expect(store.snapshot().version == 1U,
                     "failed config write changed the active version") ||
             !expect(store.snapshot().values.acquisition_slave_id == 2U,
-                    "failed config write changed active values")) {
+                    "failed config write changed active values") ||
+            !expect(store.snapshot().values.v3_current_freshness_ms == 6000U,
+                    "failed config write changed active freshness")) {
             return 1;
         }
         std::filesystem::remove(blocked_temporary, cleanup_error);
@@ -286,6 +326,8 @@ int main() {
                     "temperature conversion offset") ||
             !expect(changed.values.v3_current_serial == "9600/8E1",
                     "current serial profile") ||
+            !expect(changed.values.v3_current_freshness_ms == 6000U,
+                    "current freshness") ||
             !expect(std::filesystem::file_size(path) < 16U * 1024U, "updated file bound")) {
             return 1;
         }
@@ -303,6 +345,8 @@ int main() {
                     std::string::npos, "saved v3 temperature multiplier") ||
             !expect(saved.find("\"v3_temperature_serial\": \"19200/8N2\"") !=
                     std::string::npos, "saved v3 temperature serial profile") ||
+            !expect(saved.find("\"v3_pd_freshness_ms\": 610000") !=
+                    std::string::npos, "saved v3 freshness") ||
             !expect(saved.find("Smoke") == std::string::npos, "no test secret")) {
             return 1;
         }
@@ -330,7 +374,9 @@ int main() {
             !expect(reopened_snapshot.values.v3_current_multiplier == 0.25F,
                     "v3 multiplier survives restart") ||
             !expect(reopened_snapshot.values.v3_current_serial == "9600/8E1",
-                    "v3 serial profile survives restart")) {
+                    "v3 serial profile survives restart") ||
+            !expect(reopened_snapshot.values.v3_temperature_freshness_ms == 7000U,
+                    "v3 freshness survives restart")) {
             return 1;
         }
 

@@ -36,5 +36,8 @@
   "v3_temperature_multiplier": null,
   "v3_temperature_offset": null,
   "v3_current_serial": "unconfigured",
-  "v3_temperature_serial": "unconfigured"
+  "v3_temperature_serial": "unconfigured",
+  "v3_pd_freshness_ms": 600000,
+  "v3_current_freshness_ms": 5000,
+  "v3_temperature_freshness_ms": 5000
 }

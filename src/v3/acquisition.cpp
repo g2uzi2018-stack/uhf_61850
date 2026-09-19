@@ -245,6 +245,12 @@ void SnapshotStore::update_alarm_thresholds(AlarmThresholds thresholds) {
     ++value_.generation;
 }
 
+void SnapshotStore::update_freshness_limits(FreshnessLimits freshness) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    freshness_ = freshness;
+    ++value_.generation;
+}
+
 void SnapshotStore::reset_engineering_values(
     bool reset_current, bool reset_temperature) {
     if (!reset_current && !reset_temperature) {
@@ -307,6 +313,9 @@ UnifiedSnapshot SnapshotStore::snapshot(std::chrono::steady_clock::time_point no
 void SnapshotStore::apply_staleness(
     UnifiedSnapshot& value, std::chrono::steady_clock::time_point now) const noexcept {
     const auto mark = [now](SourceStatus& status, std::chrono::milliseconds limit) {
+        const auto bounded_limit = std::clamp<std::int64_t>(
+            limit.count(), 0, std::numeric_limits<std::uint32_t>::max());
+        status.freshness_limit_ms = static_cast<std::uint32_t>(bounded_limit);
         status.stale = status.has_sample && limit > std::chrono::milliseconds::zero() &&
             now > status.last_success + limit;
     };
