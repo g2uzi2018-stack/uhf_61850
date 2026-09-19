@@ -406,12 +406,13 @@ def main():
 
         time.sleep(0.1)
         pd_request_offset = len(devices[0].requests())
+        runtime_rtu_device = os.path.join(root, "modbus-rtu-device")
         command = [binary, "--web", "--http-recovery", "--v3",
                    "--web-root", web_root, "--state-dir", root,
                    "--data-dir", os.path.join(root, "data"),
                    "--listen", f"127.0.0.1:{web_port}",
                    "--modbus-tcp-listen", f"127.0.0.1:{modbus_port}",
-                   "--modbus-rtu-device", rtu_device,
+                   "--modbus-rtu-device", runtime_rtu_device,
                    "--v3-pd-device", devices[0].path,
                    "--v3-current-device", devices[1].path,
                    "--v3-temperature-device", devices[2].path,
@@ -496,6 +497,13 @@ def main():
             configuration = json.loads(config_response.read())
             connection.close()
             assert config_response.status == 200
+            connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
+            connection.request("GET", "/api/v1/health", headers={"Cookie": cookie})
+            health_response = connection.getresponse()
+            health_before_rtu = json.loads(health_response.read())
+            connection.close()
+            assert health_response.status == 200
+            assert health_before_rtu["modbus_rtu"]["status"] == "down"
             assert configuration["v3_alarm_thresholds"] == [None] * 12
             assert configuration["v3_current_encoding"] == "unconfigured"
             assert configuration["v3_current_multiplier"] is None
@@ -675,6 +683,23 @@ def main():
                         probe.kill()
                         probe.wait(timeout=2)
             expected_current = 30.0 if iec_probe else 10.0
+            assert not os.path.lexists(runtime_rtu_device)
+            os.symlink(rtu_device, runtime_rtu_device)
+            rtu_health_deadline = time.monotonic() + 3
+            while time.monotonic() < rtu_health_deadline:
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", web_port, timeout=2
+                )
+                connection.request("GET", "/api/v1/health", headers={"Cookie": cookie})
+                health_response = connection.getresponse()
+                health_after_open = json.loads(health_response.read())
+                connection.close()
+                assert health_response.status == 200
+                if health_after_open["modbus_rtu"]["status"] == "up":
+                    break
+                time.sleep(0.01)
+            else:
+                raise AssertionError("gateway did not open replacement RTU device")
             rtu_request_body = bytes((rtu_unit_id, 3, 0, 1, 0, 2))
             rtu_crc = crc16(rtu_request_body)
             os.write(
@@ -685,6 +710,13 @@ def main():
             assert rtu_response[:3] == bytes((rtu_unit_id, 3, 4))
             assert abs(struct.unpack(">f", rtu_response[3:7])[0] - expected_current) < 0.01
             assert crc16(rtu_response[:-2]) == rtu_response[-2] | rtu_response[-1] << 8
+            connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
+            connection.request("GET", "/api/v1/health", headers={"Cookie": cookie})
+            health_response = connection.getresponse()
+            health_after_rtu = json.loads(health_response.read())
+            connection.close()
+            assert health_response.status == 200
+            assert health_after_rtu["modbus_rtu"]["status"] == "up"
 
             alarm_request_body = bytes((rtu_unit_id, 2, 0, 6, 0, 1))
             alarm_crc = crc16(alarm_request_body)

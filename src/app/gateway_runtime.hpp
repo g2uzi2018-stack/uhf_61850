@@ -101,7 +101,7 @@ private:
     std::unique_ptr<activation::Manager> activation_manager_;
     std::unique_ptr<v3::AcquisitionScheduler> v3_scheduler_;
     std::unique_ptr<modbus::ModbusTcpServer> modbus_tcp_server_;
-    std::unique_ptr<acquisition::ISerialPort> modbus_rtu_serial_port_;
+    std::unique_ptr<acquisition::ReconnectingSerialPort> modbus_rtu_serial_port_;
     std::unique_ptr<modbus::ModbusRtuServer> modbus_rtu_server_;
     std::unique_ptr<iec61850::Server> iec61850_server_;
     std::unique_ptr<storage::PersistenceWorker> persistence_worker_;

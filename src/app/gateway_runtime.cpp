@@ -256,7 +256,8 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
     }
     if (options_.start_modbus_rtu) {
         modbus_rtu_serial_port_ =
-            std::make_unique<acquisition::PosixSerialPort>(options_.modbus_rtu_device);
+            std::make_unique<acquisition::ReconnectingSerialPort>(
+                options_.modbus_rtu_device);
         modbus_rtu_server_ = std::make_unique<modbus::ModbusRtuServer>(
             *modbus_rtu_serial_port_, snapshot_store_, options_.modbus_rtu_options,
             v3_snapshot_store_.get());
@@ -419,7 +420,8 @@ health::Input GatewayRuntime::health_input() const {
     input.storage_writable = true;
     input.modbus_tcp_listening =
         modbus_tcp_server_ != nullptr && modbus_tcp_server_->bound_port() != 0U;
-    input.modbus_rtu_ready = modbus_rtu_server_ != nullptr;
+    input.modbus_rtu_ready = modbus_rtu_server_ != nullptr &&
+        modbus_rtu_serial_port_ != nullptr && modbus_rtu_serial_port_->connected();
     {
         std::lock_guard<std::mutex> lock(iec_mutex_);
         input.iec61850_enabled =

@@ -1246,12 +1246,17 @@ if(BUILD_TESTING)
                 "$<TARGET_FILE:uhf-gatewayd>"
                 "${PROJECT_SOURCE_DIR}/web"
         )
+        set(UHF_RUNTIME_MODBUS_RTU_EXTRA_ARGS)
+        if(NOT UHF_ENABLE_IEC61850)
+            list(APPEND UHF_RUNTIME_MODBUS_RTU_EXTRA_ARGS --no-iec61850)
+        endif()
         add_test(
             NAME uhf_runtime_modbus_rtu_smoke
             COMMAND "${Python3_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/tests/runtime_modbus_rtu_smoke.py"
                 "$<TARGET_FILE:uhf-gatewayd>"
                 "${PROJECT_SOURCE_DIR}/web"
+                ${UHF_RUNTIME_MODBUS_RTU_EXTRA_ARGS}
         )
         add_test(
             NAME uhf_websocket_smoke

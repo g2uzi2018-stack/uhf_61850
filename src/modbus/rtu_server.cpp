@@ -166,6 +166,12 @@ int ModbusRtuServer::run() {
         std::size_t received = 0;
         if (!serial_port_.read_some(
                 buffer, sizeof(buffer), std::chrono::milliseconds(100), received)) {
+            // A reconnecting transport returns immediately while its tty is
+            // absent.  Keep this service thread bounded instead of spinning
+            // on repeated open failures, and never carry a partial request
+            // from the disconnected device into the replacement stream.
+            input.clear();
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
         if (received == 0U) {

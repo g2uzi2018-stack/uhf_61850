@@ -6,6 +6,7 @@
 #include "domain/modbus.hpp"
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -67,6 +68,7 @@ public:
         std::size_t capacity,
         std::chrono::milliseconds timeout,
         std::size_t& received) override;
+    bool connected() const noexcept;
 
 private:
     bool ensure_open();
@@ -74,6 +76,7 @@ private:
     std::string device_;
     SerialSettings settings_;
     std::unique_ptr<PosixSerialPort> port_;
+    std::atomic<bool> connected_{false};
 };
 
 struct AcquisitionOptions {

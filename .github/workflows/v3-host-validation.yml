@@ -32,7 +32,7 @@ jobs:
       - name: Build gateway without IEC 61850
         run: cmake --build build/host-noiec --parallel 2 --target uhf-gatewayd
       - name: Test gateway without IEC 61850
-        run: ctest --test-dir build/host-noiec --output-on-failure -R '^(uhf_gatewayd_smoke|uhf_v3_gateway_e2e|uhf_iec61850_disabled_smoke)$'
+        run: ctest --test-dir build/host-noiec --output-on-failure -R '^(uhf_gatewayd_smoke|uhf_runtime_modbus_rtu_smoke|uhf_v3_gateway_e2e|uhf_iec61850_disabled_smoke)$'
       - name: Upload test logs
         if: always()
         uses: actions/upload-artifact@v4

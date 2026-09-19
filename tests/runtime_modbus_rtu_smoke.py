@@ -69,10 +69,13 @@ def receive_exact(file_descriptor: int, size: int, timeout: float = 2.0) -> byte
 
 
 def main() -> int:
-    if len(sys.argv) != 3:
-        fail("expected server binary and web directory")
+    if len(sys.argv) not in (3, 4) or (
+        len(sys.argv) == 4 and sys.argv[3] != "--no-iec61850"
+    ):
+        fail("expected server binary, web directory, and optional --no-iec61850")
     binary = Path(sys.argv[1])
     web_dir = Path(sys.argv[2])
+    extra_arguments = sys.argv[3:]
     web_port = free_port()
     master_fd, slave_fd = pty.openpty()
     tty.setraw(master_fd)
@@ -96,7 +99,7 @@ def main() -> int:
                 "127.0.0.1:0",
                 "--modbus-rtu-device",
                 rtu_device,
-            ],
+            ] + extra_arguments,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

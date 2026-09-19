@@ -108,6 +108,7 @@ int main() {
         uhf::acquisition::ReconnectingSerialPort reconnecting(device.string());
         const std::uint8_t first = 0x31U;
         check(!reconnecting.write_all(&first, 1U), "missing tty is isolated");
+        check(!reconnecting.connected(), "missing tty reports disconnected");
 
         int reconnect_master = -1;
         int reconnect_slave = -1;
@@ -118,6 +119,7 @@ int main() {
         check(::close(reconnect_slave) == 0, "close first reconnect PTY slave");
         std::filesystem::create_symlink(reconnect_name, device);
         check(reconnecting.write_all(&first, 1U), "connect when tty appears");
+        check(reconnecting.connected(), "appeared tty reports connected");
         expect_byte(reconnect_master, first, "first reconnect write");
 
         check(::close(reconnect_master) == 0, "disconnect first reconnect PTY");
@@ -127,6 +129,7 @@ int main() {
                   incoming.data(), incoming.size(), std::chrono::milliseconds(50), received),
               "detect disconnected tty");
         check(received == 0U, "disconnect does not publish bytes");
+        check(!reconnecting.connected(), "failed tty reports disconnected");
 
         check(std::filesystem::remove(device), "remove stale tty link");
         reconnect_master = -1;
@@ -139,6 +142,7 @@ int main() {
         std::filesystem::create_symlink(reconnect_name, device);
         const std::uint8_t second = 0x52U;
         check(reconnecting.write_all(&second, 1U), "reopen replacement tty");
+        check(reconnecting.connected(), "replacement tty reports connected");
         expect_byte(reconnect_master, second, "replacement reconnect write");
         const std::uint8_t reply = 0x73U;
         check(::write(reconnect_master, &reply, 1U) == 1, "write reconnect reply");

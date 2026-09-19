@@ -200,8 +200,10 @@ bool ReconnectingSerialPort::ensure_open() {
     try {
         port_ = std::make_unique<PosixSerialPort>(device_, settings_);
     } catch (const std::runtime_error&) {
+        connected_.store(false);
         return false;
     }
+    connected_.store(true);
     return true;
 }
 
@@ -212,6 +214,7 @@ bool ReconnectingSerialPort::write_all(
     }
     if (!ensure_open() || !port_->write_all(data, size)) {
         port_.reset();
+        connected_.store(false);
         return false;
     }
     return true;
@@ -225,10 +228,15 @@ bool ReconnectingSerialPort::read_some(
     received = 0U;
     if (!ensure_open() || !port_->read_some(data, capacity, timeout, received)) {
         port_.reset();
+        connected_.store(false);
         received = 0U;
         return false;
     }
     return true;
+}
+
+bool ReconnectingSerialPort::connected() const noexcept {
+    return connected_.load();
 }
 
 void SnapshotStore::publish(
