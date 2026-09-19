@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "platform/systemd/notify.hpp"
+#include "test_check.hpp"
 
-#include <cassert>
 #include <cstring>
 #include <filesystem>
 #include <poll.h>
@@ -16,26 +16,26 @@ int main() {
     std::filesystem::remove(path, ignored);
 
     const int receiver = ::socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-    assert(receiver >= 0);
+    UHF_TEST_CHECK(receiver >= 0);
     sockaddr_un address{};
     address.sun_family = AF_UNIX;
     const std::string path_string = path.string();
-    assert(path_string.size() < sizeof(address.sun_path));
+    UHF_TEST_CHECK(path_string.size() < sizeof(address.sun_path));
     std::memcpy(address.sun_path, path_string.c_str(), path_string.size() + 1U);
-    assert(::bind(
+    UHF_TEST_CHECK(::bind(
                receiver,
                reinterpret_cast<const sockaddr*>(&address),
                static_cast<socklen_t>(offsetof(sockaddr_un, sun_path) + path_string.size() + 1U)) == 0);
-    assert(::setenv("NOTIFY_SOCKET", path_string.c_str(), 1) == 0);
-    assert(uhf::systemd::notify("READY=1\nSTATUS=smoke"));
+    UHF_TEST_CHECK(::setenv("NOTIFY_SOCKET", path_string.c_str(), 1) == 0);
+    UHF_TEST_CHECK(uhf::systemd::notify("READY=1\nSTATUS=smoke"));
     pollfd descriptor{receiver, POLLIN, 0};
-    assert(::poll(&descriptor, 1, 1000) == 1);
+    UHF_TEST_CHECK(::poll(&descriptor, 1, 1000) == 1);
     char buffer[128]{};
     const ssize_t received = ::recv(receiver, buffer, sizeof(buffer), 0);
-    assert(received == 20);
-    assert(std::string(buffer, buffer + received) == "READY=1\nSTATUS=smoke");
-    assert(::unsetenv("NOTIFY_SOCKET") == 0);
-    assert(uhf::systemd::notify("WATCHDOG=1"));
+    UHF_TEST_CHECK(received == 20);
+    UHF_TEST_CHECK(std::string(buffer, buffer + received) == "READY=1\nSTATUS=smoke");
+    UHF_TEST_CHECK(::unsetenv("NOTIFY_SOCKET") == 0);
+    UHF_TEST_CHECK(uhf::systemd::notify("WATCHDOG=1"));
     ::close(receiver);
     std::filesystem::remove(path, ignored);
     return 0;

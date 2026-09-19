@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "platform/network/dhcp_client.hpp"
+#include "test_check.hpp"
 
-#include <cassert>
 #include <chrono>
 #include <filesystem>
 #include <fcntl.h>
@@ -16,10 +16,10 @@ namespace {
 
 void write_executable(const std::filesystem::path& path, const char* contents) {
     std::ofstream output(path);
-    assert(output);
+    UHF_TEST_CHECK(output);
     output << contents;
     output.close();
-    assert(::chmod(path.c_str(), S_IRWXU) == 0);
+    UHF_TEST_CHECK(::chmod(path.c_str(), S_IRWXU) == 0);
 }
 
 uhf::network::InterfaceConfig dhcp_config() {
@@ -38,7 +38,9 @@ uhf::network::InterfaceConfig dhcp_config() {
 
 int main() {
     const std::filesystem::path directory =
-        std::filesystem::temp_directory_path() / "uhf-dhcp-client-smoke";
+        std::filesystem::temp_directory_path() /
+        ("uhf-dhcp-client-smoke-" +
+         std::to_string(static_cast<long long>(::getpid())));
     std::error_code ignored;
     std::filesystem::remove_all(directory, ignored);
     std::filesystem::create_directories(directory);
@@ -66,42 +68,42 @@ int main() {
         active_lease << "active-lease\n";
     }
     uhf::network::DhcpLease lease;
-    assert(client.acquire(dhcp_config(), lease));
-    assert(lease.address == "192.168.3.240");
-    assert(lease.prefix == 24U);
-    assert(lease.gateway == "192.168.3.1");
-    assert(lease.dns_count == 1U && lease.dns[0U] == "192.168.3.1");
-    assert(std::filesystem::exists(directory / "eth0.result"));
-    assert(std::filesystem::exists(directory / "eth0.pid"));
-    assert(std::filesystem::exists(directory / "eth0.lease"));
-    assert(client.release(dhcp_config(), lease));
-    assert(std::filesystem::exists(directory / "eth0.result"));
-    assert(std::filesystem::exists(directory / "eth0.pid"));
-    assert(std::filesystem::exists(directory / "eth0.lease"));
+    UHF_TEST_CHECK(client.acquire(dhcp_config(), lease));
+    UHF_TEST_CHECK(lease.address == "192.168.3.240");
+    UHF_TEST_CHECK(lease.prefix == 24U);
+    UHF_TEST_CHECK(lease.gateway == "192.168.3.1");
+    UHF_TEST_CHECK(lease.dns_count == 1U && lease.dns[0U] == "192.168.3.1");
+    UHF_TEST_CHECK(std::filesystem::exists(directory / "eth0.result"));
+    UHF_TEST_CHECK(std::filesystem::exists(directory / "eth0.pid"));
+    UHF_TEST_CHECK(std::filesystem::exists(directory / "eth0.lease"));
+    UHF_TEST_CHECK(client.release(dhcp_config(), lease));
+    UHF_TEST_CHECK(std::filesystem::exists(directory / "eth0.result"));
+    UHF_TEST_CHECK(std::filesystem::exists(directory / "eth0.pid"));
+    UHF_TEST_CHECK(std::filesystem::exists(directory / "eth0.lease"));
     std::filesystem::remove(directory / "eth0.result");
     std::filesystem::remove(directory / "eth0.pid");
     std::filesystem::remove(directory / "eth0.lease");
-    assert(client.start(dhcp_config(), lease));
+    UHF_TEST_CHECK(client.start(dhcp_config(), lease));
     uhf::network::DhcpLease renewed;
-    assert(client.current_lease(dhcp_config(), renewed));
-    assert(renewed.address == lease.address && renewed.prefix == lease.prefix);
-    assert(client.stop(dhcp_config(), lease));
-    assert(client.release(dhcp_config(), lease));
+    UHF_TEST_CHECK(client.current_lease(dhcp_config(), renewed));
+    UHF_TEST_CHECK(renewed.address == lease.address && renewed.prefix == lease.prefix);
+    UHF_TEST_CHECK(client.stop(dhcp_config(), lease));
+    UHF_TEST_CHECK(client.release(dhcp_config(), lease));
 
     {
         std::ofstream stale_pid(directory / "eth0.pid");
         stale_pid << ::getpid() << '\n';
         std::ofstream stale_result(directory / "eth0.result");
         stale_result << "stale-result\n";
-        assert(client.stop(dhcp_config(), lease));
-        assert(::kill(::getpid(), 0) == 0);
-        assert(!std::filesystem::exists(directory / "eth0.pid"));
-        assert(!std::filesystem::exists(directory / "eth0.result"));
+        UHF_TEST_CHECK(client.stop(dhcp_config(), lease));
+        UHF_TEST_CHECK(::kill(::getpid(), 0) == 0);
+        UHF_TEST_CHECK(!std::filesystem::exists(directory / "eth0.pid"));
+        UHF_TEST_CHECK(!std::filesystem::exists(directory / "eth0.result"));
     }
 
     const std::filesystem::path matching_pid_path = directory / "eth0.pid";
     const pid_t matching_pid = ::fork();
-    assert(matching_pid >= 0);
+    UHF_TEST_CHECK(matching_pid >= 0);
     if (matching_pid == 0) {
         const int null_device = ::open("/dev/null", O_RDWR);
         if (null_device >= 0) {
@@ -121,20 +123,20 @@ int main() {
         matching_pid_file << matching_pid << '\n';
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    assert(client.stop(dhcp_config(), lease));
+    UHF_TEST_CHECK(client.stop(dhcp_config(), lease));
     int matching_status = 0;
-    assert(::waitpid(matching_pid, &matching_status, 0) == matching_pid);
-    assert(WIFSIGNALED(matching_status) || WIFEXITED(matching_status));
+    UHF_TEST_CHECK(::waitpid(matching_pid, &matching_status, 0) == matching_pid);
+    UHF_TEST_CHECK(WIFSIGNALED(matching_status) || WIFEXITED(matching_status));
 
     write_executable(
         fake_dhclient,
         "#!/bin/sh\n"
         "printf '%s\\n' version=1 interface=eth0 >\"$UHF_DHCP_RESULT_FILE\"\n");
-    assert(!client.acquire(dhcp_config(), lease));
+    UHF_TEST_CHECK(!client.acquire(dhcp_config(), lease));
 
     uhf::network::InterfaceConfig invalid = dhcp_config();
     invalid.name = "eth9";
-    assert(!client.acquire(invalid, lease));
+    UHF_TEST_CHECK(!client.acquire(invalid, lease));
 
     std::filesystem::remove_all(directory, ignored);
     return 0;

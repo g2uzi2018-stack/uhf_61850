@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "platform/network/network_transaction.hpp"
+#include "test_check.hpp"
 
-#include <cassert>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -75,7 +75,9 @@ public:
 
 std::filesystem::path temporary_path() {
     return std::filesystem::temp_directory_path() /
-        "uhf-network-transaction-smoke" / "transaction.json";
+        ("uhf-network-transaction-smoke-" +
+         std::to_string(static_cast<long long>(::getpid()))) /
+        "transaction.json";
 }
 
 }  // namespace
@@ -93,73 +95,73 @@ int main() {
 
     uhf::network::NetworkConfig candidate = backend.current;
     candidate.eth0.address = "192.168.3.231";
-    assert(manager.stage(candidate) == uhf::network::TransactionResult::ok);
-    assert(backend.stage_count == 1);
-    assert(store.load().status == uhf::network::LoadStatus::valid);
-    assert(manager.rollback_if_needed() == uhf::network::TransactionResult::not_due);
-    assert(manager.stage(candidate) == uhf::network::TransactionResult::busy);
+    UHF_TEST_CHECK(manager.stage(candidate) == uhf::network::TransactionResult::ok);
+    UHF_TEST_CHECK(backend.stage_count == 1);
+    UHF_TEST_CHECK(store.load().status == uhf::network::LoadStatus::valid);
+    UHF_TEST_CHECK(manager.rollback_if_needed() == uhf::network::TransactionResult::not_due);
+    UHF_TEST_CHECK(manager.stage(candidate) == uhf::network::TransactionResult::busy);
 
     clock.now = 161U;
-    assert(manager.rollback_if_needed() == uhf::network::TransactionResult::expired);
-    assert(backend.rollback_count == 1);
-    assert(store.load().status == uhf::network::LoadStatus::none);
-    assert(backend.current.eth0.address == "192.168.3.230");
+    UHF_TEST_CHECK(manager.rollback_if_needed() == uhf::network::TransactionResult::expired);
+    UHF_TEST_CHECK(backend.rollback_count == 1);
+    UHF_TEST_CHECK(store.load().status == uhf::network::LoadStatus::none);
+    UHF_TEST_CHECK(backend.current.eth0.address == "192.168.3.230");
 
     candidate.eth0.address = "192.168.3.232";
     clock.now = 200U;
-    assert(manager.stage(candidate) == uhf::network::TransactionResult::ok);
+    UHF_TEST_CHECK(manager.stage(candidate) == uhf::network::TransactionResult::ok);
     clock.now = 201U;
-    assert(manager.confirm() == uhf::network::TransactionResult::ok);
-    assert(backend.confirm_count == 1);
-    assert(backend.confirming_seen);
-    assert(store.load().status == uhf::network::LoadStatus::none);
-    assert(backend.current.eth0.address == "192.168.3.232");
+    UHF_TEST_CHECK(manager.confirm() == uhf::network::TransactionResult::ok);
+    UHF_TEST_CHECK(backend.confirm_count == 1);
+    UHF_TEST_CHECK(backend.confirming_seen);
+    UHF_TEST_CHECK(store.load().status == uhf::network::LoadStatus::none);
+    UHF_TEST_CHECK(backend.current.eth0.address == "192.168.3.232");
 
     candidate.eth0.address = "192.168.3.233";
     clock.now = 300U;
-    assert(manager.stage(candidate) == uhf::network::TransactionResult::ok);
+    UHF_TEST_CHECK(manager.stage(candidate) == uhf::network::TransactionResult::ok);
 
     const int lock_descriptor = ::open(
         (path.string() + ".lock").c_str(), O_RDWR | O_CLOEXEC);
-    assert(lock_descriptor >= 0);
-    assert(::flock(lock_descriptor, LOCK_EX | LOCK_NB) == 0);
-    assert(manager.confirm() == uhf::network::TransactionResult::busy);
-    assert(manager.rollback_if_needed() == uhf::network::TransactionResult::busy);
-    assert(::flock(lock_descriptor, LOCK_UN) == 0);
-    assert(::close(lock_descriptor) == 0);
-    assert(manager.rollback_now() == uhf::network::TransactionResult::ok);
-    assert(backend.current.eth0.address == "192.168.3.232");
+    UHF_TEST_CHECK(lock_descriptor >= 0);
+    UHF_TEST_CHECK(::flock(lock_descriptor, LOCK_EX | LOCK_NB) == 0);
+    UHF_TEST_CHECK(manager.confirm() == uhf::network::TransactionResult::busy);
+    UHF_TEST_CHECK(manager.rollback_if_needed() == uhf::network::TransactionResult::busy);
+    UHF_TEST_CHECK(::flock(lock_descriptor, LOCK_UN) == 0);
+    UHF_TEST_CHECK(::close(lock_descriptor) == 0);
+    UHF_TEST_CHECK(manager.rollback_now() == uhf::network::TransactionResult::ok);
+    UHF_TEST_CHECK(backend.current.eth0.address == "192.168.3.232");
 
     candidate.eth0.address = "192.168.3.234";
     clock.now = 400U;
-    assert(manager.stage(candidate) == uhf::network::TransactionResult::ok);
+    UHF_TEST_CHECK(manager.stage(candidate) == uhf::network::TransactionResult::ok);
     uhf::network::Transaction transaction = *store.load().transaction;
     transaction.state = uhf::network::TransactionState::confirming;
-    assert(store.save(transaction));
+    UHF_TEST_CHECK(store.save(transaction));
     backend.current = candidate;
-    assert(manager.rollback_if_needed() == uhf::network::TransactionResult::ok);
-    assert(store.load().status == uhf::network::LoadStatus::none);
-    assert(backend.current.eth0.address == "192.168.3.232");
+    UHF_TEST_CHECK(manager.rollback_if_needed() == uhf::network::TransactionResult::ok);
+    UHF_TEST_CHECK(store.load().status == uhf::network::LoadStatus::none);
+    UHF_TEST_CHECK(backend.current.eth0.address == "192.168.3.232");
 
     candidate.eth0.address = "192.168.3.235";
     clock.now = 500U;
-    assert(manager.stage(candidate) == uhf::network::TransactionResult::ok);
+    UHF_TEST_CHECK(manager.stage(candidate) == uhf::network::TransactionResult::ok);
     clock.id = "boot-b";
-    assert(manager.rollback_if_needed() == uhf::network::TransactionResult::boot_changed);
-    assert(backend.current.eth0.address == "192.168.3.232");
+    UHF_TEST_CHECK(manager.rollback_if_needed() == uhf::network::TransactionResult::boot_changed);
+    UHF_TEST_CHECK(backend.current.eth0.address == "192.168.3.232");
 
     clock.id = "boot-a";
     candidate.eth0.address = "192.168.3.236";
     backend.stage_ok = false;
     clock.now = 600U;
-    assert(manager.stage(candidate) == uhf::network::TransactionResult::backend_error);
-    assert(store.load().status == uhf::network::LoadStatus::none);
+    UHF_TEST_CHECK(manager.stage(candidate) == uhf::network::TransactionResult::backend_error);
+    UHF_TEST_CHECK(store.load().status == uhf::network::LoadStatus::none);
     backend.stage_ok = true;
 
     std::ofstream corrupt(path);
     corrupt << "{\"version\":1,\"state\":\"staged\"}";
     corrupt.close();
-    assert(manager.rollback_if_needed() == uhf::network::TransactionResult::corrupt);
+    UHF_TEST_CHECK(manager.rollback_if_needed() == uhf::network::TransactionResult::corrupt);
     std::filesystem::remove_all(path.parent_path(), ignored);
     return 0;
 }

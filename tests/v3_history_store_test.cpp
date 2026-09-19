@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "storage/v3_history_store.hpp"
+#include "test_check.hpp"
 
-#include <cassert>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -52,32 +52,32 @@ int main() {
     snapshot.current_status.last_attempt_utc = timestamp;
     snapshot.current_status.last_success_utc = timestamp;
     const auto path = store.save(snapshot, timestamp);
-    assert(path);
+    UHF_TEST_CHECK(path);
     const auto paths = store.list(10U);
-    assert(paths.size() == 1U);
+    UHF_TEST_CHECK(paths.size() == 1U);
     const auto record = store.read(paths.front());
-    assert(record);
-    assert(record->generation == 42U);
-    assert(record->timestamp == timestamp);
-    assert(record->snapshot.measurements[0].valid());
-    assert(record->snapshot.measurements[0].value == 12.5F);
-    assert(record->snapshot.pd[0].features[2].raw == 77U);
-    assert(record->snapshot.alarm_active[0]);
-    assert(record->snapshot.current_status.last_success_utc == timestamp);
-    assert(uhf::storage::V3HistoryStore::to_csv(*record).find("Ia") != std::string::npos);
+    UHF_TEST_CHECK(record);
+    UHF_TEST_CHECK(record->generation == 42U);
+    UHF_TEST_CHECK(record->timestamp == timestamp);
+    UHF_TEST_CHECK(record->snapshot.measurements[0].valid());
+    UHF_TEST_CHECK(record->snapshot.measurements[0].value == 12.5F);
+    UHF_TEST_CHECK(record->snapshot.pd[0].features[2].raw == 77U);
+    UHF_TEST_CHECK(record->snapshot.alarm_active[0]);
+    UHF_TEST_CHECK(record->snapshot.current_status.last_success_utc == timestamp);
+    UHF_TEST_CHECK(uhf::storage::V3HistoryStore::to_csv(*record).find("Ia") != std::string::npos);
 
     snapshot.generation = 43U;
     const auto blocked_temporary = root / "v3-123456-43.bin.tmp";
     std::filesystem::create_directory(blocked_temporary);
-    assert(!store.save(snapshot, timestamp));
+    UHF_TEST_CHECK(!store.save(snapshot, timestamp));
     const auto preserved = store.read(*path);
-    assert(preserved && preserved->generation == 42U);
+    UHF_TEST_CHECK(preserved && preserved->generation == 42U);
     std::filesystem::remove(blocked_temporary, error);
 
     std::ifstream current_file(*path, std::ios::binary);
     const std::vector<std::uint8_t> current_bytes{
         std::istreambuf_iterator<char>(current_file), std::istreambuf_iterator<char>()};
-    assert(current_bytes.size() > 89U);
+    UHF_TEST_CHECK(current_bytes.size() > 89U);
     std::vector<std::uint8_t> legacy_bytes(current_bytes.begin(), current_bytes.begin() + 22);
     legacy_bytes[4] = 1U;
     legacy_bytes[5] = 0U;
@@ -95,15 +95,15 @@ int main() {
         static_cast<std::streamsize>(legacy_bytes.size()));
     legacy_file.close();
     const auto legacy_record = store.read(legacy_path);
-    assert(legacy_record && legacy_record->generation == 42U);
-    assert(legacy_record->snapshot.current_status.last_success_utc ==
+    UHF_TEST_CHECK(legacy_record && legacy_record->generation == 42U);
+    UHF_TEST_CHECK(legacy_record->snapshot.current_status.last_success_utc ==
         std::chrono::system_clock::time_point{});
 
     std::ofstream corrupt(*path, std::ios::binary | std::ios::app);
     corrupt.put('x');
     corrupt.close();
-    assert(!store.read(*path));
-    assert(!store.read(root.parent_path() / "outside.bin"));
+    UHF_TEST_CHECK(!store.read(*path));
+    UHF_TEST_CHECK(!store.read(root.parent_path() / "outside.bin"));
 
     std::filesystem::remove_all(root, error);
     return 0;

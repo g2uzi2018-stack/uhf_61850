@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "platform/privileged/network_service.hpp"
+#include "test_check.hpp"
 
-#include <cassert>
 #include <filesystem>
 #include <unistd.h>
 
@@ -54,7 +54,9 @@ public:
 
 int main() {
     const std::filesystem::path directory =
-        std::filesystem::temp_directory_path() / "uhf-network-service-smoke";
+        std::filesystem::temp_directory_path() /
+        ("uhf-network-service-smoke-" +
+         std::to_string(static_cast<long long>(::getpid())));
     std::error_code ignored;
     std::filesystem::remove_all(directory, ignored);
     FakeMaintenanceRunner maintenance;
@@ -65,38 +67,38 @@ int main() {
 
     const uhf::privileged::Reply restart =
         service.handle("maintenance.restart-service", ::getuid(), ::getgid());
-    assert(restart.ok && restart.code == "ok");
-    assert(maintenance.restart_count == 1);
+    UHF_TEST_CHECK(restart.ok && restart.code == "ok");
+    UHF_TEST_CHECK(maintenance.restart_count == 1);
     const uhf::privileged::Reply reboot =
         service.handle("maintenance.reboot", ::getuid(), ::getgid());
-    assert(reboot.ok && reboot.code == "ok");
-    assert(maintenance.reboot_count == 1);
+    UHF_TEST_CHECK(reboot.ok && reboot.code == "ok");
+    UHF_TEST_CHECK(maintenance.reboot_count == 1);
     maintenance.restart_ok = false;
     const uhf::privileged::Reply failed =
         service.handle("maintenance.restart-service", ::getuid(), ::getgid());
-    assert(!failed.ok && failed.code == "maintenance_error");
+    UHF_TEST_CHECK(!failed.ok && failed.code == "maintenance_error");
     const uhf::privileged::Reply time_sync =
         service.handle("time.sync\npool.ntp.org", ::getuid(), ::getgid());
-    assert(time_sync.ok && maintenance.sntp_count == 1);
-    assert(maintenance.sntp_server == "pool.ntp.org");
+    UHF_TEST_CHECK(time_sync.ok && maintenance.sntp_count == 1);
+    UHF_TEST_CHECK(maintenance.sntp_server == "pool.ntp.org");
     const uhf::privileged::Reply invalid_time_sync =
         service.handle("time.sync\ninvalid server", ::getuid(), ::getgid());
-    assert(!invalid_time_sync.ok && invalid_time_sync.code == "invalid_time_request");
-    assert(maintenance.sntp_count == 1);
+    UHF_TEST_CHECK(!invalid_time_sync.ok && invalid_time_sync.code == "invalid_time_request");
+    UHF_TEST_CHECK(maintenance.sntp_count == 1);
     const uhf::privileged::Reply time_disable =
         service.handle("time.disable", ::getuid(), ::getgid());
-    assert(time_disable.ok && maintenance.sntp_disable_count == 1);
+    UHF_TEST_CHECK(time_disable.ok && maintenance.sntp_disable_count == 1);
     const uhf::privileged::Reply time_set =
         service.handle("time.set\n2026-09-02T12:34:56", ::getuid(), ::getgid());
-    assert(time_set.ok && maintenance.time_set_count == 1);
-    assert(maintenance.system_time == "2026-09-02T12:34:56");
+    UHF_TEST_CHECK(time_set.ok && maintenance.time_set_count == 1);
+    UHF_TEST_CHECK(maintenance.system_time == "2026-09-02T12:34:56");
     const uhf::privileged::Reply invalid_time_set =
         service.handle("time.set\n2026-02-30T12:34", ::getuid(), ::getgid());
-    assert(!invalid_time_set.ok && invalid_time_set.code == "invalid_time_request");
-    assert(maintenance.time_set_count == 1);
+    UHF_TEST_CHECK(!invalid_time_set.ok && invalid_time_set.code == "invalid_time_request");
+    UHF_TEST_CHECK(maintenance.time_set_count == 1);
     const uhf::privileged::Reply unknown =
         service.handle("maintenance.run arbitrary-command", ::getuid(), ::getgid());
-    assert(!unknown.ok && unknown.code == "unknown_operation");
+    UHF_TEST_CHECK(!unknown.ok && unknown.code == "unknown_operation");
     std::filesystem::remove_all(directory, ignored);
     return 0;
 }
