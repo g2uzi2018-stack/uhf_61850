@@ -119,6 +119,19 @@ private:
         }
         return result;
     }
+    void write_bytes(const std::vector<std::uint8_t>& bytes) {
+        std::size_t offset = 0U;
+        while (offset < bytes.size()) {
+            const ssize_t written = ::write(master_, bytes.data() + offset, bytes.size() - offset);
+            if (written > 0) {
+                offset += static_cast<std::size_t>(written);
+            } else if (written < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) {
+                std::this_thread::yield();
+            } else {
+                return;
+            }
+        }
+    }
     void send_reply(const std::array<std::uint8_t, 6>& request) {
         const std::uint16_t start = static_cast<std::uint16_t>(
             static_cast<std::uint16_t>(request[2]) << 8U | request[3]);
@@ -136,7 +149,7 @@ private:
             const std::uint16_t crc = modbus_crc16(response.data(), response.size());
             response.push_back(static_cast<std::uint8_t>(crc & 255U));
             response.push_back(static_cast<std::uint8_t>(crc >> 8U));
-            (void)::write(master_, response.data(), response.size());
+            write_bytes(response);
             return;
         }
         std::vector<std::uint8_t> response{request[0], request[1],
@@ -151,7 +164,7 @@ private:
         if (fault_ == ReplyFault::short_frame && !fault_used_) {
             fault_used_ = true;
             response.resize(3U);
-            (void)::write(master_, response.data(), response.size());
+            write_bytes(response);
             return;
         }
         if (fault_ == ReplyFault::crc && !fault_used_) {
