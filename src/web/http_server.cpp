@@ -6,6 +6,7 @@
 #include "web/crypto.hpp"
 #include "web/snapshot_json.hpp"
 #include "web/v3_snapshot_json.hpp"
+#include "storage/v3_history_store.hpp"
 
 #include <algorithm>
 #include <array>
@@ -1476,6 +1477,26 @@ std::string HttpServer::logs_json(std::size_t limit) const {
 
 std::optional<std::string> HttpServer::frames_json() const {
     try {
+        if (v3_snapshot_store_ != nullptr) {
+            storage::V3HistoryStore store(data_root_ / "v3");
+            const std::vector<std::filesystem::path> paths = store.list(100U);
+            std::string body = "{\"schema_version\":3,\"entries\":[";
+            bool first = true;
+            for (const auto& path : paths) {
+                const auto record = store.read(path);
+                if (!record) continue;
+                if (!first) body.push_back(',');
+                first = false;
+                const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    record->timestamp.time_since_epoch());
+                body += "{\"name\":\"" + json_escape(path.filename().string()) +
+                    "\",\"generation\":" + std::to_string(record->generation) +
+                    ",\"timestamp_ms\":" + std::to_string(milliseconds.count()) +
+                    ",\"schema\":3}";
+            }
+            body += "]}\n";
+            return body;
+        }
         storage::FrameStore store(data_root_ / "frames");
         const std::vector<std::filesystem::path> paths = store.list(100U);
         std::string body = "{\"schema_version\":1,\"entries\":[";
@@ -1552,6 +1573,14 @@ std::optional<std::string> HttpServer::events_json() const {
 
 std::optional<std::string> HttpServer::latest_frame_csv() const {
     try {
+        if (v3_snapshot_store_ != nullptr) {
+            storage::V3HistoryStore store(data_root_ / "v3");
+            const std::vector<std::filesystem::path> paths = store.list(1U);
+            if (paths.empty()) return std::nullopt;
+            const auto record = store.read(paths.front());
+            return record ? std::optional<std::string>{storage::V3HistoryStore::to_csv(*record)} :
+                            std::nullopt;
+        }
         storage::FrameStore store(data_root_ / "frames");
         const std::vector<std::filesystem::path> paths = store.list(1U);
         if (paths.empty()) {

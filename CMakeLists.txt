@@ -155,6 +155,7 @@ add_executable(uhf-gatewayd
     src/storage/event_store.cpp
     src/storage/storage_cleaner.cpp
     src/storage/persistence_runtime.cpp
+    src/storage/v3_history_store.cpp
     src/logging/logger.cpp
     src/health/health.cpp
     src/web/auth_store.cpp
@@ -822,16 +823,44 @@ add_executable(uhf_persistence_runtime_smoke ${UHF_TEST_TARGET_OPTIONS}
     src/storage/event_detector.cpp
     src/storage/event_store.cpp
     src/storage/storage_cleaner.cpp
+    src/storage/v3_history_store.cpp
     src/acquisition/acquisition.cpp
     src/domain/modbus.cpp
     src/domain/snapshot.cpp
     src/logging/logger.cpp
+    src/v3/acquisition.cpp
+    src/v3/measurements.cpp
+    src/v3/protocol.cpp
+    src/v3/register_map.cpp
 )
 target_compile_features(uhf_persistence_runtime_smoke PRIVATE cxx_std_17)
 target_include_directories(uhf_persistence_runtime_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_link_libraries(uhf_persistence_runtime_smoke PRIVATE Threads::Threads)
 if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(uhf_persistence_runtime_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
+add_executable(uhf_v3_history_store_smoke ${UHF_TEST_TARGET_OPTIONS}
+    tests/v3_history_store_test.cpp
+    src/storage/v3_history_store.cpp
+    src/domain/modbus.cpp
+    src/v3/acquisition.cpp
+    src/v3/measurements.cpp
+    src/v3/protocol.cpp
+    src/v3/register_map.cpp
+)
+target_compile_features(uhf_v3_history_store_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_v3_history_store_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_v3_history_store_smoke PRIVATE
         -Wall
         -Wextra
         -Wpedantic
@@ -1316,6 +1345,7 @@ if(BUILD_TESTING)
     add_test(NAME uhf_health_smoke COMMAND uhf_health_smoke)
     add_test(NAME uhf_storage_cleaner_smoke COMMAND uhf_storage_cleaner_smoke)
     add_test(NAME uhf_persistence_runtime_smoke COMMAND uhf_persistence_runtime_smoke)
+    add_test(NAME uhf_v3_history_store_smoke COMMAND uhf_v3_history_store_smoke)
     add_test(NAME uhf_config_store_smoke COMMAND uhf_config_store_smoke)
     add_test(NAME uhf_systemd_notify_smoke COMMAND uhf_systemd_notify_smoke)
     add_test(NAME uhf_tls_context_smoke COMMAND uhf_tls_context_smoke)

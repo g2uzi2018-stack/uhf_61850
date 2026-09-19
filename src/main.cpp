@@ -7,8 +7,11 @@
 #include "web/http_server.hpp"
 
 #include <charconv>
+#include <cmath>
+#include <cerrno>
 #include <chrono>
 #include <cstddef>
+#include <cstdlib>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
@@ -43,6 +46,10 @@ struct WebOptions {
     std::string v3_pd_device{"/dev/ttyS1"};
     std::string v3_current_device{"/dev/ttyS2"};
     std::string v3_temperature_device{"/dev/ttyS3"};
+    float v3_current_multiplier{std::numeric_limits<float>::quiet_NaN()};
+    float v3_current_offset{std::numeric_limits<float>::quiet_NaN()};
+    float v3_temperature_multiplier{std::numeric_limits<float>::quiet_NaN()};
+    float v3_temperature_offset{std::numeric_limits<float>::quiet_NaN()};
     bool modbus_tcp_explicit{false};
     std::string modbus_tcp_bind{"192.168.3.230"};
     std::uint16_t modbus_tcp_port{502};
@@ -83,6 +90,19 @@ bool parse_listen(std::string_view value, std::string& address, std::uint16_t& p
     return true;
 }
 
+bool parse_float(std::string_view value, float& output) {
+    std::string text(value);
+    char* end = nullptr;
+    errno = 0;
+    const float parsed = std::strtof(text.c_str(), &end);
+    if (errno != 0 || end == text.c_str() || end != text.c_str() + text.size() ||
+        !std::isfinite(parsed)) {
+        return false;
+    }
+    output = parsed;
+    return true;
+}
+
 void print_usage() {
     std::cerr << "usage: " << uhf::app::kProductName
               << " [--version|--self-test|--web "
@@ -90,6 +110,8 @@ void print_usage() {
                  "[--http-recovery] [--tls-cert PATH] [--tls-key PATH] "
                  "[--simulate|--v3|--no-acquisition] [--acquisition-device PATH] "
                  "[--v3-pd-device PATH] [--v3-current-device PATH] [--v3-temperature-device PATH] "
+                 "[--v3-current-multiplier N] [--v3-current-offset N] "
+                 "[--v3-temperature-multiplier N] [--v3-temperature-offset N] "
                  "[--modbus-tcp-listen IPV4:PORT] [--modbus-rtu-device PATH] "
                  "[--no-modbus-rtu] [--iec61850-listen IPV4:PORT] [--no-iec61850] "
                  "[--data-dir PATH] [--config PATH] [--privileged-socket PATH]]\n";
@@ -157,6 +179,26 @@ int main(int argc, char* argv[]) {
                 options.v3_current_device = argv[++index];
             } else if (option == "--v3-temperature-device" && index + 1 < argc) {
                 options.v3_temperature_device = argv[++index];
+            } else if (option == "--v3-current-multiplier" && index + 1 < argc) {
+                if (!parse_float(argv[++index], options.v3_current_multiplier)) {
+                    std::cerr << "invalid --v3-current-multiplier value\n";
+                    return 2;
+                }
+            } else if (option == "--v3-current-offset" && index + 1 < argc) {
+                if (!parse_float(argv[++index], options.v3_current_offset)) {
+                    std::cerr << "invalid --v3-current-offset value\n";
+                    return 2;
+                }
+            } else if (option == "--v3-temperature-multiplier" && index + 1 < argc) {
+                if (!parse_float(argv[++index], options.v3_temperature_multiplier)) {
+                    std::cerr << "invalid --v3-temperature-multiplier value\n";
+                    return 2;
+                }
+            } else if (option == "--v3-temperature-offset" && index + 1 < argc) {
+                if (!parse_float(argv[++index], options.v3_temperature_offset)) {
+                    std::cerr << "invalid --v3-temperature-offset value\n";
+                    return 2;
+                }
             } else if (option == "--modbus-tcp-listen" && index + 1 < argc) {
                 if (!parse_listen(argv[++index], options.modbus_tcp_bind, options.modbus_tcp_port)) {
                     std::cerr << "invalid --modbus-tcp-listen value\n";
@@ -268,6 +310,10 @@ int main(int argc, char* argv[]) {
                 runtime_options.v3_pd_device = options.v3_pd_device;
                 runtime_options.v3_current_device = options.v3_current_device;
                 runtime_options.v3_temperature_device = options.v3_temperature_device;
+                runtime_options.v3_scheduler_options.collector.current_scale = {
+                    options.v3_current_multiplier, options.v3_current_offset};
+                runtime_options.v3_scheduler_options.collector.temperature_scale = {
+                    options.v3_temperature_multiplier, options.v3_temperature_offset};
                 runtime_options.acquisition_options.slave_id = configured.values.acquisition_slave_id;
                 runtime_options.acquisition_options.response_timeout = std::chrono::milliseconds(
                     configured.values.acquisition_response_timeout_ms);

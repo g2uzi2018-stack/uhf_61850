@@ -8,6 +8,7 @@
 #include "storage/event_store.hpp"
 #include "storage/frame_store.hpp"
 #include "storage/storage_cleaner.hpp"
+#include "storage/v3_history_store.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -27,6 +28,7 @@ struct PersistenceOptions {
     std::chrono::seconds cleanup_period{std::chrono::hours(1)};
     CleanerOptions cleaner_options{};
     EventOptions event_options{};
+    const v3::SnapshotStore* v3_snapshot_store{nullptr};
 };
 
 struct PersistenceStats {
@@ -65,7 +67,9 @@ private:
     acquisition::SnapshotStore& snapshot_store_;
     logging::Logger& logger_;
     PersistenceOptions options_;
+    const v3::SnapshotStore* v3_snapshot_store_{nullptr};
     FrameStore frame_store_;
+    std::unique_ptr<V3HistoryStore> v3_history_store_;
     EventBundleStore event_store_;
     StorageCleaner cleaner_;
     EventDetector event_detector_;

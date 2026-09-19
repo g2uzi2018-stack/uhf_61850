@@ -407,6 +407,12 @@ bool PortCollector::poll_current() {
     }
     std::array<std::uint16_t, 8> words{};
     std::copy(registers.begin(), registers.end(), words.begin());
+    if (!std::isfinite(options_.current_scale.multiplier) ||
+        !std::isfinite(options_.current_scale.offset)) {
+        snapshots_.publish_current(CurrentValues{}, clock_.now());
+        last_error_ = "current scale is not configured";
+        return true;
+    }
     snapshots_.publish_current(current_values_with_quality(current_values(
         words, options_.current_encoding, options_.current_scale)), clock_.now());
     return true;
@@ -422,6 +428,12 @@ bool PortCollector::poll_temperature() {
     }
     std::array<std::uint16_t, 6> words{};
     std::copy(registers.begin(), registers.end(), words.begin());
+    if (!std::isfinite(options_.temperature_scale.multiplier) ||
+        !std::isfinite(options_.temperature_scale.offset)) {
+        snapshots_.publish_temperature(TemperatureValues{}, clock_.now());
+        last_error_ = "temperature scale is not configured";
+        return true;
+    }
     snapshots_.publish_temperature(temperature_values_with_quality(
         temperature_values(words, options_.temperature_scale)), clock_.now());
     return true;

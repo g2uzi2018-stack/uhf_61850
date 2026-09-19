@@ -101,7 +101,8 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
             *modbus_rtu_serial_port_, snapshot_store_, options_.modbus_rtu_options,
             v3_snapshot_store_.get());
     }
-    if (options_.start_persistence && !options_.v3_enabled) {
+    if (options_.start_persistence) {
+        options_.persistence_options.v3_snapshot_store = v3_snapshot_store_.get();
         persistence_worker_ = std::make_unique<storage::PersistenceWorker>(
             snapshot_store_, logger_, options_.persistence_options);
     }

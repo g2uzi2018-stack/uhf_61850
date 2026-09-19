@@ -25,10 +25,15 @@ PersistenceWorker::PersistenceWorker(
     : snapshot_store_(snapshot_store),
       logger_(logger),
       options_(std::move(options)),
+      v3_snapshot_store_(options_.v3_snapshot_store),
       frame_store_(options_.data_root / "frames"),
       event_store_(options_.data_root / "events"),
       cleaner_(options_.data_root, options_.cleaner_options),
-      event_detector_(options_.event_options) {}
+      event_detector_(options_.event_options) {
+    if (options_.v3_snapshot_store != nullptr) {
+        v3_history_store_ = std::make_unique<V3HistoryStore>(options_.data_root / "v3");
+    }
+}
 
 PersistenceWorker::~PersistenceWorker() {
     stop();
@@ -162,6 +167,32 @@ void PersistenceWorker::run() {
             }
         }
 
+        if (v3_snapshot_store_ != nullptr && v3_history_store_ != nullptr) {
+            const v3::UnifiedSnapshot snapshot = v3_snapshot_store_->snapshot();
+            if (snapshot.generation != 0U && snapshot.generation > last_generation) {
+                last_generation = snapshot.generation;
+                const bool period_elapsed = !last_periodic_save ||
+                    options_.periodic_period <= std::chrono::seconds::zero() ||
+                    now >= *last_periodic_save + options_.periodic_period;
+                if (period_elapsed && snapshot.generation != last_periodic_generation) {
+                    if (!cleaner_.accepting_writes()) {
+                        if (dropped_generation != snapshot.generation) {
+                            dropped_generation = snapshot.generation;
+                            increment_dropped_frame();
+                        }
+                    } else if (v3_history_store_->save(snapshot, now_utc)) {
+                        last_periodic_save = now;
+                        last_periodic_generation = snapshot.generation;
+                        dropped_generation = 0U;
+                        std::lock_guard<std::mutex> lock(stats_mutex_);
+                        ++stats_.saved_frame_count;
+                    } else if (dropped_generation != snapshot.generation) {
+                        dropped_generation = snapshot.generation;
+                        increment_dropped_frame();
+                    }
+                }
+            }
+        } else {
         const acquisition::ServingView serving_view = snapshot_store_.serving_view();
         if (serving_view.snapshot && serving_view.snapshot->generation != 0U &&
             serving_view.snapshot->generation > last_generation) {
@@ -205,6 +236,7 @@ void PersistenceWorker::run() {
                         "unable to persist periodic measurement frame");
                 }
             }
+        }
         }
 
         save_completed_events(event_detector_.advance(now));

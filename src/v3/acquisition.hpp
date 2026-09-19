@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -120,8 +121,10 @@ struct CollectorOptions {
     std::chrono::milliseconds pd_segment_interval{3000};
     std::uint8_t max_retries{3U};
     WordEncoding current_encoding{WordEncoding::unsigned16};
-    LinearScale current_scale{1.0F, 0.0F};
-    LinearScale temperature_scale{1.0F, 0.0F};
+    LinearScale current_scale{
+        std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()};
+    LinearScale temperature_scale{
+        std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()};
 };
 
 class PortCollector {

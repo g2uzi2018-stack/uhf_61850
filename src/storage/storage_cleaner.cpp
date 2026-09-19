@@ -55,6 +55,8 @@ std::optional<std::chrono::system_clock::time_point> StorageCleaner::filename_ti
         number_start = 6U;
     } else if (name.rfind("event-", 0U) == 0U) {
         number_start = 6U;
+    } else if (name.rfind("v3-", 0U) == 0U) {
+        number_start = 3U;
     } else {
         return std::nullopt;
     }
@@ -75,7 +77,7 @@ std::optional<std::chrono::system_clock::time_point> StorageCleaner::filename_ti
 
 bool StorageCleaner::scan_candidates(std::vector<Candidate>& candidates) const {
     candidates.clear();
-    constexpr std::array<std::string_view, 2U> directories = {"frames", "events"};
+    constexpr std::array<std::string_view, 3U> directories = {"frames", "events", "v3"};
     for (const std::string_view directory_name : directories) {
         const std::filesystem::path directory = data_root_ / directory_name;
         std::error_code error;
@@ -108,7 +110,7 @@ bool StorageCleaner::scan_candidates(std::vector<Candidate>& candidates) const {
                 continue;
             }
             candidates.push_back(Candidate{
-                entry.path(), *timestamp, directory_name == "frames"});
+                entry.path(), *timestamp, directory_name == "frames" || directory_name == "v3"});
         }
     }
     std::sort(candidates.begin(), candidates.end(), [](const Candidate& first, const Candidate& second) {

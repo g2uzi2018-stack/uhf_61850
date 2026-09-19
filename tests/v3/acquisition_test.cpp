@@ -216,6 +216,7 @@ int main() {
         options.retry_delay = std::chrono::milliseconds(1);
         options.quarantine_duration = std::chrono::milliseconds(1);
         options.pd_segment_interval = std::chrono::milliseconds(0);
+        options.current_scale = {1.0F, 0.0F};
         options.temperature_scale = {0.1F, 0.0F};
 
         PtyDevice pd_device(DeviceKind::pd);

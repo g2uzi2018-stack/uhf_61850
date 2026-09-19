@@ -159,6 +159,36 @@ bool run_event_configuration_reload_case(uhf::logging::Logger& logger) {
         expect(stats.saved_event_count == 1U, "one reloaded event saved");
 }
 
+bool run_v3_history_case(uhf::logging::Logger& logger) {
+    const std::filesystem::path root = std::filesystem::temp_directory_path() /
+        ("uhf-persistence-v3-" + std::to_string(static_cast<long long>(::getpid())));
+    std::error_code cleanup_error;
+    std::filesystem::remove_all(root, cleanup_error);
+    uhf::acquisition::SnapshotStore legacy_store;
+    uhf::v3::SnapshotStore v3_store;
+    uhf::storage::PersistenceOptions options;
+    options.data_root = root;
+    options.v3_snapshot_store = &v3_store;
+    options.periodic_period = std::chrono::seconds::zero();
+    options.cleanup_period = std::chrono::hours(1);
+    options.cleaner_options.min_free_bytes = 0U;
+    options.cleaner_options.low_watermark_percent = 0U;
+    options.cleaner_options.recovery_percent = 0U;
+    options.cleaner_options.recovery_extra_bytes = 0U;
+    uhf::storage::PersistenceWorker worker(legacy_store, logger, options);
+    worker.start();
+    uhf::v3::TemperatureValues temperature{};
+    temperature[0] = uhf::v3::valid_value(20.0F);
+    v3_store.publish_temperature(temperature, std::chrono::steady_clock::now());
+    const bool saved = wait_for_file_count(root / "v3", 1U, std::chrono::seconds(2));
+    worker.stop();
+    const auto paths = uhf::storage::V3HistoryStore(root / "v3").list(1U);
+    const bool readable = saved && !paths.empty() &&
+        uhf::storage::V3HistoryStore(root / "v3").read(paths.front()).has_value();
+    std::filesystem::remove_all(root, cleanup_error);
+    return expect(readable, "v3 history record saved and readable");
+}
+
 }  // namespace
 
 int main() {
@@ -174,6 +204,9 @@ int main() {
             return 1;
         }
         if (!run_event_configuration_reload_case(logger)) {
+            return 1;
+        }
+        if (!run_v3_history_case(logger)) {
             return 1;
         }
         uhf::acquisition::SnapshotStore snapshot_store;
