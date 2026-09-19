@@ -5,6 +5,7 @@
 #include "platform/systemd/notify.hpp"
 #include "web/crypto.hpp"
 #include "web/snapshot_json.hpp"
+#include "web/v3_snapshot_json.hpp"
 
 #include <algorithm>
 #include <array>
@@ -1111,13 +1112,15 @@ HttpServer::HttpServer(
     Iec61850StatsProvider iec61850_stats_provider,
     Iec61850EndpointProvider iec61850_endpoint_provider,
     Iec61850ModelProvider iec61850_model_provider,
-    Iec61850ReloadHandler iec61850_reload_handler)
+    Iec61850ReloadHandler iec61850_reload_handler,
+    const v3::SnapshotStore* v3_snapshot_store)
     : document_root_(std::move(document_root)),
       bind_address_(std::move(bind_address)),
       port_(port),
       auth_store_(state_directory),
       icd_store_(state_directory / "UHFPD1.icd"),
       snapshot_store_(snapshot_store),
+      v3_snapshot_store_(v3_snapshot_store),
       health_input_provider_(std::move(health_input_provider)),
       iec61850_stats_provider_(std::move(iec61850_stats_provider)),
       iec61850_endpoint_provider_(std::move(iec61850_endpoint_provider)),
@@ -1416,6 +1419,9 @@ std::string HttpServer::iec61850_icd_json() const {
 }
 
 std::optional<std::string> HttpServer::snapshot_json() const {
+    if (v3_snapshot_store_ != nullptr) {
+        return render_v3_snapshot_json(v3_snapshot_store_->snapshot());
+    }
     if (!snapshot_store_) {
         return std::nullopt;
     }

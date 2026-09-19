@@ -108,13 +108,33 @@ void SnapshotStore::publish_pd_channel(
     value_.pd[channel] = std::move(value);
     value_.pd_valid[channel] = true;
     ++value_.generation;
-    mark_success(Source::pd, at);
+    pd_channel_online_[channel] = true;
+    SourceStatus& status = value_.pd_status;
+    status.has_sample = true;
+    status.last_attempt = at;
+    status.last_success = at;
+    status.last_error.clear();
+    const bool all_channels_online = std::all_of(
+        pd_channel_online_.begin(), pd_channel_online_.end(), [](bool online) { return online; });
+    status.online = all_channels_online;
+    if (all_channels_online) {
+        status.communication_alarm = false;
+        status.consecutive_failures = 0U;
+    }
 }
 
 void SnapshotStore::publish_current(CurrentValues value,
                                     std::chrono::steady_clock::time_point at) {
     std::lock_guard<std::mutex> lock(mutex_);
     value_.current = std::move(value);
+    if (current_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
+        calculator_ = MonitoringCalculator(WarmupPolicy::use_available,
+                                            MeanPolicy::reject_nonpositive);
+        current_sequence_ = 0U;
+    }
+    ++current_sequence_;
+    (void)calculator_.on_current(current_sequence_, value_.current);
+    value_.measurements = calculator_.snapshot();
     ++value_.generation;
     mark_success(Source::current, at);
 }
@@ -123,6 +143,8 @@ void SnapshotStore::publish_temperature(TemperatureValues value,
                                          std::chrono::steady_clock::time_point at) {
     std::lock_guard<std::mutex> lock(mutex_);
     value_.temperature = std::move(value);
+    calculator_.on_temperature(value_.temperature);
+    value_.measurements = calculator_.snapshot();
     ++value_.generation;
     mark_success(Source::temperature, at);
 }
@@ -144,9 +166,14 @@ void SnapshotStore::record_failure(Source source,
     status.communication_alarm = status.consecutive_failures >= alarm_after_failures_;
     if (source == Source::current) {
         value_.current = {};
+        calculator_.invalidate_current();
+        value_.measurements = calculator_.snapshot();
     } else if (source == Source::temperature) {
         value_.temperature = {};
+        calculator_.invalidate_temperature();
+        value_.measurements = calculator_.snapshot();
     } else {
+        pd_channel_online_.fill(false);
         for (std::size_t channel = 0; channel < kChannelCount; ++channel) {
             value_.pd_valid[channel] = false;
             invalidate_pd(value_.pd[channel]);
@@ -167,6 +194,7 @@ void SnapshotStore::record_pd_failure(std::size_t channel,
     }
     std::lock_guard<std::mutex> lock(mutex_);
     SourceStatus& status = value_.pd_status;
+    pd_channel_online_[channel] = false;
     status.online = false;
     status.last_attempt = at;
     status.last_error = std::move(error);

@@ -37,8 +37,12 @@ struct WebOptions {
     std::filesystem::path tls_private_key;
     bool start_acquisition{true};
     bool simulate{false};
+    bool v3_enabled{false};
     std::string acquisition_device{"/dev/ttyS1"};
     bool acquisition_device_explicit{false};
+    std::string v3_pd_device{"/dev/ttyS1"};
+    std::string v3_current_device{"/dev/ttyS2"};
+    std::string v3_temperature_device{"/dev/ttyS3"};
     bool modbus_tcp_explicit{false};
     std::string modbus_tcp_bind{"192.168.3.230"};
     std::uint16_t modbus_tcp_port{502};
@@ -84,7 +88,8 @@ void print_usage() {
               << " [--version|--self-test|--web "
                  "[--web-root PATH] [--state-dir PATH] [--listen IPV4:PORT] "
                  "[--http-recovery] [--tls-cert PATH] [--tls-key PATH] "
-                 "[--simulate|--no-acquisition] [--acquisition-device PATH] "
+                 "[--simulate|--v3|--no-acquisition] [--acquisition-device PATH] "
+                 "[--v3-pd-device PATH] [--v3-current-device PATH] [--v3-temperature-device PATH] "
                  "[--modbus-tcp-listen IPV4:PORT] [--modbus-rtu-device PATH] "
                  "[--no-modbus-rtu] [--iec61850-listen IPV4:PORT] [--no-iec61850] "
                  "[--data-dir PATH] [--config PATH] [--privileged-socket PATH]]\n";
@@ -138,11 +143,20 @@ int main(int argc, char* argv[]) {
                 options.tls_private_key_explicit = true;
             } else if (option == "--simulate") {
                 options.simulate = true;
+            } else if (option == "--v3") {
+                options.v3_enabled = true;
+                options.simulate = false;
             } else if (option == "--no-acquisition") {
                 options.start_acquisition = false;
             } else if (option == "--acquisition-device" && index + 1 < argc) {
                 options.acquisition_device = argv[++index];
                 options.acquisition_device_explicit = true;
+            } else if (option == "--v3-pd-device" && index + 1 < argc) {
+                options.v3_pd_device = argv[++index];
+            } else if (option == "--v3-current-device" && index + 1 < argc) {
+                options.v3_current_device = argv[++index];
+            } else if (option == "--v3-temperature-device" && index + 1 < argc) {
+                options.v3_temperature_device = argv[++index];
             } else if (option == "--modbus-tcp-listen" && index + 1 < argc) {
                 if (!parse_listen(argv[++index], options.modbus_tcp_bind, options.modbus_tcp_port)) {
                     std::cerr << "invalid --modbus-tcp-listen value\n";
@@ -248,8 +262,12 @@ int main(int argc, char* argv[]) {
             if (options.start_acquisition) {
                 uhf::app::GatewayRuntimeOptions runtime_options;
                 runtime_options.simulate = options.simulate;
+                runtime_options.v3_enabled = options.v3_enabled;
                 runtime_options.config_store = config_store.get();
                 runtime_options.acquisition_device = options.acquisition_device;
+                runtime_options.v3_pd_device = options.v3_pd_device;
+                runtime_options.v3_current_device = options.v3_current_device;
+                runtime_options.v3_temperature_device = options.v3_temperature_device;
                 runtime_options.acquisition_options.slave_id = configured.values.acquisition_slave_id;
                 runtime_options.acquisition_options.response_timeout = std::chrono::milliseconds(
                     configured.values.acquisition_response_timeout_ms);
@@ -308,7 +326,8 @@ int main(int argc, char* argv[]) {
                 std::move(options.bind_address),
                 options.port,
                 std::move(options.state_directory),
-                runtime_pointer == nullptr ? nullptr : &runtime_pointer->snapshot_store(),
+                runtime_pointer == nullptr || options.v3_enabled
+                    ? nullptr : &runtime_pointer->snapshot_store(),
                 runtime_pointer == nullptr
                     ? uhf::web::HealthInputProvider{}
                     : uhf::web::HealthInputProvider{
@@ -335,7 +354,8 @@ int main(int argc, char* argv[]) {
                 runtime_pointer == nullptr
                     ? uhf::web::Iec61850ReloadHandler{}
                     : uhf::web::Iec61850ReloadHandler{
-                          [runtime_pointer] { return runtime_pointer->reload_iec61850_model(); }});
+                          [runtime_pointer] { return runtime_pointer->reload_iec61850_model(); }},
+                runtime_pointer == nullptr ? nullptr : runtime_pointer->v3_snapshot_store());
             const int result = server.run();
             if (runtime) {
                 runtime->stop();

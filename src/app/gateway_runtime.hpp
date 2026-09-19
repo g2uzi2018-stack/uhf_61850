@@ -9,6 +9,7 @@
 #include "modbus/rtu_server.hpp"
 #include "modbus/tcp_server.hpp"
 #include "storage/persistence_runtime.hpp"
+#include "v3/acquisition.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -23,8 +24,13 @@ namespace uhf::app {
 
 struct GatewayRuntimeOptions {
     bool simulate{false};
+    bool v3_enabled{false};
     config::ConfigStore* config_store{nullptr};
     std::string acquisition_device{"/dev/ttyS1"};
+    std::string v3_pd_device{"/dev/ttyS1"};
+    std::string v3_current_device{"/dev/ttyS2"};
+    std::string v3_temperature_device{"/dev/ttyS3"};
+    v3::SchedulerOptions v3_scheduler_options{};
     acquisition::AcquisitionOptions acquisition_options{};
     std::chrono::milliseconds poll_interval{std::chrono::seconds(6)};
     bool start_modbus_tcp{true};
@@ -60,6 +66,7 @@ public:
     void stop() noexcept;
 
     acquisition::SnapshotStore& snapshot_store() noexcept;
+    const v3::SnapshotStore* v3_snapshot_store() const noexcept;
     health::Input health_input() const;
     iec61850::RuntimeStats iec61850_stats() const noexcept;
     std::optional<iec61850::RuntimeEndpoint> iec61850_endpoint() const;
@@ -75,6 +82,14 @@ private:
     logging::Logger& logger_;
     std::unique_ptr<acquisition::ISerialPort> serial_port_;
     std::unique_ptr<acquisition::AcquisitionEngine> acquisition_engine_;
+    std::unique_ptr<acquisition::ISerialPort> v3_pd_serial_port_;
+    std::unique_ptr<acquisition::ISerialPort> v3_current_serial_port_;
+    std::unique_ptr<acquisition::ISerialPort> v3_temperature_serial_port_;
+    std::unique_ptr<v3::ISerialPort> v3_pd_adapter_;
+    std::unique_ptr<v3::ISerialPort> v3_current_adapter_;
+    std::unique_ptr<v3::ISerialPort> v3_temperature_adapter_;
+    std::unique_ptr<v3::SnapshotStore> v3_snapshot_store_;
+    std::unique_ptr<v3::AcquisitionScheduler> v3_scheduler_;
     std::unique_ptr<modbus::ModbusTcpServer> modbus_tcp_server_;
     std::unique_ptr<acquisition::ISerialPort> modbus_rtu_serial_port_;
     std::unique_ptr<modbus::ModbusRtuServer> modbus_rtu_server_;

@@ -2,6 +2,7 @@
 #include "modbus/rtu_server.hpp"
 
 #include "domain/modbus.hpp"
+#include "v3/register_map.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -46,6 +47,25 @@ std::vector<std::uint8_t> exception_response(
     return response;
 }
 
+uhf::v3::UpstreamSnapshot v3_upstream_snapshot(const uhf::v3::UnifiedSnapshot& source) {
+    uhf::v3::UpstreamSnapshot snapshot;
+    snapshot.measurements = source.measurements;
+    snapshot.pd = source.pd;
+    for (std::size_t channel = 0U; channel < uhf::v3::kChannelCount; ++channel) {
+        if (!source.pd_valid[channel]) {
+            snapshot.pd[channel].received.reset();
+            snapshot.pd[channel].spectrum_received.reset();
+        }
+    }
+    snapshot.discrete_valid.set(0U, true);
+    snapshot.discrete_valid.set(1U, true);
+    snapshot.discrete_valid.set(2U, true);
+    snapshot.discrete.set(0U, !source.pd_status.online);
+    snapshot.discrete.set(1U, !source.current_status.online);
+    snapshot.discrete.set(2U, !source.temperature_status.online);
+    return snapshot;
+}
+
 }  // namespace
 
 namespace uhf::modbus {
@@ -53,8 +73,9 @@ namespace uhf::modbus {
 ModbusRtuServer::ModbusRtuServer(
     acquisition::ISerialPort& serial_port,
     acquisition::SnapshotStore& snapshot_store,
-    ModbusRtuOptions options)
-    : serial_port_(serial_port), snapshot_store_(snapshot_store), options_(options) {
+    ModbusRtuOptions options, const v3::SnapshotStore* v3_snapshot_store)
+    : serial_port_(serial_port), snapshot_store_(snapshot_store),
+      v3_snapshot_store_(v3_snapshot_store), options_(options) {
     if (options_.unit_id == 0U || options_.unit_id > 247U || options_.max_frame_bytes < 8U) {
         throw std::invalid_argument("invalid Modbus RTU options");
     }
@@ -77,6 +98,23 @@ std::vector<std::uint8_t> ModbusRtuServer::handle_request(
     }
 
     const std::uint8_t function = request[1];
+    if (v3_snapshot_store_ != nullptr) {
+        if (function != 0x02U && function != 0x03U && function != 0x04U) {
+            return exception_response(options_.unit_id, function, kIllegalFunction);
+        }
+        const auto source = v3_snapshot_store_->snapshot();
+        const uhf::v3::UpstreamSnapshot snapshot = v3_upstream_snapshot(source);
+        const std::vector<std::uint8_t> pdu = uhf::v3::serve_read_pdu(
+            snapshot, request.data() + 1U, 5U,
+            uhf::v3::InvalidHoldingPolicy::exception);
+        if (pdu.empty()) {
+            return {};
+        }
+        std::vector<std::uint8_t> response{options_.unit_id};
+        response.insert(response.end(), pdu.begin(), pdu.end());
+        append_crc(response);
+        return response;
+    }
     if (function != kReadInputRegisters) {
         return exception_response(options_.unit_id, function, kIllegalFunction);
     }

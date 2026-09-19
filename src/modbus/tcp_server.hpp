@@ -2,6 +2,7 @@
 #pragma once
 
 #include "acquisition/acquisition.hpp"
+#include "v3/acquisition.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -22,7 +23,8 @@ struct ModbusTcpOptions {
 
 class ModbusTcpServer {
 public:
-    ModbusTcpServer(acquisition::SnapshotStore& snapshot_store, ModbusTcpOptions options = {});
+    ModbusTcpServer(acquisition::SnapshotStore& snapshot_store, ModbusTcpOptions options = {},
+                    const v3::SnapshotStore* v3_snapshot_store = nullptr);
 
     int run();
     bool update_options(ModbusTcpOptions options);
@@ -35,6 +37,7 @@ private:
     std::pair<ModbusTcpOptions, std::uint64_t> configuration() const;
 
     acquisition::SnapshotStore& snapshot_store_;
+    const v3::SnapshotStore* v3_snapshot_store_{nullptr};
     mutable std::mutex options_mutex_;
     ModbusTcpOptions options_;
     std::uint64_t options_generation_{0U};

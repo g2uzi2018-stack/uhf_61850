@@ -2,6 +2,7 @@
 #pragma once
 
 #include "acquisition/acquisition.hpp"
+#include "v3/acquisition.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -20,7 +21,8 @@ public:
     ModbusRtuServer(
         acquisition::ISerialPort& serial_port,
         acquisition::SnapshotStore& snapshot_store,
-        ModbusRtuOptions options = {});
+        ModbusRtuOptions options = {},
+        const v3::SnapshotStore* v3_snapshot_store = nullptr);
 
     int run();
     void stop() noexcept;
@@ -30,6 +32,7 @@ public:
 private:
     acquisition::ISerialPort& serial_port_;
     acquisition::SnapshotStore& snapshot_store_;
+    const v3::SnapshotStore* v3_snapshot_store_{nullptr};
     ModbusRtuOptions options_;
     std::atomic<bool> stop_requested_{false};
 };

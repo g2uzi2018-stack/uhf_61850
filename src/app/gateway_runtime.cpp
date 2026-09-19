@@ -15,6 +15,20 @@ namespace uhf::app {
 
 namespace {
 
+class V3SerialAdapter final : public v3::ISerialPort {
+public:
+    explicit V3SerialAdapter(acquisition::ISerialPort& port) : port_(port) {}
+    bool write_all(const std::uint8_t* data, std::size_t size) override {
+        return port_.write_all(data, size);
+    }
+    bool read_some(std::uint8_t* data, std::size_t capacity,
+                   std::chrono::milliseconds timeout, std::size_t& received) override {
+        return port_.read_some(data, capacity, timeout, received);
+    }
+private:
+    acquisition::ISerialPort& port_;
+};
+
 std::optional<iec61850::SclModelDefinition> parse_file(
     const std::filesystem::path& path) {
     std::error_code error;
@@ -46,13 +60,30 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
       logger_(logger),
       iec_current_bind_(options_.iec61850_bind),
       iec_current_port_(options_.iec61850_port) {
-    if (options_.simulate) {
-        serial_port_ = std::make_unique<acquisition::LoopbackPd1000Port>();
+    if (options_.v3_enabled) {
+        if (options_.simulate) {
+            throw std::invalid_argument(
+                "v3 mode requires explicit PTY/device paths; --simulate is for the legacy loopback");
+        }
+        v3_pd_serial_port_ = std::make_unique<acquisition::PosixSerialPort>(options_.v3_pd_device);
+        v3_current_serial_port_ = std::make_unique<acquisition::PosixSerialPort>(options_.v3_current_device);
+        v3_temperature_serial_port_ = std::make_unique<acquisition::PosixSerialPort>(options_.v3_temperature_device);
+        v3_pd_adapter_ = std::make_unique<V3SerialAdapter>(*v3_pd_serial_port_);
+        v3_current_adapter_ = std::make_unique<V3SerialAdapter>(*v3_current_serial_port_);
+        v3_temperature_adapter_ = std::make_unique<V3SerialAdapter>(*v3_temperature_serial_port_);
+        v3_snapshot_store_ = std::make_unique<v3::SnapshotStore>();
+        v3_scheduler_ = std::make_unique<v3::AcquisitionScheduler>(
+            *v3_pd_adapter_, *v3_current_adapter_, *v3_temperature_adapter_,
+            *v3_snapshot_store_, options_.v3_scheduler_options);
     } else {
-        serial_port_ = std::make_unique<acquisition::PosixSerialPort>(options_.acquisition_device);
+        if (options_.simulate) {
+            serial_port_ = std::make_unique<acquisition::LoopbackPd1000Port>();
+        } else {
+            serial_port_ = std::make_unique<acquisition::PosixSerialPort>(options_.acquisition_device);
+        }
+        acquisition_engine_ = std::make_unique<acquisition::AcquisitionEngine>(
+            *serial_port_, snapshot_store_, options_.acquisition_options);
     }
-    acquisition_engine_ = std::make_unique<acquisition::AcquisitionEngine>(
-        *serial_port_, snapshot_store_, options_.acquisition_options);
     if (options_.start_modbus_tcp) {
         modbus_tcp_server_ = std::make_unique<modbus::ModbusTcpServer>(
             snapshot_store_,
@@ -60,15 +91,17 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
                 options_.modbus_tcp_bind,
                 options_.modbus_tcp_port,
                 options_.modbus_tcp_unit_id,
-                16U});
+                16U},
+            v3_snapshot_store_.get());
     }
     if (options_.start_modbus_rtu) {
         modbus_rtu_serial_port_ =
             std::make_unique<acquisition::PosixSerialPort>(options_.modbus_rtu_device);
         modbus_rtu_server_ = std::make_unique<modbus::ModbusRtuServer>(
-            *modbus_rtu_serial_port_, snapshot_store_, options_.modbus_rtu_options);
+            *modbus_rtu_serial_port_, snapshot_store_, options_.modbus_rtu_options,
+            v3_snapshot_store_.get());
     }
-    if (options_.start_persistence) {
+    if (options_.start_persistence && !options_.v3_enabled) {
         persistence_worker_ = std::make_unique<storage::PersistenceWorker>(
             snapshot_store_, logger_, options_.persistence_options);
     }
@@ -106,6 +139,9 @@ void GatewayRuntime::start() {
         return;
     }
     stop_requested_.store(false);
+    if (v3_scheduler_) {
+        v3_scheduler_->start();
+    }
     worker_ = std::thread(&GatewayRuntime::run, this);
     if (modbus_tcp_server_) {
         modbus_tcp_worker_ = std::thread([this] {
@@ -144,6 +180,9 @@ void GatewayRuntime::start() {
 
 void GatewayRuntime::stop() noexcept {
     stop_requested_.store(true);
+    if (v3_scheduler_) {
+        v3_scheduler_->stop();
+    }
     if (modbus_tcp_server_) {
         modbus_tcp_server_->stop();
     }
@@ -174,16 +213,41 @@ acquisition::SnapshotStore& GatewayRuntime::snapshot_store() noexcept {
     return snapshot_store_;
 }
 
+const v3::SnapshotStore* GatewayRuntime::v3_snapshot_store() const noexcept {
+    return v3_snapshot_store_.get();
+}
+
 health::Input GatewayRuntime::health_input() const {
     health::Input input;
-    const acquisition::ServingView serving_view = snapshot_store_.serving_view();
-    if (serving_view.snapshot) {
-        input.last_acquisition_success = serving_view.snapshot->completed_at;
+    if (v3_snapshot_store_) {
+        const v3::UnifiedSnapshot snapshot = v3_snapshot_store_->snapshot();
+        const bool any_success = snapshot.pd_status.has_sample ||
+            snapshot.current_status.has_sample || snapshot.temperature_status.has_sample;
+        if (any_success) {
+            input.last_acquisition_success = std::max({
+                snapshot.pd_status.last_success,
+                snapshot.current_status.last_success,
+                snapshot.temperature_status.last_success});
+        }
+        input.acquisition_last_cycle_ok = snapshot.pd_status.online &&
+            snapshot.current_status.online && snapshot.temperature_status.online;
+        input.consecutive_no_response = std::max({
+            snapshot.pd_status.consecutive_failures,
+            snapshot.current_status.consecutive_failures,
+            snapshot.temperature_status.consecutive_failures});
+        input.communication_alarm = snapshot.pd_status.communication_alarm ||
+            snapshot.current_status.communication_alarm || snapshot.temperature_status.communication_alarm;
     }
-    input.acquisition_last_cycle_ok =
-        serving_view.status.availability == acquisition::Availability::fresh;
-    input.consecutive_no_response = serving_view.status.consecutive_no_response;
-    input.communication_alarm = serving_view.status.communication_alarm;
+    if (!v3_snapshot_store_) {
+        const acquisition::ServingView serving_view = snapshot_store_.serving_view();
+        if (serving_view.snapshot) {
+            input.last_acquisition_success = serving_view.snapshot->completed_at;
+        }
+        input.acquisition_last_cycle_ok =
+            serving_view.status.availability == acquisition::Availability::fresh;
+        input.consecutive_no_response = serving_view.status.consecutive_no_response;
+        input.communication_alarm = serving_view.status.communication_alarm;
+    }
     input.storage_writable = true;
     input.modbus_tcp_listening =
         modbus_tcp_server_ != nullptr && modbus_tcp_server_->bound_port() != 0U;
@@ -296,6 +360,13 @@ void GatewayRuntime::run() {
     std::chrono::steady_clock::time_point next_poll = std::chrono::steady_clock::now();
     while (!stop_requested_.load()) {
         apply_runtime_configuration(applied_config_version);
+        if (v3_scheduler_) {
+            while (!stop_requested_.load()) {
+                apply_runtime_configuration(applied_config_version);
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            return;
+        }
         const bool success = acquisition_engine_->poll_once();
         if (success) {
             if (previous_cycle_failed) {
@@ -359,12 +430,14 @@ void GatewayRuntime::apply_runtime_configuration(std::uint64_t& applied_version)
         return;
     }
 
-    options_.acquisition_options.slave_id = configured.values.acquisition_slave_id;
-    options_.acquisition_options.response_timeout = std::chrono::milliseconds(
-        configured.values.acquisition_response_timeout_ms);
-    options_.acquisition_options.max_retries = configured.values.acquisition_max_retries;
-    options_.poll_interval = std::chrono::milliseconds(configured.values.acquisition_period_ms);
-    acquisition_engine_->update_options(options_.acquisition_options);
+    if (acquisition_engine_) {
+        options_.acquisition_options.slave_id = configured.values.acquisition_slave_id;
+        options_.acquisition_options.response_timeout = std::chrono::milliseconds(
+            configured.values.acquisition_response_timeout_ms);
+        options_.acquisition_options.max_retries = configured.values.acquisition_max_retries;
+        options_.poll_interval = std::chrono::milliseconds(configured.values.acquisition_period_ms);
+        acquisition_engine_->update_options(options_.acquisition_options);
+    }
     if (modbus_tcp_server_) {
         modbus::ModbusTcpOptions modbus_options;
         modbus_options.bind_address = options_.modbus_tcp_bind_all

@@ -62,6 +62,7 @@ struct UnifiedSnapshot {
     std::array<bool, kChannelCount> pd_valid{};
     CurrentValues current{};
     TemperatureValues temperature{};
+    ValueTable measurements{};
     SourceStatus pd_status;
     SourceStatus current_status;
     SourceStatus temperature_status;
@@ -92,6 +93,10 @@ private:
     mutable std::mutex mutex_;
     UnifiedSnapshot value_;
     std::uint32_t alarm_after_failures_;
+    MonitoringCalculator calculator_{WarmupPolicy::use_available,
+                                     MeanPolicy::reject_nonpositive};
+    std::uint64_t current_sequence_{0};
+    std::array<bool, kChannelCount> pd_channel_online_{};
 };
 
 struct CollectorOptions {

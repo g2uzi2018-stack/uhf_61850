@@ -2,6 +2,7 @@
 #include "modbus/tcp_server.hpp"
 
 #include "domain/snapshot.hpp"
+#include "v3/register_map.hpp"
 
 #include <algorithm>
 #include <arpa/inet.h>
@@ -55,6 +56,25 @@ std::vector<std::uint8_t> exception_response(
     response.push_back(static_cast<std::uint8_t>(function | 0x80U));
     response.push_back(exception);
     return response;
+}
+
+uhf::v3::UpstreamSnapshot v3_upstream_snapshot(const uhf::v3::UnifiedSnapshot& source) {
+    uhf::v3::UpstreamSnapshot snapshot;
+    snapshot.measurements = source.measurements;
+    snapshot.pd = source.pd;
+    for (std::size_t channel = 0U; channel < uhf::v3::kChannelCount; ++channel) {
+        if (!source.pd_valid[channel]) {
+            snapshot.pd[channel].received.reset();
+            snapshot.pd[channel].spectrum_received.reset();
+        }
+    }
+    snapshot.discrete_valid.set(0U, true);
+    snapshot.discrete_valid.set(1U, true);
+    snapshot.discrete_valid.set(2U, true);
+    snapshot.discrete.set(0U, !source.pd_status.online);
+    snapshot.discrete.set(1U, !source.current_status.online);
+    snapshot.discrete.set(2U, !source.temperature_status.online);
+    return snapshot;
 }
 
 bool set_nonblocking(int file_descriptor) {
@@ -112,8 +132,10 @@ std::optional<Listener> open_listener(const uhf::modbus::ModbusTcpOptions& optio
 namespace uhf::modbus {
 
 ModbusTcpServer::ModbusTcpServer(
-    acquisition::SnapshotStore& snapshot_store, ModbusTcpOptions options)
-    : snapshot_store_(snapshot_store), options_(std::move(options)) {
+    acquisition::SnapshotStore& snapshot_store, ModbusTcpOptions options,
+    const v3::SnapshotStore* v3_snapshot_store)
+    : snapshot_store_(snapshot_store), v3_snapshot_store_(v3_snapshot_store),
+      options_(std::move(options)) {
     if (options_.unit_id == 0U || options_.unit_id > 247U || options_.max_connections == 0U) {
         throw std::invalid_argument("invalid Modbus TCP options");
     }
@@ -133,6 +155,29 @@ std::vector<std::uint8_t> ModbusTcpServer::handle_request(
     const std::uint8_t function = request[7];
     if (unit_id != current_options.unit_id) {
         return exception_response(request, function, kGatewayTargetFailed);
+    }
+    if (v3_snapshot_store_ != nullptr) {
+        if (function != 0x02U && function != 0x03U && function != 0x04U) {
+            return exception_response(request, function, kIllegalFunction);
+        }
+        if (request.size() != kMbapHeaderBytes + 6U) {
+            return exception_response(request, function, kIllegalDataValue);
+        }
+        const auto source = v3_snapshot_store_->snapshot();
+        const uhf::v3::UpstreamSnapshot snapshot = v3_upstream_snapshot(source);
+        const std::vector<std::uint8_t> pdu = uhf::v3::serve_read_pdu(
+            snapshot, request.data() + 7U, 5U,
+            uhf::v3::InvalidHoldingPolicy::exception);
+        if (pdu.empty()) {
+            return {};
+        }
+        std::vector<std::uint8_t> response{request[0], request[1], 0U, 0U, 0U, 0U,
+                                           static_cast<std::uint8_t>(unit_id)};
+        const std::uint16_t length = static_cast<std::uint16_t>(1U + pdu.size());
+        response[4] = static_cast<std::uint8_t>(length >> 8U);
+        response[5] = static_cast<std::uint8_t>(length & 255U);
+        response.insert(response.end(), pdu.begin(), pdu.end());
+        return response;
     }
     if (function != kReadInputRegisters) {
         return exception_response(request, function, kIllegalFunction);

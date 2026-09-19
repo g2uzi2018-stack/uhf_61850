@@ -15,6 +15,7 @@
 #include "web/auth_store.hpp"
 #include "web/icd_store.hpp"
 #include "web/tls_context.hpp"
+#include "v3/acquisition.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -57,7 +58,8 @@ public:
         Iec61850StatsProvider iec61850_stats_provider = {},
         Iec61850EndpointProvider iec61850_endpoint_provider = {},
         Iec61850ModelProvider iec61850_model_provider = {},
-        Iec61850ReloadHandler iec61850_reload_handler = {});
+        Iec61850ReloadHandler iec61850_reload_handler = {},
+        const v3::SnapshotStore* v3_snapshot_store = nullptr);
 
     int run();
 
@@ -95,6 +97,7 @@ private:
     AuthStore auth_store_;
     IcdStore icd_store_;
     const acquisition::SnapshotStore* snapshot_store_{nullptr};
+    const v3::SnapshotStore* v3_snapshot_store_{nullptr};
     HealthInputProvider health_input_provider_;
     Iec61850StatsProvider iec61850_stats_provider_;
     Iec61850EndpointProvider iec61850_endpoint_provider_;

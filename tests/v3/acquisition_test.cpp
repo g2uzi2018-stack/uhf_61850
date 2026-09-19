@@ -207,11 +207,12 @@ int main() {
         uhf::v3::PortCollector current(current_port, snapshots, clock, options);
         uhf::v3::PortCollector temperature(temperature_port, snapshots, clock, options);
 
-        check(pd.poll_pd_channel(1), "PTY PD channel poll");
+        check(pd.poll_pd_all(), "PTY PD three-channel poll");
         check(current.poll_current(), "PTY current poll with CRC retry");
         check(temperature.poll_temperature(), "PTY temperature poll");
         const uhf::v3::UnifiedSnapshot result = snapshots.snapshot();
-        check(result.pd_valid[0] && result.pd[0].received.all(), "complete PD round published");
+        check(result.pd_valid[0] && result.pd_valid[1] && result.pd_valid[2] &&
+              result.pd[0].received.all(), "complete PD round published");
         near(result.pd[0].features[0].value, 1.0F, "PD feature from PTY");
         check(result.pd[0].spectrum_raw[0] == 16, "PD spectrum from PTY");
         near(result.current[0].value, 100.0F, "current from PTY");
