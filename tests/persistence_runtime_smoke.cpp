@@ -304,7 +304,7 @@ int main() {
         uhf::acquisition::SnapshotStore snapshot_store;
         uhf::storage::PersistenceOptions options;
         options.data_root = root;
-        options.periodic_period = std::chrono::seconds(1);
+        options.periodic_period = std::chrono::seconds::zero();
         options.cleanup_period = std::chrono::hours(1);
         options.cleaner_options.min_free_bytes = 0U;
         options.cleaner_options.low_watermark_percent = 0U;
@@ -315,15 +315,27 @@ int main() {
         uhf::storage::PersistenceWorker worker(snapshot_store, logger, options);
         worker.start();
 
+        std::size_t published_count = 0U;
         for (const std::int32_t peak : {-60, -40, -41, -42, -43}) {
             const auto now = std::chrono::steady_clock::now();
             publish(snapshot_store, peak, now);
-            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+            ++published_count;
+            if (!expect(
+                    wait_for(
+                        [&worker, published_count] {
+                            return worker.stats().saved_frame_count >= published_count;
+                        },
+                        std::chrono::seconds(2)),
+                    "worker observed published frame")) {
+                worker.stop();
+                std::filesystem::remove_all(root, cleanup_error);
+                return 1;
+            }
         }
 
         if (!expect(
-                wait_for_file_count(root / "frames", 1U, std::chrono::seconds(2)),
-                "periodic frame saved") ||
+                wait_for_file_count(root / "frames", 5U, std::chrono::seconds(2)),
+                "published frames saved") ||
             !expect(
                 wait_for_file_count(root / "events", 1U, std::chrono::seconds(3)),
                 "completed event saved")) {
@@ -334,7 +346,7 @@ int main() {
 
         worker.stop();
         const uhf::storage::PersistenceStats stats = worker.stats();
-        if (!expect(stats.saved_frame_count >= 1U, "frame save count") ||
+        if (!expect(stats.saved_frame_count == 5U, "frame save count") ||
             !expect(stats.saved_event_count == 1U, "event save count") ||
             !expect(stats.dropped_frame_count == 0U, "no dropped frames") ||
             !expect(stats.dropped_event_count == 0U, "no dropped events")) {

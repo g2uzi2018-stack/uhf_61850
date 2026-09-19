@@ -2,10 +2,14 @@
 #include "platform/network/dhcp_client.hpp"
 #include "test_check.hpp"
 
+#include <algorithm>
+#include <cerrno>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <fcntl.h>
 #include <fstream>
+#include <poll.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -32,6 +36,47 @@ uhf::network::InterfaceConfig dhcp_config() {
     config.hostname = "smoke-host";
     config.dhcp_timeout_seconds = 15U;
     return config;
+}
+
+bool wait_for_exec_boundary(int descriptor, std::chrono::milliseconds timeout) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now());
+        pollfd ready{descriptor, POLLIN | POLLHUP, 0};
+        const int result = ::poll(
+            &ready, 1, static_cast<int>(std::max<std::int64_t>(1, remaining.count())));
+        if (result > 0 && (ready.revents & (POLLIN | POLLHUP)) != 0) {
+            char value = 0;
+            ssize_t read_result = -1;
+            do {
+                read_result = ::read(descriptor, &value, 1U);
+            } while (read_result < 0 && errno == EINTR);
+            return read_result == 0;
+        }
+        if (result > 0 && (ready.revents & (POLLERR | POLLNVAL)) != 0) {
+            return false;
+        }
+        if (result < 0 && errno != EINTR) {
+            return false;
+        }
+    }
+    return false;
+}
+
+bool reap_child(pid_t child, int& status, std::chrono::milliseconds timeout) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        const pid_t result = ::waitpid(child, &status, WNOHANG);
+        if (result == child) {
+            return true;
+        }
+        if (result < 0 && errno != EINTR) {
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return false;
 }
 
 }  // namespace
@@ -102,9 +147,12 @@ int main() {
     }
 
     const std::filesystem::path matching_pid_path = directory / "eth0.pid";
+    int exec_boundary[2] = {-1, -1};
+    UHF_TEST_CHECK(::pipe2(exec_boundary, O_CLOEXEC) == 0);
     const pid_t matching_pid = ::fork();
     UHF_TEST_CHECK(matching_pid >= 0);
     if (matching_pid == 0) {
+        ::close(exec_boundary[0]);
         const int null_device = ::open("/dev/null", O_RDWR);
         if (null_device >= 0) {
             (void)::dup2(null_device, STDOUT_FILENO);
@@ -118,14 +166,34 @@ int main() {
             fake_dhclient.c_str(), matching_pid_path.c_str(), "eth0", nullptr);
         _exit(127);
     }
+    ::close(exec_boundary[1]);
+    const bool exec_ready = wait_for_exec_boundary(
+        exec_boundary[0], std::chrono::seconds(2));
+    ::close(exec_boundary[0]);
+    int early_status = 0;
+    const pid_t early_result = ::waitpid(matching_pid, &early_status, WNOHANG);
+    if (!exec_ready || early_result != 0) {
+        if (early_result == 0) {
+            (void)::kill(matching_pid, SIGKILL);
+            while (::waitpid(matching_pid, &early_status, 0) < 0 && errno == EINTR) {
+            }
+        }
+        UHF_TEST_CHECK(exec_ready && early_result == 0);
+    }
     {
         std::ofstream matching_pid_file(matching_pid_path);
         matching_pid_file << matching_pid << '\n';
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
     UHF_TEST_CHECK(client.stop(dhcp_config(), lease));
     int matching_status = 0;
-    UHF_TEST_CHECK(::waitpid(matching_pid, &matching_status, 0) == matching_pid);
+    const bool matching_reaped = reap_child(
+        matching_pid, matching_status, std::chrono::seconds(2));
+    if (!matching_reaped) {
+        (void)::kill(matching_pid, SIGKILL);
+        while (::waitpid(matching_pid, &matching_status, 0) < 0 && errno == EINTR) {
+        }
+    }
+    UHF_TEST_CHECK(matching_reaped);
     UHF_TEST_CHECK(WIFSIGNALED(matching_status) || WIFEXITED(matching_status));
 
     write_executable(
