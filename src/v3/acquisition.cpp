@@ -74,6 +74,10 @@ std::chrono::steady_clock::time_point SteadyClock::now() const {
     return std::chrono::steady_clock::now();
 }
 
+std::chrono::system_clock::time_point SteadyClock::utc_now() const {
+    return std::chrono::system_clock::now();
+}
+
 void SteadyClock::sleep_for(std::chrono::steady_clock::duration duration) {
     if (duration > std::chrono::steady_clock::duration::zero()) {
         std::this_thread::sleep_for(duration);
@@ -81,9 +85,10 @@ void SteadyClock::sleep_for(std::chrono::steady_clock::duration duration) {
 }
 
 SnapshotStore::SnapshotStore(std::uint32_t alarm_after_failures,
-                             AlarmThresholds thresholds)
+                             AlarmThresholds thresholds,
+                             FreshnessLimits freshness)
     : alarm_after_failures_(alarm_after_failures == 0U ? 1U : alarm_after_failures),
-      thresholds_(std::move(thresholds)) {}
+      thresholds_(std::move(thresholds)), freshness_(freshness) {}
 
 SourceStatus& SnapshotStore::status_for(UnifiedSnapshot& value, Source source) const noexcept {
     return source_status(value, source);
@@ -95,7 +100,8 @@ const SourceStatus& SnapshotStore::status_for(
 }
 
 void SnapshotStore::mark_success(Source source,
-                                 std::chrono::steady_clock::time_point at) {
+                                 std::chrono::steady_clock::time_point at,
+                                 std::chrono::system_clock::time_point utc) {
     SourceStatus& status = status_for(value_, source);
     status.has_sample = true;
     status.online = true;
@@ -103,11 +109,15 @@ void SnapshotStore::mark_success(Source source,
     status.consecutive_failures = 0U;
     status.last_attempt = at;
     status.last_success = at;
+    status.last_attempt_utc = utc;
+    status.last_success_utc = utc;
+    status.stale = false;
     status.last_error.clear();
 }
 
 void SnapshotStore::publish_pd_channel(
-    std::size_t channel, PdChannel value, std::chrono::steady_clock::time_point at) {
+    std::size_t channel, PdChannel value, std::chrono::steady_clock::time_point at,
+    std::chrono::system_clock::time_point utc) {
     if (channel >= kChannelCount) {
         throw std::out_of_range("PD channel must be 0..2");
     }
@@ -120,6 +130,9 @@ void SnapshotStore::publish_pd_channel(
     status.has_sample = true;
     status.last_attempt = at;
     status.last_success = at;
+    status.last_attempt_utc = utc;
+    status.last_success_utc = utc;
+    status.stale = false;
     status.last_error.clear();
     const bool all_channels_online = std::all_of(
         pd_channel_online_.begin(), pd_channel_online_.end(), [](bool online) { return online; });
@@ -132,7 +145,8 @@ void SnapshotStore::publish_pd_channel(
 }
 
 void SnapshotStore::publish_current(CurrentValues value,
-                                    std::chrono::steady_clock::time_point at) {
+                                    std::chrono::steady_clock::time_point at,
+                                    std::chrono::system_clock::time_point utc) {
     std::lock_guard<std::mutex> lock(mutex_);
     value_.current = std::move(value);
     if (current_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
@@ -145,23 +159,25 @@ void SnapshotStore::publish_current(CurrentValues value,
     value_.measurements = calculator_.snapshot();
     recompute_alarms();
     ++value_.generation;
-    mark_success(Source::current, at);
+    mark_success(Source::current, at, utc);
 }
 
 void SnapshotStore::publish_temperature(TemperatureValues value,
-                                         std::chrono::steady_clock::time_point at) {
+                                         std::chrono::steady_clock::time_point at,
+                                         std::chrono::system_clock::time_point utc) {
     std::lock_guard<std::mutex> lock(mutex_);
     value_.temperature = std::move(value);
     calculator_.on_temperature(value_.temperature);
     value_.measurements = calculator_.snapshot();
     recompute_alarms();
     ++value_.generation;
-    mark_success(Source::temperature, at);
+    mark_success(Source::temperature, at, utc);
 }
 
 void SnapshotStore::record_failure(Source source,
                                    std::chrono::steady_clock::time_point at,
-                                   std::string error) {
+                                   std::string error,
+                                   std::chrono::system_clock::time_point utc) {
     if (error.size() > kMaxErrorBytes) {
         error.resize(kMaxErrorBytes);
     }
@@ -169,6 +185,7 @@ void SnapshotStore::record_failure(Source source,
     SourceStatus& status = status_for(value_, source);
     status.online = false;
     status.last_attempt = at;
+    status.last_attempt_utc = utc;
     status.last_error = std::move(error);
     if (status.consecutive_failures < std::numeric_limits<std::uint32_t>::max()) {
         ++status.consecutive_failures;
@@ -195,9 +212,10 @@ void SnapshotStore::record_failure(Source source,
 
 void SnapshotStore::record_pd_failure(std::size_t channel,
                                       std::chrono::steady_clock::time_point at,
-                                      std::string error) {
+                                      std::string error,
+                                      std::chrono::system_clock::time_point utc) {
     if (channel >= kChannelCount) {
-        record_failure(Source::pd, at, std::move(error));
+        record_failure(Source::pd, at, std::move(error), utc);
         return;
     }
     if (error.size() > kMaxErrorBytes) {
@@ -208,6 +226,7 @@ void SnapshotStore::record_pd_failure(std::size_t channel,
     pd_channel_online_[channel] = false;
     status.online = false;
     status.last_attempt = at;
+    status.last_attempt_utc = utc;
     status.last_error = std::move(error);
     if (status.consecutive_failures < std::numeric_limits<std::uint32_t>::max()) {
         ++status.consecutive_failures;
@@ -251,8 +270,61 @@ void SnapshotStore::recompute_alarms() noexcept {
 }
 
 UnifiedSnapshot SnapshotStore::snapshot() const {
+    return snapshot(std::chrono::steady_clock::now());
+}
+
+UnifiedSnapshot SnapshotStore::snapshot(std::chrono::steady_clock::time_point now) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    return value_;
+    UnifiedSnapshot copy = value_;
+    apply_staleness(copy, now);
+    return copy;
+}
+
+void SnapshotStore::apply_staleness(
+    UnifiedSnapshot& value, std::chrono::steady_clock::time_point now) const noexcept {
+    const auto mark = [now](SourceStatus& status, std::chrono::milliseconds limit) {
+        status.stale = status.has_sample && limit > std::chrono::milliseconds::zero() &&
+            now > status.last_success + limit;
+    };
+    mark(value.pd_status, freshness_.pd);
+    mark(value.current_status, freshness_.current);
+    mark(value.temperature_status, freshness_.temperature);
+    if (value.pd_status.stale) {
+        value.pd_valid.fill(false);
+        for (std::size_t index = 0U; index < 3U; ++index) value.alarm_valid.reset(index);
+    }
+    if (value.current_status.stale) {
+        for (Value& current : value.current) {
+            if (current.valid()) current.quality = Quality::unavailable;
+        }
+        constexpr std::array<std::size_t, 18U> indices{
+            0U, 1U, 2U, 3U, 4U, 5U, 6U, 7U, 12U, 13U, 14U, 15U, 16U,
+            17U, 18U, 23U, 24U, 25U};
+        for (const std::size_t index : indices) {
+            if (value.measurements[index].valid()) {
+                value.measurements[index].quality = Quality::unavailable;
+            }
+        }
+        for (std::size_t index = 26U; index <= 31U; ++index) {
+            if (value.measurements[index].valid()) {
+                value.measurements[index].quality = Quality::unavailable;
+            }
+        }
+        for (std::size_t index = 3U; index < 9U; ++index) value.alarm_valid.reset(index);
+    }
+    if (value.temperature_status.stale) {
+        for (Value& temperature : value.temperature) {
+            if (temperature.valid()) temperature.quality = Quality::unavailable;
+        }
+        constexpr std::array<std::size_t, 11U> indices{
+            8U, 9U, 10U, 11U, 19U, 20U, 21U, 22U, 32U, 33U, 34U};
+        for (const std::size_t index : indices) {
+            if (value.measurements[index].valid()) {
+                value.measurements[index].quality = Quality::unavailable;
+            }
+        }
+        for (std::size_t index = 9U; index < 12U; ++index) value.alarm_valid.reset(index);
+    }
 }
 
 PortCollector::PortCollector(ISerialPort& port, SnapshotStore& snapshots,
@@ -352,7 +424,7 @@ PortCollector::ReadResult PortCollector::read_registers(
 
 bool PortCollector::fail(Source source, std::string message) {
     last_error_ = std::move(message);
-    snapshots_.record_failure(source, clock_.now(), last_error_);
+    snapshots_.record_failure(source, clock_.now(), last_error_, clock_.utc_now());
     return false;
 }
 
@@ -372,7 +444,8 @@ bool PortCollector::poll_pd_channel(std::size_t channel) {
         std::vector<std::uint16_t> registers;
         if (read_registers(plan[index], registers) != ReadResult::complete) {
             last_error_ = "PD channel segment read failed";
-            snapshots_.record_pd_failure(channel - 1U, clock_.now(), last_error_);
+            snapshots_.record_pd_failure(
+                channel - 1U, clock_.now(), last_error_, clock_.utc_now());
             return false;
         }
         const std::size_t offset = static_cast<std::size_t>(
@@ -383,7 +456,8 @@ bool PortCollector::poll_pd_channel(std::size_t channel) {
             received.set(offset + i);
         }
     }
-    snapshots_.publish_pd_channel(channel - 1U, decode_pd_channel(raw, received), clock_.now());
+    snapshots_.publish_pd_channel(
+        channel - 1U, decode_pd_channel(raw, received), clock_.now(), clock_.utc_now());
     return true;
 }
 
@@ -409,12 +483,13 @@ bool PortCollector::poll_current() {
     std::copy(registers.begin(), registers.end(), words.begin());
     if (!std::isfinite(options_.current_scale.multiplier) ||
         !std::isfinite(options_.current_scale.offset)) {
-        snapshots_.publish_current(CurrentValues{}, clock_.now());
+        snapshots_.publish_current(CurrentValues{}, clock_.now(), clock_.utc_now());
         last_error_ = "current scale is not configured";
         return true;
     }
     snapshots_.publish_current(current_values_with_quality(current_values(
-        words, options_.current_encoding, options_.current_scale)), clock_.now());
+        words, options_.current_encoding, options_.current_scale)),
+        clock_.now(), clock_.utc_now());
     return true;
 }
 
@@ -430,12 +505,13 @@ bool PortCollector::poll_temperature() {
     std::copy(registers.begin(), registers.end(), words.begin());
     if (!std::isfinite(options_.temperature_scale.multiplier) ||
         !std::isfinite(options_.temperature_scale.offset)) {
-        snapshots_.publish_temperature(TemperatureValues{}, clock_.now());
+        snapshots_.publish_temperature(TemperatureValues{}, clock_.now(), clock_.utc_now());
         last_error_ = "temperature scale is not configured";
         return true;
     }
     snapshots_.publish_temperature(temperature_values_with_quality(
-        temperature_values(words, options_.temperature_scale)), clock_.now());
+        temperature_values(words, options_.temperature_scale)),
+        clock_.now(), clock_.utc_now());
     return true;
 }
 

@@ -234,23 +234,31 @@ bool probe_running_model(const char* port_text, const char* prefix) {
 }
 
 bool v3_model_is_readable() {
-    uhf::v3::SnapshotStore v3_snapshots;
+    uhf::v3::FreshnessLimits freshness;
+    freshness.current = std::chrono::milliseconds(250);
+    uhf::v3::SnapshotStore v3_snapshots(3U, {}, freshness);
     const auto now = std::chrono::steady_clock::now();
+    const auto current_utc = std::chrono::system_clock::time_point(
+        std::chrono::milliseconds(1700000001000LL));
+    const auto temperature_utc = std::chrono::system_clock::time_point(
+        std::chrono::milliseconds(1700000002000LL));
+    const auto pd_utc = std::chrono::system_clock::time_point(
+        std::chrono::milliseconds(1700000003000LL));
     uhf::v3::CurrentValues current{};
     for (std::size_t index = 0U; index < current.size(); ++index) {
         current[index] = uhf::v3::valid_value(static_cast<float>(index + 1U));
     }
-    v3_snapshots.publish_current(current, now);
+    v3_snapshots.publish_current(current, now, current_utc);
     v3_snapshots.publish_temperature(
         {uhf::v3::valid_value(20.0F), uhf::v3::valid_value(21.0F),
-         uhf::v3::valid_value(22.0F)}, now);
+         uhf::v3::valid_value(22.0F)}, now, temperature_utc);
     uhf::v3::ChannelRegisters words{};
     words[2] = 123U;
     uhf::v3::RegisterValidity received;
     received.set();
     const uhf::v3::PdChannel channel = uhf::v3::decode_pd_channel(words, received);
     for (std::size_t index = 0U; index < uhf::v3::kChannelCount; ++index) {
-        v3_snapshots.publish_pd_channel(index, channel, now);
+        v3_snapshots.publish_pd_channel(index, channel, now, pd_utc);
     }
 
     uhf::acquisition::SnapshotStore legacy_snapshots;
@@ -268,6 +276,9 @@ bool v3_model_is_readable() {
     IedConnection_connect(connection, &error, "127.0.0.1", 15106U);
     bool ok = error == IED_ERROR_OK;
     if (ok) {
+        v3_snapshots.publish_current(
+            current, std::chrono::steady_clock::now(), current_utc);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
         MmsValue* peak = IedConnection_readObject(
             connection, &error, "TESTV3PDMON/SPDC2.UhfPaDsch.mag.f", IEC61850_FC_MX);
         ok = error == IED_ERROR_OK && peak != nullptr &&
@@ -281,6 +292,40 @@ bool v3_model_is_readable() {
         if (calculated != nullptr) {
             MmsValue_delete(calculated);
         }
+        Timestamp* peak_time = IedConnection_readTimestampValue(
+            connection,
+            &error,
+            "TESTV3PDMON/SPDC2.UhfPaDsch.t",
+            IEC61850_FC_MX,
+            nullptr);
+        ok = ok && error == IED_ERROR_OK && peak_time != nullptr &&
+            Timestamp_getTimeInMs(peak_time) == 1700000003000ULL;
+        if (peak_time != nullptr) Timestamp_destroy(peak_time);
+        Timestamp* current_time = IedConnection_readTimestampValue(
+            connection,
+            &error,
+            "TESTV3PDMON/MMXU1.AnIn1.t",
+            IEC61850_FC_MX,
+            nullptr);
+        ok = ok && error == IED_ERROR_OK && current_time != nullptr &&
+            Timestamp_getTimeInMs(current_time) == 1700000001000ULL;
+        if (current_time != nullptr) Timestamp_destroy(current_time);
+        const Quality fresh_quality = IedConnection_readQualityValue(
+            connection, &error, "TESTV3PDMON/MMXU1.AnIn1.q", IEC61850_FC_MX);
+        ok = ok && error == IED_ERROR_OK &&
+            fresh_quality == static_cast<Quality>(QUALITY_VALIDITY_GOOD);
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(350));
+        const Quality stale_quality = IedConnection_readQualityValue(
+            connection, &error, "TESTV3PDMON/MMXU1.AnIn1.q", IEC61850_FC_MX);
+        const bool stale_quality_read = error == IED_ERROR_OK;
+        MmsValue* stale_value = IedConnection_readObject(
+            connection, &error, "TESTV3PDMON/MMXU1.AnIn1.mag.f", IEC61850_FC_MX);
+        ok = ok && stale_quality_read && error == IED_ERROR_OK && stale_value != nullptr &&
+            stale_quality == static_cast<Quality>(
+                QUALITY_VALIDITY_QUESTIONABLE | QUALITY_DETAIL_OLD_DATA) &&
+            std::fabs(static_cast<double>(MmsValue_toFloat(stale_value)) - 1.0) < 0.01;
+        if (stale_value != nullptr) MmsValue_delete(stale_value);
     }
     IedConnection_close(connection);
     IedConnection_destroy(connection);

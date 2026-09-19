@@ -18,7 +18,7 @@
 namespace {
 
 constexpr std::array<char, 4U> kMagic{'U', 'H', 'F', '3'};
-constexpr std::uint16_t kVersion = 1U;
+constexpr std::uint16_t kVersion = 2U;
 constexpr mode_t kFileMode = S_IRUSR | S_IWUSR;
 constexpr mode_t kDirectoryMode = S_IRWXU;
 constexpr std::size_t kPackedRegisterValidity = (uhf::v3::kChannelRegisterCount + 7U) / 8U;
@@ -160,7 +160,8 @@ std::uint32_t crc32(const std::uint8_t* data, std::size_t size) noexcept {
 
 std::uint8_t status_flags(const uhf::v3::SourceStatus& status) noexcept {
     return static_cast<std::uint8_t>((status.has_sample ? 1U : 0U) |
-        (status.online ? 2U : 0U) | (status.communication_alarm ? 4U : 0U));
+        (status.online ? 2U : 0U) | (status.communication_alarm ? 4U : 0U) |
+        (status.stale ? 8U : 0U));
 }
 
 bool safe_record_path(const std::filesystem::path& directory,
@@ -231,6 +232,8 @@ std::optional<std::filesystem::path> V3HistoryStore::save(
                                &snapshot.temperature_status}) {
         append_u8(bytes, status_flags(*status));
         append_u32(bytes, status->consecutive_failures);
+        append_u64(bytes, timestamp_ms(status->last_attempt_utc).value_or(0U));
+        append_u64(bytes, timestamp_ms(status->last_success_utc).value_or(0U));
     }
     for (const bool valid : snapshot.pd_valid) {
         append_u8(bytes, valid ? 1U : 0U);
@@ -278,9 +281,10 @@ std::optional<V3HistoryRecord> V3HistoryStore::read(const std::filesystem::path&
     if (!input) return std::nullopt;
     std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
     input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    const std::uint16_t version = read_u16(bytes.data() + 4U);
     if (!input || input.gcount() != static_cast<std::streamsize>(bytes.size()) ||
         !std::equal(kMagic.begin(), kMagic.end(), bytes.begin()) ||
-        read_u16(bytes.data() + 4U) != kVersion ||
+        (version != 1U && version != kVersion) ||
         read_u32(bytes.data() + bytes.size() - 4U) != crc32(bytes.data(), bytes.size() - 4U)) {
         return std::nullopt;
     }
@@ -293,12 +297,20 @@ std::optional<V3HistoryRecord> V3HistoryStore::read(const std::filesystem::path&
         &record.snapshot.pd_status, &record.snapshot.current_status,
         &record.snapshot.temperature_status};
     for (auto* status : statuses) {
-        if (end - cursor < 5) return std::nullopt;
+        const std::ptrdiff_t status_size = version >= 2U ? 21 : 5;
+        if (end - cursor < status_size) return std::nullopt;
         const std::uint8_t flags = *cursor++;
         status->has_sample = (flags & 1U) != 0U;
         status->online = (flags & 2U) != 0U;
         status->communication_alarm = (flags & 4U) != 0U;
+        status->stale = (flags & 8U) != 0U;
         status->consecutive_failures = read_u32(cursor); cursor += 4U;
+        if (version >= 2U) {
+            status->last_attempt_utc = std::chrono::system_clock::time_point(
+                std::chrono::milliseconds(read_u64(cursor))); cursor += 8U;
+            status->last_success_utc = std::chrono::system_clock::time_point(
+                std::chrono::milliseconds(read_u64(cursor))); cursor += 8U;
+        }
     }
     for (bool& valid : record.snapshot.pd_valid) {
         if (cursor >= end) return std::nullopt;

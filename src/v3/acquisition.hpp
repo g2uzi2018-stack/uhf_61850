@@ -37,12 +37,14 @@ class IClock {
 public:
     virtual ~IClock() = default;
     virtual std::chrono::steady_clock::time_point now() const = 0;
+    virtual std::chrono::system_clock::time_point utc_now() const = 0;
     virtual void sleep_for(std::chrono::steady_clock::duration duration) = 0;
 };
 
 class SteadyClock final : public IClock {
 public:
     std::chrono::steady_clock::time_point now() const override;
+    std::chrono::system_clock::time_point utc_now() const override;
     void sleep_for(std::chrono::steady_clock::duration duration) override;
 };
 
@@ -58,10 +60,19 @@ struct SourceStatus {
     bool has_sample{false};
     bool online{false};
     bool communication_alarm{false};
+    bool stale{false};
     std::uint32_t consecutive_failures{0};
     std::chrono::steady_clock::time_point last_attempt{};
     std::chrono::steady_clock::time_point last_success{};
+    std::chrono::system_clock::time_point last_attempt_utc{};
+    std::chrono::system_clock::time_point last_success_utc{};
     std::string last_error;
+};
+
+struct FreshnessLimits {
+    std::chrono::milliseconds pd{std::chrono::minutes(10)};
+    std::chrono::milliseconds current{std::chrono::seconds(5)};
+    std::chrono::milliseconds temperature{std::chrono::seconds(5)};
 };
 
 struct UnifiedSnapshot {
@@ -81,26 +92,41 @@ struct UnifiedSnapshot {
 class SnapshotStore {
 public:
     explicit SnapshotStore(std::uint32_t alarm_after_failures = 3U,
-                           AlarmThresholds thresholds = {});
+                           AlarmThresholds thresholds = {},
+                           FreshnessLimits freshness = {});
 
     void publish_pd_channel(std::size_t channel, PdChannel value,
-                            std::chrono::steady_clock::time_point at);
+                            std::chrono::steady_clock::time_point at,
+                            std::chrono::system_clock::time_point utc =
+                                std::chrono::system_clock::now());
     void publish_current(CurrentValues value,
-                         std::chrono::steady_clock::time_point at);
+                         std::chrono::steady_clock::time_point at,
+                         std::chrono::system_clock::time_point utc =
+                             std::chrono::system_clock::now());
     void publish_temperature(TemperatureValues value,
-                             std::chrono::steady_clock::time_point at);
+                             std::chrono::steady_clock::time_point at,
+                             std::chrono::system_clock::time_point utc =
+                                 std::chrono::system_clock::now());
     void record_pd_failure(std::size_t channel,
                            std::chrono::steady_clock::time_point at,
-                           std::string error);
+                           std::string error,
+                           std::chrono::system_clock::time_point utc =
+                               std::chrono::system_clock::now());
     void record_failure(Source source, std::chrono::steady_clock::time_point at,
-                        std::string error);
+                        std::string error,
+                        std::chrono::system_clock::time_point utc =
+                            std::chrono::system_clock::now());
     void update_alarm_thresholds(AlarmThresholds thresholds);
     UnifiedSnapshot snapshot() const;
+    UnifiedSnapshot snapshot(std::chrono::steady_clock::time_point now) const;
 
 private:
     SourceStatus& status_for(UnifiedSnapshot& value, Source source) const noexcept;
     const SourceStatus& status_for(const UnifiedSnapshot& value, Source source) const noexcept;
-    void mark_success(Source source, std::chrono::steady_clock::time_point at);
+    void mark_success(Source source, std::chrono::steady_clock::time_point at,
+                      std::chrono::system_clock::time_point utc);
+    void apply_staleness(UnifiedSnapshot& value,
+                         std::chrono::steady_clock::time_point now) const noexcept;
     void recompute_alarms() noexcept;
 
     mutable std::mutex mutex_;
@@ -111,6 +137,7 @@ private:
     std::uint64_t current_sequence_{0};
     std::array<bool, kChannelCount> pd_channel_online_{};
     AlarmThresholds thresholds_;
+    FreshnessLimits freshness_;
 };
 
 struct CollectorOptions {

@@ -28,8 +28,18 @@ void append_status(std::string& body, const v3::SourceStatus& status) {
     body.append(status.online ? "true" : "false");
     body.append(",\"communication_alarm\":");
     body.append(status.communication_alarm ? "true" : "false");
+    body.append(",\"stale\":");
+    body.append(status.stale ? "true" : "false");
     body.append(",\"consecutive_failures\":");
     body.append(std::to_string(status.consecutive_failures));
+    const auto attempt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        status.last_attempt_utc.time_since_epoch()).count();
+    const auto success_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        status.last_success_utc.time_since_epoch()).count();
+    body.append(",\"last_attempt_ms\":");
+    body.append(attempt_ms > 0 ? std::to_string(attempt_ms) : "null");
+    body.append(",\"last_success_ms\":");
+    body.append(success_ms > 0 ? std::to_string(success_ms) : "null");
     body.append(",\"last_error\":\"");
     body.append(escape(status.last_error));
     body.append("\"}");
@@ -98,12 +108,13 @@ std::string render_v3_snapshot_json(const v3::UnifiedSnapshot& snapshot) {
                 body.push_back(',');
             }
             const v3::PdFeature& value = snapshot.pd[channel].features[feature];
+            const bool valid = snapshot.pd_valid[channel] && value.valid;
             body.append("{\"raw\":");
             body.append(std::to_string(value.raw));
             body.append(",\"valid\":");
-            body.append(value.valid ? "true" : "false");
+            body.append(valid ? "true" : "false");
             body.append(",\"value\":");
-            if (value.valid) {
+            if (valid) {
                 body.append(std::to_string(value.value));
             } else {
                 body.append("null");
@@ -115,7 +126,8 @@ std::string render_v3_snapshot_json(const v3::UnifiedSnapshot& snapshot) {
             if (point != 0U) {
                 body.push_back(',');
             }
-            if (snapshot.pd[channel].spectrum_received[point]) {
+            if (snapshot.pd_valid[channel] &&
+                snapshot.pd[channel].spectrum_received[point]) {
                 body.append(std::to_string(snapshot.pd[channel].spectrum_raw[point]));
             } else {
                 body.append("null");

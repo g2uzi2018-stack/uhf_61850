@@ -8,7 +8,9 @@ extern "C" {
 }
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
@@ -21,6 +23,29 @@ std::uint64_t now_milliseconds() noexcept {
     const auto duration = std::chrono::system_clock::now().time_since_epoch();
     const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
     return static_cast<std::uint64_t>(milliseconds.count());
+}
+
+std::uint64_t timestamp_milliseconds(
+    std::chrono::system_clock::time_point timestamp,
+    std::uint64_t fallback) noexcept {
+    const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+        timestamp.time_since_epoch()).count();
+    return milliseconds > 0 ? static_cast<std::uint64_t>(milliseconds) : fallback;
+}
+
+bool temperature_measurement(std::size_t index) noexcept {
+    return (index >= 8U && index <= 11U) || (index >= 19U && index <= 22U) ||
+        (index >= 32U && index <= 34U);
+}
+
+Quality v3_quality(bool valid, bool stale, bool last_good_available) noexcept {
+    if (stale && last_good_available) {
+        return static_cast<Quality>(
+            QUALITY_VALIDITY_QUESTIONABLE | QUALITY_DETAIL_OLD_DATA);
+    }
+    return valid
+        ? static_cast<Quality>(QUALITY_VALIDITY_GOOD)
+        : static_cast<Quality>(QUALITY_VALIDITY_INVALID);
 }
 
 Quality quality_for(uhf::acquisition::Availability availability, bool valid) noexcept {
@@ -258,36 +283,55 @@ void Server::publish_v3_invalid_values() {
 }
 
 void Server::publish_v3_snapshot(const v3::UnifiedSnapshot& snapshot) {
-    const std::uint64_t timestamp_ms = now_milliseconds();
-    const auto valid_quality = static_cast<Quality>(QUALITY_VALIDITY_GOOD);
-    const auto invalid_quality = static_cast<Quality>(QUALITY_VALIDITY_INVALID);
+    const std::uint64_t now_ms = now_milliseconds();
+    const std::uint64_t pd_timestamp_ms = timestamp_milliseconds(
+        snapshot.pd_status.last_success_utc, now_ms);
+    const std::uint64_t current_timestamp_ms = timestamp_milliseconds(
+        snapshot.current_status.last_success_utc, now_ms);
+    const std::uint64_t temperature_timestamp_ms = timestamp_milliseconds(
+        snapshot.temperature_status.last_success_utc, now_ms);
     IedServer_lockDataModel(server_);
     for (std::size_t channel = 0U; channel < 3U; ++channel) {
         const v3::PdFeature& peak = snapshot.pd[channel].features[2];
         const bool valid = snapshot.pd_valid[channel] && peak.valid;
+        const bool last_good_available = peak.valid && std::isfinite(peak.value);
         IedServer_updateFloatAttributeValue(
-            server_, model_->v3_pd_peak_value(channel), valid ? peak.value : 0.0F);
+            server_, model_->v3_pd_peak_value(channel),
+            valid || (snapshot.pd_status.stale && last_good_available)
+                ? peak.value : 0.0F);
         IedServer_updateQuality(
-            server_, model_->v3_pd_peak_quality(channel), valid ? valid_quality : invalid_quality);
-        update_timestamp(model_->v3_pd_peak_time(channel), timestamp_ms);
+            server_, model_->v3_pd_peak_quality(channel),
+            v3_quality(valid, snapshot.pd_status.stale, last_good_available));
+        update_timestamp(model_->v3_pd_peak_time(channel), pd_timestamp_ms);
     }
     for (std::size_t index = 0U; index < snapshot.measurements.size(); ++index) {
         const v3::Value& value = snapshot.measurements[index];
+        const bool temperature = temperature_measurement(index);
+        const bool stale = temperature
+            ? snapshot.temperature_status.stale : snapshot.current_status.stale;
+        const bool last_good_available = std::isfinite(value.value);
         IedServer_updateFloatAttributeValue(
-            server_, model_->v3_measurement_value(index), value.valid() ? value.value : 0.0F);
+            server_, model_->v3_measurement_value(index),
+            value.valid() || (stale && last_good_available) ? value.value : 0.0F);
         IedServer_updateQuality(
             server_, model_->v3_measurement_quality(index),
-            value.valid() ? valid_quality : invalid_quality);
-        update_timestamp(model_->v3_measurement_time(index), timestamp_ms);
+            v3_quality(value.valid(), stale, last_good_available));
+        update_timestamp(
+            model_->v3_measurement_time(index),
+            temperature ? temperature_timestamp_ms : current_timestamp_ms);
     }
     for (std::size_t index = 0U; index < snapshot.temperature.size(); ++index) {
         const v3::Value& value = snapshot.temperature[index];
+        const bool last_good_available = std::isfinite(value.value);
         IedServer_updateFloatAttributeValue(
-            server_, model_->v3_temperature_value(index), value.valid() ? value.value : 0.0F);
+            server_, model_->v3_temperature_value(index),
+            value.valid() || (snapshot.temperature_status.stale && last_good_available)
+                ? value.value : 0.0F);
         IedServer_updateQuality(
             server_, model_->v3_temperature_quality(index),
-            value.valid() ? valid_quality : invalid_quality);
-        update_timestamp(model_->v3_temperature_time(index), timestamp_ms);
+            v3_quality(
+                value.valid(), snapshot.temperature_status.stale, last_good_available));
+        update_timestamp(model_->v3_temperature_time(index), temperature_timestamp_ms);
     }
     const std::array<bool, 15U> discrete_valid = {
         snapshot.pd_status.has_sample,
@@ -304,18 +348,33 @@ void Server::publish_v3_snapshot(const v3::UnifiedSnapshot& snapshot) {
         snapshot.alarm_active[3], snapshot.alarm_active[4], snapshot.alarm_active[5],
         snapshot.alarm_active[6], snapshot.alarm_active[7], snapshot.alarm_active[8],
         snapshot.alarm_active[9], snapshot.alarm_active[10], snapshot.alarm_active[11]};
+    const std::array<const v3::SourceStatus*, 15U> discrete_sources{
+        &snapshot.pd_status, &snapshot.current_status, &snapshot.temperature_status,
+        &snapshot.pd_status, &snapshot.pd_status, &snapshot.pd_status,
+        &snapshot.current_status, &snapshot.current_status, &snapshot.current_status,
+        &snapshot.current_status, &snapshot.current_status, &snapshot.current_status,
+        &snapshot.temperature_status, &snapshot.temperature_status,
+        &snapshot.temperature_status};
     for (std::size_t index = 0U; index < discrete_valid.size(); ++index) {
+        const v3::SourceStatus& source = *discrete_sources[index];
         IedServer_updateBooleanAttributeValue(
             server_, model_->v3_discrete_value(index), discrete_active[index]);
         IedServer_updateQuality(
             server_, model_->v3_discrete_quality(index),
-            discrete_valid[index] ? valid_quality : invalid_quality);
-        update_timestamp(model_->v3_discrete_time(index), timestamp_ms);
+            v3_quality(discrete_valid[index], source.stale, source.has_sample));
+        update_timestamp(
+            model_->v3_discrete_time(index),
+            timestamp_milliseconds(source.last_success_utc, now_ms));
     }
+    std::uint64_t communication_timestamp_ms = std::max({
+        timestamp_milliseconds(snapshot.pd_status.last_attempt_utc, 0U),
+        timestamp_milliseconds(snapshot.current_status.last_attempt_utc, 0U),
+        timestamp_milliseconds(snapshot.temperature_status.last_attempt_utc, 0U)});
+    if (communication_timestamp_ms == 0U) communication_timestamp_ms = now_ms;
     update_communication_alarm(
         snapshot.pd_status.communication_alarm || snapshot.current_status.communication_alarm ||
             snapshot.temperature_status.communication_alarm,
-        timestamp_ms);
+        communication_timestamp_ms);
     IedServer_unlockDataModel(server_);
 }
 
@@ -379,11 +438,17 @@ void Server::publish_snapshot(const acquisition::ServingView& serving_view) {
 void Server::update_loop() {
     if (v3_snapshot_store_ != nullptr && model_->is_v3()) {
         std::uint64_t last_generation = 0U;
+        std::array<bool, 3U> last_stale{};
         while (!stop_requested_.load()) {
             const v3::UnifiedSnapshot snapshot = v3_snapshot_store_->snapshot();
-            if (snapshot.generation != last_generation) {
+            const std::array<bool, 3U> stale{
+                snapshot.pd_status.stale,
+                snapshot.current_status.stale,
+                snapshot.temperature_status.stale};
+            if (snapshot.generation != last_generation || stale != last_stale) {
                 publish_v3_snapshot(snapshot);
                 last_generation = snapshot.generation;
+                last_stale = stale;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
