@@ -74,6 +74,16 @@ int main() {
         const auto csv = discrete_point_table_csv();
         check(std::count(csv.begin(),csv.end(),'\n') == 16, "generated table contains 15 points");
         check(csv.find("1,2,14,TC_high\n") != std::string::npos, "published table matches wire order");
+        const auto full_csv = point_table_csv();
+        check(std::count(full_csv.begin(), full_csv.end(), '\n') == 78,
+              "full point table contains all grouped mappings");
+        check(full_csv.find("1,3,69,2,TCG,ieee754_binary32_abcd\n") != std::string::npos,
+              "full point table contains last calculated value");
+        check(full_csv.find("1,4,20016,3600,pd_ch3_spectrum,int16_raw\n") !=
+                  std::string::npos,
+              "full point table contains third PD spectrum range");
+        check(full_csv.find("1,2,14,1,TC_high,bit\n") != std::string::npos,
+              "full point table contains last discrete point");
         check(serve_read_pdu(snapshot,nullptr,10,InvalidHoldingPolicy::exception).empty(), "null request");
         const std::array<std::uint8_t,2> short_pdu{3,1};
         check(serve_read_pdu(snapshot,short_pdu.data(),short_pdu.size(),InvalidHoldingPolicy::exception) ==

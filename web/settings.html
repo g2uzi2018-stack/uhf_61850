@@ -45,7 +45,7 @@
                         <label>IEC 61850 端口<input name="iec_port" type="number" min="1" max="65535" required><small>标准端口为 102</small></label>
                         <label>FTP 文件传输<input name="ftp_enabled" type="checkbox"><small>使用管理员账号；仅建议在可信管理网启用</small></label>
                         <label>FTP 端口<input name="ftp_port" type="number" min="1" max="65535" required><small>默认 21；修改或启停后需重启服务</small></label>
-                    </div></section>
+                    </div><div class="settings-actions panel-actions"><span></span><a class="outline-button link-button" href="/api/v1/point-table/export.csv">下载 v3 Modbus 点表 CSV</a></div></section>
                     <section class="panel settings-panel"><div class="panel-header"><div><h2>存储策略</h2><p>周期帧与事件包写入数据目录，由后台清理线程维护</p></div><span class="count-badge">原子写入</span></div><div class="settings-grid">
                         <label>周期保存间隔（秒）<input name="storage_period_seconds" type="number" min="60" max="86400" required><small>默认 300 秒</small></label>
                         <label>保留天数<input name="storage_retention_days" type="number" min="1" max="30" required><small>范围 1–30 天</small></label>

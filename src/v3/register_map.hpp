@@ -37,4 +37,5 @@ std::vector<std::uint8_t> serve_read_pdu(const UpstreamSnapshot& snapshot,
                                        const std::uint8_t* request, std::size_t length,
                                        InvalidHoldingPolicy policy);
 std::string discrete_point_table_csv();
+std::string point_table_csv();
 }  // namespace uhf::v3

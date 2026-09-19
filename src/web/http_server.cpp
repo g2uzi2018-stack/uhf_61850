@@ -7,6 +7,7 @@
 #include "web/snapshot_json.hpp"
 #include "web/v3_snapshot_json.hpp"
 #include "storage/v3_history_store.hpp"
+#include "v3/register_map.hpp"
 
 #include <algorithm>
 #include <array>
@@ -2443,7 +2444,8 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
 
     if (request_path == "/api/v1/frames" || request_path == "/api/v1/events" ||
         request_path == "/api/v1/frames/export.csv" ||
-        request_path == "/api/v1/events/export.csv") {
+        request_path == "/api/v1/events/export.csv" ||
+        request_path == "/api/v1/point-table/export.csv") {
         if (parsed.method != "GET") {
             send_method_not_allowed(client_fd, tls, "GET");
             return false;
@@ -2458,6 +2460,22 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             return false;
         }
         iterator->second.expires_at = now + kSessionLifetime;
+        if (request_path == "/api/v1/point-table/export.csv") {
+            const std::string body = v3::point_table_csv();
+            if (body.size() > kMaxResponseBytes) {
+                send_error(client_fd, tls, 500, "point table response too large");
+                return false;
+            }
+            send_response(
+                client_fd,
+                tls,
+                200,
+                "text/csv; charset=utf-8",
+                body,
+                "Content-Disposition: attachment; filename=\"v3-point-table.csv\"\r\n"
+                "Cache-Control: no-store\r\n");
+            return false;
+        }
         if (request_path == "/api/v1/frames") {
             const std::optional<std::string> body = frames_json();
             if (!body) {

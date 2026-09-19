@@ -152,7 +152,13 @@ def main() -> int:
             assert_status(public_health_status, 200, "public health")
             public_snapshot_status, _, _ = request(port, "GET", "/api/v1/snapshot/latest")
             assert_status(public_snapshot_status, 503, "public snapshot without acquisition")
-            for protected_path in ("/api/v1/config", "/api/v1/network", "/api/v1/time", "/api/v1/iec61850"):
+            for protected_path in (
+                "/api/v1/config",
+                "/api/v1/network",
+                "/api/v1/time",
+                "/api/v1/iec61850",
+                "/api/v1/point-table/export.csv",
+            ):
                 protected_status, _, _ = request(port, "GET", protected_path)
                 assert_status(protected_status, 401, f"unauthenticated {protected_path}")
 
@@ -199,6 +205,24 @@ def main() -> int:
             if not set_cookie.startswith("uhf_session=") or "HttpOnly" not in set_cookie or "SameSite=Strict" not in set_cookie:
                 fail(f"session cookie is missing required attributes: {set_cookie!r}")
             cookie = set_cookie.split(";", 1)[0]
+
+            point_status, point_body, point_headers = request(
+                port,
+                "GET",
+                "/api/v1/point-table/export.csv",
+                headers={"Cookie": cookie},
+            )
+            assert_status(point_status, 200, "v3 point table export")
+            if (
+                b"profile_version,function_code,wire_address,register_count,name,encoding"
+                not in point_body
+                or b"1,3,69,2,TCG,ieee754_binary32_abcd" not in point_body
+                or b"1,4,20016,3600,pd_ch3_spectrum,int16_raw" not in point_body
+                or b"1,2,14,1,TC_high,bit" not in point_body
+                or point_headers.get("Content-Type") != "text/csv; charset=utf-8"
+                or "v3-point-table.csv" not in point_headers.get("Content-Disposition", "")
+            ):
+                fail("v3 point table export content or headers are incomplete")
 
             session_status, session_body, _ = request(
                 port, "GET", "/api/v1/session", headers={"Cookie": cookie}

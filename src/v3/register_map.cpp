@@ -4,6 +4,9 @@
 
 namespace uhf::v3 {
 namespace {
+constexpr std::array<std::string_view, kFeatureCount> kPdFeatureNames{
+    "mean", "frequency", "peak", "phase", "noise", "50hz", "100hz"};
+
 std::vector<std::uint8_t> exception(std::uint8_t function, std::uint8_t code) {
     return {static_cast<std::uint8_t>(function | 0x80U), code};
 }
@@ -67,6 +70,34 @@ std::string discrete_point_table_csv() {
     std::string out = "profile_version,function_code,wire_address,name\n";
     for (std::size_t i = 0; i < kDiscreteCount; ++i) {
         out += "1,2," + std::to_string(i) + "," + std::string(kDiscreteNames[i]) + "\n";
+    }
+    return out;
+}
+
+std::string point_table_csv() {
+    std::string out =
+        "profile_version,function_code,wire_address,register_count,name,encoding\n";
+    for (std::size_t index = 0U; index < kValueCount; ++index) {
+        out += "1,3," + std::to_string(1U + index * 2U) + ",2," +
+            std::string(kValueNames[index]) + ",ieee754_binary32_abcd\n";
+    }
+    for (std::size_t channel = 0U; channel < kChannelCount; ++channel) {
+        const std::string prefix = "pd_ch" + std::to_string(channel + 1U) + "_";
+        const std::size_t base = kChannelStarts[channel];
+        for (std::size_t feature = 0U; feature < kFeatureCount; ++feature) {
+            out += "1,4," + std::to_string(base + feature) + ",1," + prefix +
+                std::string(kPdFeatureNames[feature]) + ",uint16_raw\n";
+        }
+        out += "1,4," + std::to_string(base + kFeatureCount) + "," +
+            std::to_string(kSpectrumOffset - kFeatureCount) + "," + prefix +
+            "reserved,opaque_registers\n";
+        out += "1,4," + std::to_string(base + kSpectrumOffset) + "," +
+            std::to_string(kSpectrumPoints) + "," + prefix +
+            "spectrum,int16_raw\n";
+    }
+    for (std::size_t index = 0U; index < kDiscreteCount; ++index) {
+        out += "1,2," + std::to_string(index) + ",1," +
+            std::string(kDiscreteNames[index]) + ",bit\n";
     }
     return out;
 }
