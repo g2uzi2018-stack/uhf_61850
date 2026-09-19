@@ -248,14 +248,15 @@ def main() -> int:
                 port, "GET", "/overview.html", headers={"Cookie": cookie}
             )
             assert_status(overview_status, 200, "authenticated overview")
-            if "实时总览".encode("utf-8") not in overview_body:
-                fail("authenticated overview page was not served")
+            for marker in ("实时总览", "综合监测管理机", "v3-measurements-body", "data-pd-channel"):
+                if marker.encode("utf-8") not in overview_body:
+                    fail(f"authenticated overview page is missing {marker!r}")
             overview_api_status, overview_api_body, _ = request(
                 port, "GET", "/api/v1/overview"
             )
             assert_status(overview_api_status, 200, "public overview settings")
             overview_payload = json.loads(overview_api_body)
-            if overview_payload.get("overview_title") != "局部放电在线监测系统" or overview_payload.get("phase_start_degree") != 0:
+            if overview_payload.get("overview_title") != "综合监测管理机" or overview_payload.get("phase_start_degree") != 0:
                 fail(f"unexpected public overview settings: {overview_payload!r}")
             settings_status, settings_body, _ = request(
                 port, "GET", "/settings.html", headers={"Cookie": cookie}

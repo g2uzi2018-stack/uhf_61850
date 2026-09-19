@@ -32,8 +32,8 @@ struct Values {
     std::string iec_ied_name{"UHFPD1"};
     bool ftp_enabled{false};
     std::uint16_t ftp_port{21U};
-    std::string overview_title{"局部放电在线监测系统"};
-    std::string overview_device{"1号主变"};
+    std::string overview_title{"综合监测管理机"};
+    std::string overview_device{"三合一监测设备"};
     std::uint16_t phase_start_degree{0U};
     bool time_sync_enabled{true};
     std::string sntp_server{"pool.ntp.org"};

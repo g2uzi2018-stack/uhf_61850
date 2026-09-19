@@ -17,6 +17,8 @@ import tty
 import json
 import sys
 
+from websocket_smoke import receive_frame, websocket_handshake
+
 
 def crc16(data):
     crc = 0xFFFF
@@ -244,6 +246,28 @@ def main():
             measurements = {entry["name"]: entry["value"] for entry in body["measurements"]}
             assert measurements["Ia"]["valid"] is False
             assert measurements["TA"]["valid"] is False
+            websocket = websocket_handshake(
+                web_port, "", f"http://127.0.0.1:{web_port}"
+            )
+            try:
+                websocket_payload = None
+                for _ in range(4):
+                    opcode, payload = receive_frame(websocket)
+                    if opcode != 1:
+                        continue
+                    candidate = json.loads(payload)
+                    if candidate.get("type") == "telemetry":
+                        websocket_payload = candidate
+                        break
+                assert websocket_payload is not None
+                websocket_snapshot = websocket_payload["snapshot"]
+                assert websocket_snapshot["schema_version"] == 3
+                assert len(websocket_snapshot["pd"]) == 3
+                assert len(websocket_snapshot["measurements"]) == 35
+                assert websocket_snapshot["sources"]["current"]["has_sample"] is True
+                assert websocket_snapshot["sources"]["temperature"]["has_sample"] is True
+            finally:
+                websocket.close()
             password = os.path.join(root, "initial-password")
             with open(password, "r", encoding="utf-8") as password_file:
                 initial_password = password_file.read().strip()

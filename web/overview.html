@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="UHF 61850 局放监测管理机实时总览">
+    <meta name="description" content="UHF 61850 综合监测管理机实时总览">
     <title>实时总览 · UHF 61850</title>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -12,7 +12,7 @@
         <aside class="sidebar">
             <div class="brand">
                 <div class="brand-mark">U</div>
-                <div class="brand-copy"><strong>UHF 61850</strong><span>局放监测管理机</span></div>
+                <div class="brand-copy"><strong>UHF 61850</strong><span>综合监测管理机</span></div>
             </div>
             <div class="preview-chip"><span class="chip-dot"></span>设备管理模式</div>
             <nav class="primary-nav" aria-label="主导航">
@@ -41,16 +41,27 @@
             <div class="page-content overview-content">
                 <div class="breadcrumb"><span>运行监测</span><b>/</b><strong>实时总览</strong></div>
                 <div class="page-heading">
-                    <div><div class="heading-kicker">LIVE MONITORING</div><h1 id="overview-title">局部放电在线监测系统</h1><p id="overview-device">1号主变 · 查看最新完整快照、局放谱图和各服务运行状态。</p></div>
+                    <div><div class="heading-kicker">LIVE MONITORING</div><h1 id="overview-title">综合监测管理机</h1><p id="overview-device">查看三通道局放、电流、温度、计算值和各源质量状态。</p></div>
                     <span class="heading-badge" id="snapshot-badge"><i></i>等待快照</span>
                 </div>
 
-                <div class="metric-grid" aria-label="测量值">
-                    <article class="metric-card"><span>平均值</span><strong data-measurement="average">--</strong><em>dBm</em></article>
-                    <article class="metric-card"><span>放电频次</span><strong data-measurement="frequency">--</strong><em>次/秒</em></article>
-                    <article class="metric-card"><span>峰值</span><strong data-measurement="peak">--</strong><em>dBm</em></article>
-                    <article class="metric-card"><span>峰值相位</span><strong data-measurement="phase">--</strong><em>°</em></article>
-                    <article class="metric-card"><span>背景噪声</span><strong data-measurement="noise">--</strong><em>mV</em></article>
+                <section class="panel pd-channel-panel" id="pd-channel-panel">
+                    <div><strong>局放通道</strong><span>图谱与特征来自同一个完整通道轮次</span></div>
+                    <div class="pd-channel-selector" role="group" aria-label="局放通道选择">
+                        <button type="button" class="outline-button active" data-pd-channel="0" aria-pressed="true">通道 1</button>
+                        <button type="button" class="outline-button" data-pd-channel="1" aria-pressed="false">通道 2</button>
+                        <button type="button" class="outline-button" data-pd-channel="2" aria-pressed="false">通道 3</button>
+                    </div>
+                </section>
+
+                <div class="metric-grid metric-grid-seven" aria-label="局放特征值">
+                    <article class="metric-card"><span>信号均值</span><strong id="pd-feature-0">--</strong><em id="pd-unit-0">mV</em></article>
+                    <article class="metric-card"><span>放电频次</span><strong id="pd-feature-1">--</strong><em id="pd-unit-1">次/秒</em></article>
+                    <article class="metric-card"><span>信号峰值</span><strong id="pd-feature-2">--</strong><em id="pd-unit-2">mV</em></article>
+                    <article class="metric-card"><span>峰值相位</span><strong id="pd-feature-3">--</strong><em id="pd-unit-3">°</em></article>
+                    <article class="metric-card"><span>背景噪声</span><strong id="pd-feature-4">--</strong><em id="pd-unit-4">mV</em></article>
+                    <article class="metric-card"><span>50Hz 相关性</span><strong id="pd-feature-5">--</strong><em id="pd-unit-5">%</em></article>
+                    <article class="metric-card"><span>100Hz 相关性</span><strong id="pd-feature-6">--</strong><em id="pd-unit-6">%</em></article>
                 </div>
 
                 <section class="panel settings-panel overview-settings-panel">
@@ -65,22 +76,41 @@
 
                 <div class="overview-grid">
                     <section class="panel chart-panel">
-                        <div class="panel-header"><div><h2>PRPD 相位分布</h2><p>横轴相位，纵轴放电幅值（dBm）</p></div><span class="count-badge" id="snapshot-generation">generation --</span></div>
+                        <div class="panel-header"><div><h2>PRPD 相位分布</h2><p>横轴相位，纵轴为设备谱点原始值；物理单位待设备方确认</p></div><span class="count-badge" id="snapshot-generation">generation --</span></div>
                         <div class="chart-wrap"><canvas id="prpd-canvas" aria-label="PRPD 热力图"></canvas></div>
                         <div class="chart-axis"><span id="prpd-axis-start">0°</span><span id="prpd-axis-middle">180°</span><span id="prpd-axis-end">360°</span></div>
                     </section>
                     <section class="panel chart-panel">
-                        <div class="panel-header"><div><h2>PRPS 时序散点</h2><p>横轴相位，纵轴脉冲时序，颜色表示幅值（dBm）</p></div><span class="count-badge" id="snapshot-time">--</span></div>
+                        <div class="panel-header"><div><h2>PRPS 时序散点</h2><p>横轴相位，纵轴周期，颜色按本通道原始值范围归一化</p></div><span class="count-badge" id="snapshot-time">--</span></div>
                         <div class="chart-wrap"><canvas id="prps-canvas" aria-label="PRPS 散点图"></canvas></div>
                         <div class="chart-axis"><span>早期周期</span><span>时间 / 周期</span><span>最新周期</span></div>
                     </section>
                 </div>
 
+                <section class="panel v3-source-panel" id="v3-source-panel">
+                    <div class="panel-header"><div><h2>三路采集状态</h2><p>每路保留独立采样时间、在线状态、时效期限与实际运行参数</p></div><span class="count-badge">正式后端快照</span></div>
+                    <div class="source-state-grid">
+                        <article><span>局放</span><strong id="source-pd-state">--</strong><small id="source-pd-detail">--</small></article>
+                        <article><span>电流</span><strong id="source-current-state">--</strong><small id="source-current-detail">--</small></article>
+                        <article><span>温度</span><strong id="source-temperature-state">--</strong><small id="source-temperature-detail">--</small></article>
+                    </div>
+                </section>
+
+                <section class="panel v3-measurement-panel" id="v3-measurement-panel">
+                    <div class="panel-header"><div><h2>电流、温度与 35 项计算值</h2><p>无效、过期和样本不足显示为“--”，不以零值代替</p></div><span class="count-badge">质量随值显示</span></div>
+                    <div class="measurement-table-wrap"><table class="measurement-table"><thead><tr><th>点名</th><th>数值</th><th>单位/语义</th><th>质量</th></tr></thead><tbody id="v3-measurements-body"></tbody></table></div>
+                </section>
+
+                <section class="panel v3-alarm-panel" id="v3-alarm-panel">
+                    <div class="panel-header"><div><h2>遥信与报警</h2><p>12 个测量报警严格按“值 &gt; 阈值”，未配置点显示质量无效</p></div><span class="count-badge">自动置位与复归</span></div>
+                    <div class="alarm-state-grid" id="v3-alarms"></div>
+                </section>
+
                 <div class="overview-lower-grid">
                     <section class="panel status-panel">
                         <div class="panel-header"><div><h2>服务健康</h2><p>来自网关运行时的实时状态</p></div><span class="count-badge" id="health-overall">读取中</span></div>
                         <div class="health-list">
-                            <div><span>PD1000 采集</span><strong data-health="acquisition">--</strong></div>
+                            <div><span>三路采集</span><strong data-health="acquisition">--</strong></div>
                             <div><span>Modbus/TCP</span><strong data-health="modbus_tcp">--</strong></div>
                             <div><span>Modbus RTU</span><strong data-health="modbus_rtu">--</strong></div>
                             <div><span>存储与清理</span><strong data-health="storage">--</strong></div>
@@ -88,16 +118,16 @@
                         </div>
                     </section>
                     <section class="panel snapshot-panel">
-                        <div class="panel-header"><div><h2>快照信息</h2><p>只有完整 31 块采集才会生成新 generation</p></div><span class="heading-badge dev-badge" id="transport-badge"><i></i>WebSocket 连接中</span></div>
+                        <div class="panel-header"><div><h2>快照信息</h2><p>异步源不伪装为同一采样时刻；局放按完整通道发布</p></div><span class="heading-badge dev-badge" id="transport-badge"><i></i>WebSocket 连接中</span></div>
                         <dl class="snapshot-details">
-                            <div><dt>载荷质量</dt><dd id="payload-status">--</dd></div>
-                            <div><dt>轮询耗时</dt><dd id="poll-duration">--</dd></div>
+                            <div><dt>源质量</dt><dd id="payload-status">--</dd></div>
+                            <div><dt>采集时序</dt><dd id="poll-duration">--</dd></div>
                             <div><dt>最后成功</dt><dd id="last-success">--</dd></div>
                             <div><dt>谱图点数</dt><dd id="spectrum-count">--</dd></div>
                         </dl>
                     </section>
                 </div>
-                <footer class="page-footer"><span>UHF 61850 局放监测管理机</span><span>设备管理服务 · v0.1.0</span></footer>
+                <footer class="page-footer"><span>UHF 61850 综合监测管理机</span><span>设备管理服务 · v3 数据链路</span></footer>
             </div>
         </main>
     </div>

@@ -1849,6 +1849,7 @@ void HttpServer::run_websocket(int client_fd, SSL* tls) {
     input.reserve(kMaxWebSocketInputBytes);
     std::uint64_t last_generation = 0U;
     std::optional<acquisition::Availability> last_availability;
+    std::optional<std::uint16_t> last_v3_source_state;
     bool sent_health = false;
     bool close_requested = false;
     while (true) {
@@ -1885,7 +1886,47 @@ void HttpServer::run_websocket(int client_fd, SSL* tls) {
             }
         }
 
-        if (!close_requested) {
+        if (!close_requested && v3_snapshot_store_ != nullptr) {
+            const auto now = std::chrono::steady_clock::now();
+            const v3::UnifiedSnapshot snapshot = v3_snapshot_store_->snapshot();
+            const std::array<const v3::SourceStatus*, 3U> statuses{
+                &snapshot.pd_status, &snapshot.current_status, &snapshot.temperature_status};
+            std::uint16_t source_state = 0U;
+            for (std::size_t index = 0U; index < statuses.size(); ++index) {
+                const v3::SourceStatus& status = *statuses[index];
+                const std::uint16_t flags = static_cast<std::uint16_t>(
+                    (status.has_sample ? 1U : 0U) |
+                    (status.online ? 2U : 0U) |
+                    (status.communication_alarm ? 4U : 0U) |
+                    (status.stale ? 8U : 0U));
+                source_state = static_cast<std::uint16_t>(
+                    source_state | (flags << (index * 4U)));
+            }
+            if (snapshot.generation != last_generation ||
+                !last_v3_source_state || *last_v3_source_state != source_state) {
+                std::string message = "{\"type\":\"telemetry\",\"health\":";
+                message.append(health_report(now).to_json());
+                message.append(",\"snapshot\":");
+                message.append(render_v3_snapshot_json(snapshot));
+                message.append("}\n");
+                output = websocket_text(message);
+                if (output.empty()) {
+                    break;
+                }
+                last_generation = snapshot.generation;
+                last_v3_source_state = source_state;
+                sent_health = true;
+            } else if (!sent_health) {
+                std::string message = "{\"type\":\"health\",\"data\":";
+                message.append(health_report(now).to_json());
+                message.append("}\n");
+                output = websocket_text(message);
+                if (output.empty()) {
+                    break;
+                }
+                sent_health = true;
+            }
+        } else if (!close_requested) {
             const auto now = std::chrono::steady_clock::now();
             const acquisition::ServingView serving_view = snapshot_store_ == nullptr
                 ? acquisition::ServingView{}

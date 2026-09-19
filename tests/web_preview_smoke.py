@@ -46,12 +46,23 @@ def main() -> int:
     for marker in ('data-action="change-password"', "showToast", "updateChecklistProgress", "password-form"):
         if marker not in javascript:
             fail(f"app.js is missing {marker!r}")
-    for marker in ("实时总览", "prpd-canvas", "prps-canvas", "overview-title-input", "phase-start-degree", "device-status"):
+    for marker in (
+        "实时总览", "综合监测管理机", "prpd-canvas", "prps-canvas",
+        "overview-title-input", "phase-start-degree", "device-status",
+        "data-pd-channel", "v3-measurements-body", "v3-alarms", "source-current-state",
+    ):
         if marker not in overview_html:
             fail(f"overview.html is missing {marker!r}")
-    for marker in ("drawPrpd", "drawPrps", "3600", "api/v1/snapshot/latest", "api/v1/health", "api/v1/overview", "phaseStartBin", "WebSocket"):
+    for marker in (
+        "drawPrpd", "drawPrps", "3600", "api/v1/snapshot/latest", "api/v1/health",
+        "api/v1/overview", "phaseStartBin", "WebSocket", "schema_version",
+        "updateV3Snapshot", "selectedPdChannel", "qualityText", "renderAlarms",
+    ):
         if marker not in overview_javascript:
             fail(f"overview.js is missing {marker!r}")
+    for obsolete in ("PD1000", "dBm"):
+        if obsolete in overview_html or obsolete in overview_javascript:
+            fail(f"v3 overview still contains obsolete assumption {obsolete!r}")
     for marker in (
         "IP 设置入口", "IP 修改操作步骤", "① 试应用 IP", "② 确认并永久保存 IP",
         "保存并应用 IED 名称", "SNTP 服务器", "手动设备时间", "api/v1/time",
