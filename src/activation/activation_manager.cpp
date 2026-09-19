@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <fstream>
 #include <limits>
+#include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <stdexcept>
@@ -50,6 +51,14 @@ bool safe_field(std::string_view value) noexcept {
         if (character == '\n' || character == '\r' || character == '\0') return false;
     }
     return true;
+}
+
+bool constant_time_equal(std::string_view left, std::string_view right) noexcept {
+    // Activation codes have a public, fixed length.  Check that first, then
+    // use OpenSSL's constant-time byte comparison for the secret-dependent
+    // part instead of std::string's early-exit equality operator.
+    return left.size() == right.size() &&
+        CRYPTO_memcmp(left.data(), right.data(), left.size()) == 0;
 }
 
 bool atomic_write(const std::filesystem::path& path, std::string_view contents) noexcept {
@@ -157,7 +166,8 @@ bool Manager::persist(std::string_view code) const {
 
 bool Manager::activate(std::string_view code) {
     const std::string canonical = canonicalize_code(code);
-    if (!valid_identity() || canonical != expected_code_ || !persist(canonical)) {
+    if (!valid_identity() || !constant_time_equal(canonical, expected_code_) ||
+        !persist(canonical)) {
         active_ = false;
         return false;
     }

@@ -47,6 +47,15 @@ int main() try {
     uhf::activation::Manager rejected(options);
     check(!rejected.active(), "invalid activation is rejected");
 
+    options.requested_code = expected.substr(0U, expected.size() - 1U) +
+        (expected.back() == 'A' ? "B" : "A");
+    uhf::activation::Manager late_mismatch(options);
+    check(!late_mismatch.active(), "late activation mismatch is rejected");
+
+    options.requested_code = expected + "A";
+    uhf::activation::Manager wrong_length(options);
+    check(!wrong_length.active(), "wrong activation length is rejected");
+
     options.requested_code.reset();
     options.device_id = "different-board";
     uhf::activation::Manager mismatch(options);
