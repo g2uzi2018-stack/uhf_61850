@@ -107,13 +107,19 @@ def wait_port(port, timeout=8):
     raise AssertionError("gateway port did not open")
 
 
+def free_port():
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
 def main():
     binary, web_root = sys.argv[1:3]
     devices = [Device("pd"), Device("current"), Device("temperature")]
     for device in devices:
         device.start()
-    web_port = 18280 + (os.getpid() % 100)
-    modbus_port = web_port + 1
+    web_port = free_port()
+    modbus_port = free_port()
     identity = "host-e2e-board"
     key = "host-e2e-key"
     code = base64.b32encode(hmac.new(key.encode(), identity.encode(), hashlib.sha256).digest()[:12]).decode().rstrip("=")
