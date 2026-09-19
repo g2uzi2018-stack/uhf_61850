@@ -68,6 +68,7 @@ std::string render_v3_snapshot_json(const v3::UnifiedSnapshot& snapshot) {
         body.append(v3::kValueNames[index]);
         body.append("\",\"value\":");
         append_value(body, snapshot.measurements[index]);
+        body.push_back('}');
     }
     body.append("],\"alarms\":[");
     for (std::size_t alarm = 0U; alarm < v3::kAlarmCount; ++alarm) {
