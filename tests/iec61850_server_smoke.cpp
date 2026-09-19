@@ -36,11 +36,27 @@ namespace {
 
 struct ReportState {
     std::atomic<unsigned int> count{0U};
+    std::atomic<std::uint32_t> data_set_size{0U};
+    std::atomic<bool> first_measurement_changed{false};
+    std::atomic<float> first_measurement_value{0.0F};
 };
 
 void report_callback(void* parameter, ClientReport report) {
     auto* state = static_cast<ReportState*>(parameter);
-    if (ClientReport_getDataSetValues(report) != nullptr) {
+    MmsValue* values = ClientReport_getDataSetValues(report);
+    if (values != nullptr) {
+        const std::uint32_t size = MmsValue_getArraySize(values);
+        state->data_set_size.store(size);
+        constexpr int kFirstV3MeasurementIndex = 3;
+        if (size > static_cast<std::uint32_t>(kFirstV3MeasurementIndex) &&
+            ClientReport_getReasonForInclusion(report, kFirstV3MeasurementIndex) ==
+                IEC61850_REASON_DATA_CHANGE) {
+            MmsValue* value = MmsValue_getElement(values, kFirstV3MeasurementIndex);
+            if (value != nullptr && MmsValue_getType(value) == MMS_FLOAT) {
+                state->first_measurement_value.store(MmsValue_toFloat(value));
+                state->first_measurement_changed.store(true);
+            }
+        }
         state->count.fetch_add(1U);
     }
 }
@@ -315,6 +331,77 @@ bool v3_model_is_readable() {
         ok = ok && error == IED_ERROR_OK &&
             fresh_quality == static_cast<Quality>(QUALITY_VALIDITY_GOOD);
 
+        ClientDataSet data_set = IedConnection_readDataSetValues(
+            connection, &error, "TESTV3PDMON/LLN0.DSV3Measurements", nullptr);
+        ok = expect(
+            error == IED_ERROR_OK && data_set != nullptr,
+            "read v3 static measurement data set") && ok;
+        if (data_set != nullptr) {
+            MmsValue* values = ClientDataSet_getValues(data_set);
+            MmsValue* first_measurement = values == nullptr
+                ? nullptr : MmsValue_getElement(values, 3);
+            ok = expect(
+                ClientDataSet_getDataSetSize(data_set) == 41 && values != nullptr &&
+                    MmsValue_getArraySize(values) == 41 && first_measurement != nullptr &&
+                    MmsValue_getType(first_measurement) == MMS_FLOAT &&
+                    std::fabs(static_cast<double>(MmsValue_toFloat(first_measurement)) - 1.0) <
+                        0.01,
+                "v3 static data set contains all 41 mapped measurements") && ok;
+            ClientDataSet_destroy(data_set);
+        }
+
+        ClientReportControlBlock rcb = IedConnection_getRCBValues(
+            connection,
+            &error,
+            "TESTV3PDMON/LLN0.RP.RPV3Measurements",
+            nullptr);
+        ok = expect(error == IED_ERROR_OK && rcb != nullptr, "read v3 measurement URCB") && ok;
+        if (rcb != nullptr) {
+            ok = expect(!ClientReportControlBlock_isBuffered(rcb),
+                        "v3 measurement report is unbuffered") && ok;
+            ReportState report_state;
+            IedConnection_installReportHandler(
+                connection,
+                "TESTV3PDMON/LLN0.RP.RPV3Measurements",
+                ClientReportControlBlock_getRptId(rcb),
+                report_callback,
+                &report_state);
+            ClientReportControlBlock_setTrgOps(rcb, TRG_OPT_DATA_CHANGED);
+            ClientReportControlBlock_setRptEna(rcb, true);
+            IedConnection_setRCBValues(
+                connection,
+                &error,
+                rcb,
+                RCB_ELEMENT_RPT_ENA | RCB_ELEMENT_TRG_OPS,
+                true);
+            ok = expect(error == IED_ERROR_OK, "enable v3 measurement URCB") && ok;
+
+            current[0] = uhf::v3::valid_value(9.0F);
+            v3_snapshots.publish_current(
+                current, std::chrono::steady_clock::now(), current_utc);
+            const auto report_deadline = std::chrono::steady_clock::now() +
+                std::chrono::seconds(2);
+            while ((!report_state.first_measurement_changed.load() ||
+                    std::fabs(static_cast<double>(
+                        report_state.first_measurement_value.load()) - 9.0) >= 0.01) &&
+                   std::chrono::steady_clock::now() < report_deadline) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+            ok = expect(
+                report_state.count.load() > 0U &&
+                    report_state.data_set_size.load() == 41 &&
+                    report_state.first_measurement_changed.load() &&
+                    std::fabs(static_cast<double>(
+                        report_state.first_measurement_value.load()) - 9.0) < 0.01,
+                "receive v3 Ia data-change report from the unified snapshot") && ok;
+
+            ClientReportControlBlock_setRptEna(rcb, false);
+            IedConnection_setRCBValues(
+                connection, &error, rcb, RCB_ELEMENT_RPT_ENA, true);
+            ok = expect(error == IED_ERROR_OK, "disable v3 measurement URCB") && ok;
+            ClientReportControlBlock_destroy(rcb);
+        }
+
         std::this_thread::sleep_for(std::chrono::milliseconds(350));
         const Quality stale_quality = IedConnection_readQualityValue(
             connection, &error, "TESTV3PDMON/MMXU1.AnIn1.q", IEC61850_FC_MX);
@@ -324,7 +411,7 @@ bool v3_model_is_readable() {
         ok = ok && stale_quality_read && error == IED_ERROR_OK && stale_value != nullptr &&
             stale_quality == static_cast<Quality>(
                 QUALITY_VALIDITY_QUESTIONABLE | QUALITY_DETAIL_OLD_DATA) &&
-            std::fabs(static_cast<double>(MmsValue_toFloat(stale_value)) - 1.0) < 0.01;
+            std::fabs(static_cast<double>(MmsValue_toFloat(stale_value)) - 9.0) < 0.01;
         if (stale_value != nullptr) MmsValue_delete(stale_value);
     }
     IedConnection_close(connection);
