@@ -251,6 +251,13 @@ void SnapshotStore::update_freshness_limits(FreshnessLimits freshness) {
     ++value_.generation;
 }
 
+void SnapshotStore::update_acquisition_settings(
+    Source source, SourceAcquisitionSettings settings) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    status_for(value_, source).acquisition = settings;
+    ++value_.generation;
+}
+
 void SnapshotStore::reset_engineering_values(
     bool reset_current, bool reset_temperature) {
     if (!reset_current && !reset_temperature) {
@@ -471,9 +478,6 @@ bool PortCollector::poll_pd_channel(std::size_t channel) {
     RegisterValidity received;
     const auto plan = pd_request_plan(channel, options_.slave_id);
     for (std::size_t index = 0U; index < plan.size(); ++index) {
-        if (index > 0U) {
-            clock_.sleep_for(options_.pd_segment_interval);
-        }
         std::vector<std::uint16_t> registers;
         if (read_registers(plan[index], registers) != ReadResult::complete) {
             last_error_ = "PD channel segment read failed";
@@ -568,9 +572,13 @@ AcquisitionScheduler::AcquisitionScheduler(
     : pd_port_(pd_port), current_port_(current_port), temperature_port_(temperature_port),
       snapshots_(snapshots), options_(std::move(options)),
       owned_clock_(std::make_unique<SteadyClock>()), clock_(*owned_clock_) {
-    pd_collector_ = std::make_unique<PortCollector>(pd_port_, snapshots_, clock_, options_.collector);
+    CollectorOptions pd_options = options_.collector;
+    pd_options.slave_id = options_.pd_slave_id;
+    pd_collector_ = std::make_unique<PortCollector>(
+        pd_port_, snapshots_, clock_, pd_options);
     current_collector_ = std::make_unique<PortCollector>(current_port_, snapshots_, clock_, options_.collector);
     temperature_collector_ = std::make_unique<PortCollector>(temperature_port_, snapshots_, clock_, options_.collector);
+    publish_acquisition_settings(options_);
 }
 
 AcquisitionScheduler::AcquisitionScheduler(
@@ -578,9 +586,13 @@ AcquisitionScheduler::AcquisitionScheduler(
     SnapshotStore& snapshots, IClock& clock, SchedulerOptions options)
     : pd_port_(pd_port), current_port_(current_port), temperature_port_(temperature_port),
       snapshots_(snapshots), options_(std::move(options)), owned_clock_(nullptr), clock_(clock) {
-    pd_collector_ = std::make_unique<PortCollector>(pd_port_, snapshots_, clock_, options_.collector);
+    CollectorOptions pd_options = options_.collector;
+    pd_options.slave_id = options_.pd_slave_id;
+    pd_collector_ = std::make_unique<PortCollector>(
+        pd_port_, snapshots_, clock_, pd_options);
     current_collector_ = std::make_unique<PortCollector>(current_port_, snapshots_, clock_, options_.collector);
     temperature_collector_ = std::make_unique<PortCollector>(temperature_port_, snapshots_, clock_, options_.collector);
+    publish_acquisition_settings(options_);
 }
 
 AcquisitionScheduler::~AcquisitionScheduler() { stop(); }
@@ -608,6 +620,40 @@ void AcquisitionScheduler::stop() noexcept {
 
 bool AcquisitionScheduler::running() const noexcept { return running_.load(); }
 
+void AcquisitionScheduler::update_options(SchedulerOptions options) {
+    CollectorOptions pd_options = pd_collector_->options();
+    CollectorOptions current_options = current_collector_->options();
+    CollectorOptions temperature_options = temperature_collector_->options();
+    const auto apply_common = [&options](CollectorOptions& target) {
+        target.response_timeout = options.collector.response_timeout;
+        target.retry_delay = options.collector.retry_delay;
+        target.quarantine_duration = options.collector.quarantine_duration;
+        target.max_retries = options.collector.max_retries;
+    };
+    apply_common(pd_options);
+    apply_common(current_options);
+    apply_common(temperature_options);
+    pd_options.slave_id = options.pd_slave_id;
+    current_options.slave_id = options.collector.slave_id;
+    temperature_options.slave_id = options.collector.slave_id;
+    options.collector.current_encoding = current_options.current_encoding;
+    options.collector.current_scale = current_options.current_scale;
+    options.collector.temperature_scale = temperature_options.temperature_scale;
+    pd_collector_->update_options(std::move(pd_options));
+    current_collector_->update_options(std::move(current_options));
+    temperature_collector_->update_options(std::move(temperature_options));
+    {
+        std::lock_guard<std::mutex> lock(options_mutex_);
+        options_ = options;
+    }
+    publish_acquisition_settings(options);
+}
+
+SchedulerOptions AcquisitionScheduler::options() const {
+    std::lock_guard<std::mutex> lock(options_mutex_);
+    return options_;
+}
+
 void AcquisitionScheduler::update_current_conversion(
     WordEncoding encoding, LinearScale scale) {
     CollectorOptions options = current_collector_->options();
@@ -622,9 +668,8 @@ void AcquisitionScheduler::update_temperature_conversion(LinearScale scale) {
     temperature_collector_->update_options(std::move(options));
 }
 
-void AcquisitionScheduler::wait_period(
-    std::chrono::milliseconds period, std::chrono::steady_clock::time_point started) {
-    const auto deadline = started + period;
+void AcquisitionScheduler::wait_until(
+    std::chrono::steady_clock::time_point deadline) {
     while (!stop_requested_.load()) {
         const auto now = clock_.now();
         if (now >= deadline) {
@@ -635,11 +680,67 @@ void AcquisitionScheduler::wait_period(
     }
 }
 
+void AcquisitionScheduler::wait_period(
+    std::chrono::milliseconds period, std::chrono::steady_clock::time_point started) {
+    wait_until(started + period);
+}
+
+std::chrono::milliseconds AcquisitionScheduler::current_period() const {
+    std::lock_guard<std::mutex> lock(options_mutex_);
+    return options_.current_period;
+}
+
+std::chrono::milliseconds AcquisitionScheduler::temperature_period() const {
+    std::lock_guard<std::mutex> lock(options_mutex_);
+    return options_.temperature_period;
+}
+
+std::chrono::milliseconds AcquisitionScheduler::pd_channel_interval() const {
+    std::lock_guard<std::mutex> lock(options_mutex_);
+    return options_.pd_channel_interval;
+}
+
+void AcquisitionScheduler::publish_acquisition_settings(
+    const SchedulerOptions& options) {
+    const auto bounded_milliseconds = [](std::chrono::milliseconds value) {
+        return static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+            value.count(), 0, std::numeric_limits<std::uint32_t>::max()));
+    };
+    const auto settings = [&options, &bounded_milliseconds](
+        std::uint8_t unit_id, std::chrono::milliseconds period) {
+        return SourceAcquisitionSettings{
+            unit_id,
+            bounded_milliseconds(period),
+            bounded_milliseconds(options.collector.response_timeout),
+            bounded_milliseconds(options.collector.retry_delay),
+            bounded_milliseconds(options.collector.quarantine_duration),
+            options.collector.max_retries};
+    };
+    snapshots_.update_acquisition_settings(
+        Source::pd, settings(options.pd_slave_id, options.pd_channel_interval));
+    snapshots_.update_acquisition_settings(
+        Source::current,
+        settings(options.collector.slave_id, options.current_period));
+    snapshots_.update_acquisition_settings(
+        Source::temperature,
+        settings(options.collector.slave_id, options.temperature_period));
+}
+
 void AcquisitionScheduler::run_pd() {
+    std::array<std::chrono::steady_clock::time_point, kChannelCount> last_started{};
+    std::array<bool, kChannelCount> has_started{};
     while (!stop_requested_.load()) {
-        const auto started = clock_.now();
-        (void)pd_collector_->poll_pd_all();
-        wait_period(options_.pd_period, started);
+        for (std::size_t channel = 0U; channel < kChannelCount; ++channel) {
+            if (has_started[channel]) {
+                wait_until(last_started[channel] + pd_channel_interval());
+            }
+            if (stop_requested_.load()) {
+                return;
+            }
+            last_started[channel] = clock_.now();
+            has_started[channel] = true;
+            (void)pd_collector_->poll_pd_channel(channel + 1U);
+        }
     }
 }
 
@@ -647,7 +748,7 @@ void AcquisitionScheduler::run_current() {
     while (!stop_requested_.load()) {
         const auto started = clock_.now();
         (void)current_collector_->poll_current();
-        wait_period(options_.current_period, started);
+        wait_period(current_period(), started);
     }
 }
 
@@ -655,7 +756,7 @@ void AcquisitionScheduler::run_temperature() {
     while (!stop_requested_.load()) {
         const auto started = clock_.now();
         (void)temperature_collector_->poll_temperature();
-        wait_period(options_.temperature_period, started);
+        wait_period(temperature_period(), started);
     }
 }
 

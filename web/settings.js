@@ -24,6 +24,9 @@
         "iec_port", "ftp_port", "storage_period_seconds", "storage_retention_days", "storage_min_free_bytes",
         "storage_event_threshold_dbm", "storage_event_rearm_dbm", "storage_event_delta_db",
         "storage_event_merge_seconds",
+        "v3_pd_slave_id", "v3_pd_interval_ms", "v3_current_interval_ms",
+        "v3_temperature_interval_ms", "v3_response_timeout_ms", "v3_retry_delay_ms",
+        "v3_late_frame_quarantine_ms", "v3_max_retries",
         "v3_pd_freshness_ms", "v3_current_freshness_ms", "v3_temperature_freshness_ms",
         "web_port"
     ];

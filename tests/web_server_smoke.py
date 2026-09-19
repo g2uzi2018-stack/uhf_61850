@@ -268,6 +268,8 @@ def main() -> int:
             if (
                 b'name="v3_current_encoding"' not in settings_body
                 or b'name="v3_current_serial"' not in settings_body
+                or b'name="v3_pd_interval_ms"' not in settings_body
+                or b'name="v3_late_frame_quarantine_ms"' not in settings_body
                 or b'name="v3_current_freshness_ms"' not in settings_body
                 or b'name="v3_alarm_pd1"' not in settings_body
             ):
@@ -489,6 +491,8 @@ def main() -> int:
                     schema_properties.get("v3_current_serial", {}).get("pattern", "")
                 or schema_properties.get("v3_pd_freshness_ms", {}).get("minimum") != 1000
                 or schema_properties.get("v3_pd_freshness_ms", {}).get("maximum") != 86400000
+                or schema_properties.get("v3_pd_interval_ms", {}).get("minimum") != 3000
+                or schema_properties.get("v3_max_retries", {}).get("maximum") != 3
             ):
                 fail("configuration schema is incomplete")
             logs_status, logs_body, _ = request(

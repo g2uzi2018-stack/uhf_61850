@@ -57,6 +57,14 @@ const char* valid_object() {
         "v3_temperature_offset":0,
         "v3_current_serial":"9600/8E1",
         "v3_temperature_serial":"19200/8N2",
+        "v3_pd_slave_id":2,
+        "v3_pd_interval_ms":4000,
+        "v3_current_interval_ms":1100,
+        "v3_temperature_interval_ms":1200,
+        "v3_response_timeout_ms":160,
+        "v3_retry_delay_ms":30,
+        "v3_late_frame_quarantine_ms":40,
+        "v3_max_retries":2,
         "v3_pd_freshness_ms":610000,
         "v3_current_freshness_ms":6000,
         "v3_temperature_freshness_ms":7000
@@ -100,6 +108,14 @@ int main() {
                     "v3 current serial profile") ||
             !expect(initial.values.v3_temperature_serial == "19200/8N2",
                     "v3 temperature serial profile") ||
+            !expect(initial.values.v3_pd_slave_id == 2U,
+                    "v3 PD slave ID") ||
+            !expect(initial.values.v3_pd_interval_ms == 4000U,
+                    "v3 PD interval") ||
+            !expect(initial.values.v3_response_timeout_ms == 160U,
+                    "v3 response timeout") ||
+            !expect(initial.values.v3_max_retries == 2U,
+                    "v3 retry count") ||
             !expect(initial.values.v3_pd_freshness_ms == 610000U,
                     "v3 PD freshness") ||
             !expect(initial.values.v3_current_freshness_ms == 6000U,
@@ -273,6 +289,39 @@ int main() {
                 "out-of-range v3 freshness accepted")) {
             return 1;
         }
+        const std::string invalid_pd_interval = [] {
+            std::string value = valid_object();
+            const std::string interval = "\"v3_pd_interval_ms\":4000";
+            const std::size_t position = value.find(interval);
+            if (position != std::string::npos) {
+                value.replace(
+                    position, interval.size(),
+                    "\"v3_pd_interval_ms\":2999");
+            }
+            return value;
+        }();
+        if (!expect(
+                store.update(1U, invalid_pd_interval) ==
+                    uhf::config::UpdateResult::invalid,
+                "sub-three-second PD interval accepted")) {
+            return 1;
+        }
+        const std::string invalid_retry_count = [] {
+            std::string value = valid_object();
+            const std::string retries = "\"v3_max_retries\":2";
+            const std::size_t position = value.find(retries);
+            if (position != std::string::npos) {
+                value.replace(
+                    position, retries.size(), "\"v3_max_retries\":4");
+            }
+            return value;
+        }();
+        if (!expect(
+                store.update(1U, invalid_retry_count) ==
+                    uhf::config::UpdateResult::invalid,
+                "out-of-range v3 retry count accepted")) {
+            return 1;
+        }
         const std::filesystem::path blocked_temporary = path.string() + ".tmp";
         std::filesystem::create_directory(blocked_temporary);
         const std::string changed_freshness = [] {
@@ -326,6 +375,10 @@ int main() {
                     "temperature conversion offset") ||
             !expect(changed.values.v3_current_serial == "9600/8E1",
                     "current serial profile") ||
+            !expect(changed.values.v3_temperature_interval_ms == 1200U,
+                    "temperature polling interval") ||
+            !expect(changed.values.v3_late_frame_quarantine_ms == 40U,
+                    "late-frame quarantine") ||
             !expect(changed.values.v3_current_freshness_ms == 6000U,
                     "current freshness") ||
             !expect(std::filesystem::file_size(path) < 16U * 1024U, "updated file bound")) {
@@ -345,6 +398,10 @@ int main() {
                     std::string::npos, "saved v3 temperature multiplier") ||
             !expect(saved.find("\"v3_temperature_serial\": \"19200/8N2\"") !=
                     std::string::npos, "saved v3 temperature serial profile") ||
+            !expect(saved.find("\"v3_pd_interval_ms\": 4000") !=
+                    std::string::npos, "saved v3 PD interval") ||
+            !expect(saved.find("\"v3_max_retries\": 2") !=
+                    std::string::npos, "saved v3 retry count") ||
             !expect(saved.find("\"v3_pd_freshness_ms\": 610000") !=
                     std::string::npos, "saved v3 freshness") ||
             !expect(saved.find("Smoke") == std::string::npos, "no test secret")) {
@@ -375,6 +432,8 @@ int main() {
                     "v3 multiplier survives restart") ||
             !expect(reopened_snapshot.values.v3_current_serial == "9600/8E1",
                     "v3 serial profile survives restart") ||
+            !expect(reopened_snapshot.values.v3_response_timeout_ms == 160U,
+                    "v3 timeout survives restart") ||
             !expect(reopened_snapshot.values.v3_temperature_freshness_ms == 7000U,
                     "v3 freshness survives restart")) {
             return 1;

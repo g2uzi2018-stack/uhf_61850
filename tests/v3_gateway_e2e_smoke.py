@@ -41,6 +41,8 @@ class Device:
         self.path = os.ttyname(self.slave)
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
+        self.request_lock = threading.Lock()
+        self.request_log = []
 
     def start(self):
         self.thread.start()
@@ -50,6 +52,10 @@ class Device:
         self.thread.join(timeout=1)
         os.close(self.master)
         os.close(self.slave)
+
+    def requests(self):
+        with self.request_lock:
+            return list(self.request_log)
 
     def registers(self, start, count):
         values = [0] * count
@@ -85,6 +91,8 @@ class Device:
                 if request[0] != 1 or request[1] not in (3, 4):
                     continue
                 start, count = struct.unpack(">HH", request[2:6])
+                with self.request_lock:
+                    self.request_log.append((start, count, time.monotonic()))
                 values = self.registers(start, count)
                 payload = b"".join(struct.pack(">H", value) for value in values)
                 response = bytes((1, request[1], len(payload))) + payload
@@ -200,6 +208,8 @@ def main():
                 unconfigured_process.kill()
                 unconfigured_process.wait(timeout=2)
 
+        time.sleep(0.1)
+        pd_request_offset = len(devices[0].requests())
         command = [binary, "--web", "--http-recovery", "--v3",
                    "--web-root", web_root, "--state-dir", root,
                    "--data-dir", os.path.join(root, "data"),
@@ -267,6 +277,14 @@ def main():
             assert configuration["v3_current_encoding"] == "unconfigured"
             assert configuration["v3_current_multiplier"] is None
             assert configuration["v3_temperature_multiplier"] is None
+            assert configuration["v3_pd_slave_id"] == 1
+            assert configuration["v3_pd_interval_ms"] == 3000
+            assert configuration["v3_current_interval_ms"] == 1000
+            assert configuration["v3_temperature_interval_ms"] == 1000
+            assert configuration["v3_response_timeout_ms"] == 150
+            assert configuration["v3_retry_delay_ms"] == 20
+            assert configuration["v3_late_frame_quarantine_ms"] == 20
+            assert configuration["v3_max_retries"] == 3
             assert configuration["v3_pd_freshness_ms"] == 600000
             assert configuration["v3_current_freshness_ms"] == 5000
             assert configuration["v3_temperature_freshness_ms"] == 5000
@@ -279,6 +297,13 @@ def main():
             configuration["v3_current_offset"] = 0
             configuration["v3_temperature_multiplier"] = 0.1
             configuration["v3_temperature_offset"] = 0
+            configuration["v3_pd_interval_ms"] = 3000
+            configuration["v3_current_interval_ms"] = 1200
+            configuration["v3_temperature_interval_ms"] = 1300
+            configuration["v3_response_timeout_ms"] = 170
+            configuration["v3_retry_delay_ms"] = 25
+            configuration["v3_late_frame_quarantine_ms"] = 30
+            configuration["v3_max_retries"] = 2
             configuration["v3_pd_freshness_ms"] = 610000
             configuration["v3_current_freshness_ms"] = 6000
             configuration["v3_temperature_freshness_ms"] = 7000
@@ -318,7 +343,15 @@ def main():
                     and live_measurements.get("TA", {}).get("value") == 20.0
                     and alarm_payload["sources"]["pd"]["freshness_limit_ms"] == 610000
                     and alarm_payload["sources"]["current"]["freshness_limit_ms"] == 6000
-                    and alarm_payload["sources"]["temperature"]["freshness_limit_ms"] == 7000):
+                    and alarm_payload["sources"]["temperature"]["freshness_limit_ms"] == 7000
+                    and alarm_payload["sources"]["pd"]["acquisition"]["unit_id"] == 1
+                    and alarm_payload["sources"]["pd"]["acquisition"]["poll_interval_ms"] == 3000
+                    and alarm_payload["sources"]["current"]["acquisition"]["poll_interval_ms"] == 1200
+                    and alarm_payload["sources"]["temperature"]["acquisition"]["poll_interval_ms"] == 1300
+                    and alarm_payload["sources"]["current"]["acquisition"]["response_timeout_ms"] == 170
+                    and alarm_payload["sources"]["current"]["acquisition"]["retry_delay_ms"] == 25
+                    and alarm_payload["sources"]["current"]["acquisition"]["late_frame_quarantine_ms"] == 30
+                    and alarm_payload["sources"]["current"]["acquisition"]["max_retries"] == 2):
                     break
                 time.sleep(0.05)
             else:
@@ -341,6 +374,25 @@ def main():
             assert not any("packet" in filename.lower()
                            for _, _, filenames in os.walk(os.path.join(root, "data"))
                            for filename in filenames)
+            deadline = time.monotonic() + 5
+            main_pd_requests = []
+            while time.monotonic() < deadline:
+                main_pd_requests = devices[0].requests()[pd_request_offset:]
+                channel_one_starts = [
+                    timestamp for start, _, timestamp in main_pd_requests
+                    if start == 10001
+                ]
+                if len(channel_one_starts) >= 2:
+                    break
+                time.sleep(0.05)
+            else:
+                raise AssertionError("second PD channel round did not start")
+            first_segment = next(
+                timestamp for start, _, timestamp in main_pd_requests
+                if start == 10016
+            )
+            assert first_segment - channel_one_starts[0] < 1.0
+            assert channel_one_starts[1] - channel_one_starts[0] >= 2.99
             with socket.create_connection(("127.0.0.1", modbus_port), timeout=2) as sock:
                 sock.sendall(struct.pack(">HHHBBHH", 1, 0, 6, 1, 3, 1, 2))
                 response = bytearray()

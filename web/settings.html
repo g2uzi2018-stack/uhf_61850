@@ -56,6 +56,16 @@
                         <label>温度倍率<input name="v3_temperature_multiplier" type="number" min="0" step="any"><small>必须为正有限数；例如 0.1 仅可由厂商确认后填写</small></label>
                         <label>温度偏移<input name="v3_temperature_offset" type="number" step="any"><small>有限数；与倍率成组配置</small></label>
                     </div></section>
+                    <section class="panel settings-panel"><div class="panel-header"><div><h2>v3 采集时序</h2><p>三路互不阻塞；局放间隔按同一完整通道相邻两次读取的起始时间计算</p></div><span class="count-badge">保存后热生效</span></div><div class="settings-grid">
+                        <label>局放从站地址<input name="v3_pd_slave_id" type="number" min="1" max="254" required><small>原文默认 1，范围 1–254</small></label>
+                        <label>局放通道间隔（毫秒）<input name="v3_pd_interval_ms" type="number" min="3000" max="3600000" required><small>原文要求 ≥ 3000；不是分段请求间延时</small></label>
+                        <label>电流周期（毫秒）<input name="v3_current_interval_ms" type="number" min="100" max="3600000" required><small>原文默认 1000</small></label>
+                        <label>测温周期（毫秒）<input name="v3_temperature_interval_ms" type="number" min="100" max="3600000" required><small>原文默认 1000</small></label>
+                        <label>响应超时（毫秒）<input name="v3_response_timeout_ms" type="number" min="10" max="5000" required><small>三路共用；暂定默认 150</small></label>
+                        <label>重试延时（毫秒）<input name="v3_retry_delay_ms" type="number" min="0" max="5000" required><small>首次失败后下一次请求前等待</small></label>
+                        <label>迟到帧隔离（毫秒）<input name="v3_late_frame_quarantine_ms" type="number" min="1" max="5000" required><small>超时/坏帧后清空迟到字节的窗口</small></label>
+                        <label>额外重试次数<input name="v3_max_retries" type="number" min="0" max="3" required><small>3 表示首次请求之外最多再试 3 次</small></label>
+                    </div></section>
                     <section class="panel settings-panel"><div class="panel-header"><div><h2>v3 数据时效</h2><p>每路按自己的最近成功采样时间判断；过期值不会作为正常测量上送</p></div><span class="count-badge">保存后热生效</span></div><div class="settings-grid">
                         <label>局放时效（毫秒）<input name="v3_pd_freshness_ms" type="number" min="1000" max="86400000" required><small>暂定默认 600000；范围 1 秒–24 小时</small></label>
                         <label>电流时效（毫秒）<input name="v3_current_freshness_ms" type="number" min="1000" max="86400000" required><small>暂定默认 5000；按电流源独立计时</small></label>

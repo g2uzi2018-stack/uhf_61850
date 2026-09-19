@@ -34,6 +34,19 @@ void append_status(std::string& body, const v3::SourceStatus& status) {
     body.append(std::to_string(status.consecutive_failures));
     body.append(",\"freshness_limit_ms\":");
     body.append(std::to_string(status.freshness_limit_ms));
+    body.append(",\"acquisition\":{\"unit_id\":");
+    body.append(std::to_string(status.acquisition.unit_id));
+    body.append(",\"poll_interval_ms\":");
+    body.append(std::to_string(status.acquisition.poll_interval_ms));
+    body.append(",\"response_timeout_ms\":");
+    body.append(std::to_string(status.acquisition.response_timeout_ms));
+    body.append(",\"retry_delay_ms\":");
+    body.append(std::to_string(status.acquisition.retry_delay_ms));
+    body.append(",\"late_frame_quarantine_ms\":");
+    body.append(std::to_string(status.acquisition.late_frame_quarantine_ms));
+    body.append(",\"max_retries\":");
+    body.append(std::to_string(status.acquisition.max_retries));
+    body.push_back('}');
     const auto attempt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         status.last_attempt_utc.time_since_epoch()).count();
     const auto success_ms = std::chrono::duration_cast<std::chrono::milliseconds>(

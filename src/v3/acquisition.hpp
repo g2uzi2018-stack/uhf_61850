@@ -56,6 +56,15 @@ struct AlarmThresholds {
     AlarmThresholds();
 };
 
+struct SourceAcquisitionSettings {
+    std::uint8_t unit_id{1U};
+    std::uint32_t poll_interval_ms{0U};
+    std::uint32_t response_timeout_ms{0U};
+    std::uint32_t retry_delay_ms{0U};
+    std::uint32_t late_frame_quarantine_ms{0U};
+    std::uint8_t max_retries{0U};
+};
+
 struct SourceStatus {
     bool has_sample{false};
     bool online{false};
@@ -67,6 +76,7 @@ struct SourceStatus {
     std::chrono::system_clock::time_point last_attempt_utc{};
     std::chrono::system_clock::time_point last_success_utc{};
     std::uint32_t freshness_limit_ms{0U};
+    SourceAcquisitionSettings acquisition{};
     std::string last_error;
 };
 
@@ -119,6 +129,8 @@ public:
                             std::chrono::system_clock::now());
     void update_alarm_thresholds(AlarmThresholds thresholds);
     void update_freshness_limits(FreshnessLimits freshness);
+    void update_acquisition_settings(
+        Source source, SourceAcquisitionSettings settings);
     void reset_engineering_values(bool reset_current, bool reset_temperature);
     UnifiedSnapshot snapshot() const;
     UnifiedSnapshot snapshot(std::chrono::steady_clock::time_point now) const;
@@ -148,7 +160,6 @@ struct CollectorOptions {
     std::chrono::milliseconds response_timeout{150};
     std::chrono::milliseconds retry_delay{20};
     std::chrono::milliseconds quarantine_duration{20};
-    std::chrono::milliseconds pd_segment_interval{3000};
     std::uint8_t max_retries{3U};
     WordEncoding current_encoding{WordEncoding::unsigned16};
     LinearScale current_scale{
@@ -192,9 +203,10 @@ private:
 
 struct SchedulerOptions {
     CollectorOptions collector{};
+    std::uint8_t pd_slave_id{1U};
+    std::chrono::milliseconds pd_channel_interval{3000};
     std::chrono::milliseconds current_period{1000};
     std::chrono::milliseconds temperature_period{1000};
-    std::chrono::milliseconds pd_period{1000};
 };
 
 /** Runs one independent worker per physical downstream port. */
@@ -214,6 +226,8 @@ public:
     void start();
     void stop() noexcept;
     bool running() const noexcept;
+    void update_options(SchedulerOptions options);
+    SchedulerOptions options() const;
     void update_current_conversion(WordEncoding encoding, LinearScale scale);
     void update_temperature_conversion(LinearScale scale);
 
@@ -221,13 +235,19 @@ private:
     void run_pd();
     void run_current();
     void run_temperature();
+    void wait_until(std::chrono::steady_clock::time_point deadline);
     void wait_period(std::chrono::milliseconds period,
                      std::chrono::steady_clock::time_point started);
+    std::chrono::milliseconds current_period() const;
+    std::chrono::milliseconds temperature_period() const;
+    std::chrono::milliseconds pd_channel_interval() const;
+    void publish_acquisition_settings(const SchedulerOptions& options);
 
     ISerialPort& pd_port_;
     ISerialPort& current_port_;
     ISerialPort& temperature_port_;
     SnapshotStore& snapshots_;
+    mutable std::mutex options_mutex_;
     SchedulerOptions options_;
     std::unique_ptr<SteadyClock> owned_clock_;
     IClock& clock_;

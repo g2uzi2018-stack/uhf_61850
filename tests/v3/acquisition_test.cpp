@@ -228,7 +228,6 @@ int main() {
         options.response_timeout = std::chrono::milliseconds(100);
         options.retry_delay = std::chrono::milliseconds(1);
         options.quarantine_duration = std::chrono::milliseconds(1);
-        options.pd_segment_interval = std::chrono::milliseconds(0);
         options.current_scale = {1.0F, 0.0F};
         options.temperature_scale = {0.1F, 0.0F};
 
@@ -238,6 +237,41 @@ int main() {
         PtyPort pd_port(pd_device.slave_path());
         PtyPort current_port(current_device.slave_path());
         PtyPort temperature_port(temperature_device.slave_path());
+        {
+            uhf::v3::SchedulerOptions scheduler_options;
+            scheduler_options.pd_slave_id = 2U;
+            scheduler_options.pd_channel_interval = std::chrono::milliseconds(4000);
+            scheduler_options.current_period = std::chrono::milliseconds(1100);
+            scheduler_options.temperature_period = std::chrono::milliseconds(1200);
+            scheduler_options.collector.response_timeout = std::chrono::milliseconds(160);
+            scheduler_options.collector.retry_delay = std::chrono::milliseconds(30);
+            scheduler_options.collector.quarantine_duration = std::chrono::milliseconds(40);
+            scheduler_options.collector.max_retries = 2U;
+            uhf::v3::AcquisitionScheduler scheduler(
+                pd_port, current_port, temperature_port,
+                snapshots, clock, scheduler_options);
+            const uhf::v3::UnifiedSnapshot configured = snapshots.snapshot();
+            check(configured.pd_status.acquisition.unit_id == 2U &&
+                  configured.pd_status.acquisition.poll_interval_ms == 4000U &&
+                  configured.current_status.acquisition.poll_interval_ms == 1100U &&
+                  configured.temperature_status.acquisition.poll_interval_ms == 1200U &&
+                  configured.current_status.acquisition.response_timeout_ms == 160U &&
+                  configured.current_status.acquisition.retry_delay_ms == 30U &&
+                  configured.current_status.acquisition.late_frame_quarantine_ms == 40U &&
+                  configured.current_status.acquisition.max_retries == 2U,
+                  "scheduler publishes active acquisition settings");
+            scheduler_options.pd_slave_id = 1U;
+            scheduler_options.pd_channel_interval = std::chrono::milliseconds(3000);
+            scheduler_options.current_period = std::chrono::milliseconds(1300);
+            scheduler.update_options(scheduler_options);
+            const uhf::v3::SchedulerOptions updated = scheduler.options();
+            const uhf::v3::UnifiedSnapshot reconfigured = snapshots.snapshot();
+            check(updated.current_period == std::chrono::milliseconds(1300) &&
+                  reconfigured.pd_status.acquisition.unit_id == 1U &&
+                  reconfigured.pd_status.acquisition.poll_interval_ms == 3000U &&
+                  reconfigured.current_status.acquisition.poll_interval_ms == 1300U,
+                  "scheduler hot reloads acquisition settings");
+        }
         uhf::v3::PortCollector pd(pd_port, snapshots, clock, options);
         uhf::v3::PortCollector current(current_port, snapshots, clock, options);
         uhf::v3::PortCollector temperature(temperature_port, snapshots, clock, options);

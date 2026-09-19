@@ -98,6 +98,25 @@ v3::FreshnessLimits freshness_limits_from_config(const config::Values& values) {
         std::chrono::milliseconds(values.v3_temperature_freshness_ms)};
 }
 
+void apply_scheduler_configuration(
+    v3::SchedulerOptions& options, const config::Values& values) {
+    options.collector.slave_id = 1U;
+    options.collector.response_timeout =
+        std::chrono::milliseconds(values.v3_response_timeout_ms);
+    options.collector.retry_delay =
+        std::chrono::milliseconds(values.v3_retry_delay_ms);
+    options.collector.quarantine_duration =
+        std::chrono::milliseconds(values.v3_late_frame_quarantine_ms);
+    options.collector.max_retries = values.v3_max_retries;
+    options.pd_slave_id = values.v3_pd_slave_id;
+    options.pd_channel_interval =
+        std::chrono::milliseconds(values.v3_pd_interval_ms);
+    options.current_period =
+        std::chrono::milliseconds(values.v3_current_interval_ms);
+    options.temperature_period =
+        std::chrono::milliseconds(values.v3_temperature_interval_ms);
+}
+
 struct V3Conversion {
     v3::WordEncoding current_encoding{v3::WordEncoding::unsigned16};
     v3::LinearScale current_scale{
@@ -187,6 +206,8 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
             *v3_temperature_serial_port_, *v3_packet_trace_, v3::PacketSource::temperature);
         const config::Snapshot initial_config = options_.config_store != nullptr
             ? options_.config_store->snapshot() : config::Snapshot{};
+        apply_scheduler_configuration(
+            options_.v3_scheduler_options, initial_config.values);
         if (options_.config_store != nullptr) {
             const V3Conversion conversion = conversion_from_config(
                 initial_config.values);
@@ -618,6 +639,9 @@ void GatewayRuntime::apply_runtime_configuration(std::uint64_t& applied_version)
             alarm_thresholds_from_config(configured.values));
         v3_snapshot_store_->update_freshness_limits(
             freshness_limits_from_config(configured.values));
+        apply_scheduler_configuration(
+            options_.v3_scheduler_options, configured.values);
+        v3_scheduler_->update_options(options_.v3_scheduler_options);
     }
     if (modbus_tcp_server_) {
         modbus::ModbusTcpOptions modbus_options;

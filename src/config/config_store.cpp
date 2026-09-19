@@ -71,7 +71,11 @@ public:
                      keys_.size() == 35U || keys_.size() == 36U ||
                      keys_.size() == 37U || keys_.size() == 38U ||
                      keys_.size() == 39U || keys_.size() == 40U ||
-                     keys_.size() == 41U);
+                     keys_.size() == 41U || keys_.size() == 42U ||
+                     keys_.size() == 43U || keys_.size() == 44U ||
+                     keys_.size() == 45U || keys_.size() == 46U ||
+                     keys_.size() == 47U || keys_.size() == 48U ||
+                     keys_.size() == 49U);
             }
             if (!consume(',')) {
                 return false;
@@ -468,6 +472,46 @@ private:
         }
         if (key == "acquisition_max_retries") {
             return assign_unsigned(value, std::uint8_t{0U}, std::uint8_t{3U}, values.acquisition_max_retries);
+        }
+        if (key == "v3_pd_slave_id") {
+            return assign_unsigned(
+                value, std::uint8_t{1U}, std::uint8_t{254U},
+                values.v3_pd_slave_id);
+        }
+        if (key == "v3_pd_interval_ms") {
+            return assign_unsigned(
+                value, std::uint32_t{3000U}, std::uint32_t{3600000U},
+                values.v3_pd_interval_ms);
+        }
+        if (key == "v3_current_interval_ms") {
+            return assign_unsigned(
+                value, std::uint32_t{100U}, std::uint32_t{3600000U},
+                values.v3_current_interval_ms);
+        }
+        if (key == "v3_temperature_interval_ms") {
+            return assign_unsigned(
+                value, std::uint32_t{100U}, std::uint32_t{3600000U},
+                values.v3_temperature_interval_ms);
+        }
+        if (key == "v3_response_timeout_ms") {
+            return assign_unsigned(
+                value, std::uint32_t{10U}, std::uint32_t{5000U},
+                values.v3_response_timeout_ms);
+        }
+        if (key == "v3_retry_delay_ms") {
+            return assign_unsigned(
+                value, std::uint32_t{0U}, std::uint32_t{5000U},
+                values.v3_retry_delay_ms);
+        }
+        if (key == "v3_late_frame_quarantine_ms") {
+            return assign_unsigned(
+                value, std::uint32_t{1U}, std::uint32_t{5000U},
+                values.v3_late_frame_quarantine_ms);
+        }
+        if (key == "v3_max_retries") {
+            return assign_unsigned(
+                value, std::uint8_t{0U}, std::uint8_t{3U},
+                values.v3_max_retries);
         }
         if (key == "v3_pd_freshness_ms") {
             return assign_unsigned(
@@ -887,6 +931,16 @@ std::string ConfigStore::serialize(const Snapshot& snapshot) {
         "  \"v3_temperature_offset\": " + nullable_float_json(values.v3_temperature_offset) + ",\n"
         "  \"v3_current_serial\": \"" + json_escape(values.v3_current_serial) + "\",\n"
         "  \"v3_temperature_serial\": \"" + json_escape(values.v3_temperature_serial) + "\",\n"
+        "  \"v3_pd_slave_id\": " + std::to_string(values.v3_pd_slave_id) + ",\n"
+        "  \"v3_pd_interval_ms\": " + std::to_string(values.v3_pd_interval_ms) + ",\n"
+        "  \"v3_current_interval_ms\": " + std::to_string(values.v3_current_interval_ms) + ",\n"
+        "  \"v3_temperature_interval_ms\": " +
+            std::to_string(values.v3_temperature_interval_ms) + ",\n"
+        "  \"v3_response_timeout_ms\": " + std::to_string(values.v3_response_timeout_ms) + ",\n"
+        "  \"v3_retry_delay_ms\": " + std::to_string(values.v3_retry_delay_ms) + ",\n"
+        "  \"v3_late_frame_quarantine_ms\": " +
+            std::to_string(values.v3_late_frame_quarantine_ms) + ",\n"
+        "  \"v3_max_retries\": " + std::to_string(values.v3_max_retries) + ",\n"
         "  \"v3_pd_freshness_ms\": " + std::to_string(values.v3_pd_freshness_ms) + ",\n"
         "  \"v3_current_freshness_ms\": " + std::to_string(values.v3_current_freshness_ms) + ",\n"
         "  \"v3_temperature_freshness_ms\": " +

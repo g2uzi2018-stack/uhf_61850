@@ -52,6 +52,14 @@ struct Values {
     std::optional<float> v3_temperature_offset;
     std::string v3_current_serial{"unconfigured"};
     std::string v3_temperature_serial{"unconfigured"};
+    std::uint8_t v3_pd_slave_id{1U};
+    std::uint32_t v3_pd_interval_ms{3000U};
+    std::uint32_t v3_current_interval_ms{1000U};
+    std::uint32_t v3_temperature_interval_ms{1000U};
+    std::uint32_t v3_response_timeout_ms{150U};
+    std::uint32_t v3_retry_delay_ms{20U};
+    std::uint32_t v3_late_frame_quarantine_ms{20U};
+    std::uint8_t v3_max_retries{3U};
     std::uint32_t v3_pd_freshness_ms{600000U};
     std::uint32_t v3_current_freshness_ms{5000U};
     std::uint32_t v3_temperature_freshness_ms{5000U};
