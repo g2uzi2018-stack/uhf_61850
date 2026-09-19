@@ -24,7 +24,21 @@ constexpr std::size_t kRequestFrameBytes = 8U;
 constexpr std::size_t kResponseHeaderBytes = 3U;
 constexpr std::size_t kResponseCrcBytes = 2U;
 constexpr std::size_t kMaxAcquisitionErrorBytes = 256U;
-constexpr speed_t kSerialSpeed = B115200;
+
+speed_t serial_speed(std::uint32_t baud) {
+    switch (baud) {
+    case 1200U: return B1200;
+    case 2400U: return B2400;
+    case 4800U: return B4800;
+    case 9600U: return B9600;
+    case 19200U: return B19200;
+    case 38400U: return B38400;
+    case 57600U: return B57600;
+    case 115200U: return B115200;
+    case 230400U: return B230400;
+    default: throw std::invalid_argument("unsupported serial baud rate");
+    }
+}
 
 int timeout_milliseconds(std::chrono::milliseconds timeout) {
     if (timeout.count() <= 0) {
@@ -55,7 +69,16 @@ std::string_view availability_name(Availability availability) noexcept {
     return "invalid";
 }
 
-PosixSerialPort::PosixSerialPort(const std::string& device) : file_descriptor_(-1) {
+PosixSerialPort::PosixSerialPort(const std::string& device)
+    : PosixSerialPort(device, SerialSettings{}) {}
+
+PosixSerialPort::PosixSerialPort(
+    const std::string& device, SerialSettings settings) : file_descriptor_(-1) {
+    if ((settings.data_bits != 7U && settings.data_bits != 8U) ||
+        (settings.stop_bits != 1U && settings.stop_bits != 2U)) {
+        throw std::invalid_argument("unsupported serial frame format");
+    }
+    const speed_t speed = serial_speed(settings.baud);
     file_descriptor_ = ::open(device.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
     if (file_descriptor_ < 0) {
         throw std::runtime_error("unable to open serial device");
@@ -67,11 +90,22 @@ PosixSerialPort::PosixSerialPort(const std::string& device) : file_descriptor_(-
         throw std::runtime_error("unable to read serial settings");
     }
     ::cfmakeraw(&attributes);
-    attributes.c_cflag = static_cast<tcflag_t>(
-        (attributes.c_cflag & static_cast<tcflag_t>(~(CSIZE | PARENB | CSTOPB | CRTSCTS))) |
-        CS8 | CLOCAL | CREAD);
-    if (::cfsetispeed(&attributes, kSerialSpeed) < 0 ||
-        ::cfsetospeed(&attributes, kSerialSpeed) < 0) {
+    attributes.c_cflag = static_cast<tcflag_t>(attributes.c_cflag &
+        static_cast<tcflag_t>(~(CSIZE | PARENB | PARODD | CSTOPB | CRTSCTS)));
+    attributes.c_cflag = static_cast<tcflag_t>(attributes.c_cflag |
+        (settings.data_bits == 7U ? CS7 : CS8) | CLOCAL | CREAD);
+    if (settings.parity != SerialParity::none) {
+        attributes.c_cflag = static_cast<tcflag_t>(attributes.c_cflag | PARENB);
+        attributes.c_iflag = static_cast<tcflag_t>(attributes.c_iflag | INPCK);
+        if (settings.parity == SerialParity::odd) {
+            attributes.c_cflag = static_cast<tcflag_t>(attributes.c_cflag | PARODD);
+        }
+    }
+    if (settings.stop_bits == 2U) {
+        attributes.c_cflag = static_cast<tcflag_t>(attributes.c_cflag | CSTOPB);
+    }
+    if (::cfsetispeed(&attributes, speed) < 0 ||
+        ::cfsetospeed(&attributes, speed) < 0) {
         ::close(file_descriptor_);
         throw std::runtime_error("unable to set serial speed");
     }

@@ -44,6 +44,16 @@ private:
     v3::PacketSource source_;
 };
 
+class UnavailableSerialPort final : public acquisition::ISerialPort {
+public:
+    bool write_all(const std::uint8_t*, std::size_t) override { return false; }
+    bool read_some(std::uint8_t*, std::size_t, std::chrono::milliseconds,
+                   std::size_t& received) override {
+        received = 0U;
+        return false;
+    }
+};
+
 std::optional<iec61850::SclModelDefinition> parse_file(
     const std::filesystem::path& path) {
     std::error_code error;
@@ -135,9 +145,32 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
             throw std::invalid_argument(
                 "v3 mode requires explicit PTY/device paths; --simulate is for the legacy loopback");
         }
-        v3_pd_serial_port_ = std::make_unique<acquisition::PosixSerialPort>(options_.v3_pd_device);
-        v3_current_serial_port_ = std::make_unique<acquisition::PosixSerialPort>(options_.v3_current_device);
-        v3_temperature_serial_port_ = std::make_unique<acquisition::PosixSerialPort>(options_.v3_temperature_device);
+        v3_pd_serial_port_ = std::make_unique<acquisition::PosixSerialPort>(
+            options_.v3_pd_device,
+            acquisition::SerialSettings{
+                115200U, 8U, acquisition::SerialParity::none, 1U});
+        if (options_.v3_current_serial_settings) {
+            v3_current_serial_port_ = std::make_unique<acquisition::PosixSerialPort>(
+                options_.v3_current_device, *options_.v3_current_serial_settings);
+        } else {
+            v3_current_serial_port_ = std::make_unique<UnavailableSerialPort>();
+            logger_.log(
+                logging::Level::warning,
+                logging::Component::config,
+                "v3_current.serial_unconfigured",
+                "v3 current serial profile is unconfigured; device was not opened");
+        }
+        if (options_.v3_temperature_serial_settings) {
+            v3_temperature_serial_port_ = std::make_unique<acquisition::PosixSerialPort>(
+                options_.v3_temperature_device, *options_.v3_temperature_serial_settings);
+        } else {
+            v3_temperature_serial_port_ = std::make_unique<UnavailableSerialPort>();
+            logger_.log(
+                logging::Level::warning,
+                logging::Component::config,
+                "v3_temperature.serial_unconfigured",
+                "v3 temperature serial profile is unconfigured; device was not opened");
+        }
         v3_packet_trace_ = std::make_unique<v3::PacketTraceBuffer>();
         v3_pd_adapter_ = std::make_unique<V3SerialAdapter>(
             *v3_pd_serial_port_, *v3_packet_trace_, v3::PacketSource::pd);

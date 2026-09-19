@@ -50,6 +50,8 @@ struct Values {
     std::optional<float> v3_current_offset;
     std::optional<float> v3_temperature_multiplier;
     std::optional<float> v3_temperature_offset;
+    std::string v3_current_serial{"unconfigured"};
+    std::string v3_temperature_serial{"unconfigured"};
 };
 
 struct Snapshot {

@@ -33,6 +33,8 @@ struct GatewayRuntimeOptions {
     std::string v3_pd_device{"/dev/ttyS1"};
     std::string v3_current_device{"/dev/ttyS2"};
     std::string v3_temperature_device{"/dev/ttyS3"};
+    std::optional<acquisition::SerialSettings> v3_current_serial_settings;
+    std::optional<acquisition::SerialSettings> v3_temperature_serial_settings;
     v3::SchedulerOptions v3_scheduler_options{};
     bool reload_v3_current_conversion{true};
     bool reload_v3_temperature_conversion{true};

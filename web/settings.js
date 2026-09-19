@@ -60,6 +60,8 @@
                 form.elements[name].value = thresholds[index] === null || thresholds[index] === undefined ? "" : String(thresholds[index]);
             });
             setValue("v3_current_encoding", config.v3_current_encoding || "unconfigured");
+            setValue("v3_current_serial", config.v3_current_serial || "unconfigured");
+            setValue("v3_temperature_serial", config.v3_temperature_serial || "unconfigured");
             conversionFields.forEach(function (name) {
                 form.elements[name].value = config[name] === null || config[name] === undefined ? "" : String(config[name]);
             });
@@ -103,6 +105,14 @@
             showError("v3 编码与倍率必须成组配置；倍率必须为正有限数，留空表示未配置。");
             return;
         }
+        payload.v3_current_serial = form.elements.v3_current_serial.value.trim();
+        payload.v3_temperature_serial = form.elements.v3_temperature_serial.value.trim();
+        var serialPattern = /^(unconfigured|(1200|2400|4800|9600|19200|38400|57600|115200|230400)\/[78][NEO][12])$/;
+        if (!serialPattern.test(payload.v3_current_serial) ||
+            !serialPattern.test(payload.v3_temperature_serial)) {
+            showError("串口 profile 格式应为波特率/数据位校验停止位（例如 9600/8E1），未知时填写 unconfigured。");
+            return;
+        }
         payload.iec_enabled = form.elements.iec_enabled.checked;
         payload.ftp_enabled = form.elements.ftp_enabled.checked;
         payload.iec_ied_name = configuration && configuration.iec_ied_name ? configuration.iec_ied_name : "UHFPD1";
@@ -113,7 +123,7 @@
         fetch("/api/v1/config", {method: "PUT", credentials: "same-origin", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrfToken, "If-Match": '"' + version + '"'}, body: JSON.stringify(payload)}).then(function (response) {
             if (response.status === 401) { redirectToLogin(); return null; }
             if (!response.ok) { return responseMessage(response, "配置保存失败").then(showError); }
-            return response.json().then(function (result) { version = Number(result.version); payload.version = version; configuration = payload; document.getElementById("config-version").innerHTML = "<i></i>配置版本 " + version; showSaved("已原子保存；采集和存储参数将由后台热加载，其余需要重启的项目将在下次服务重启时应用。"); });
+            return response.json().then(function (result) { version = Number(result.version); payload.version = version; configuration = payload; document.getElementById("config-version").innerHTML = "<i></i>配置版本 " + version; showSaved(result.restart_required ? "已原子保存；串口 profile 等重启生效项将在下次服务重启时应用，工程换算和阈值已热加载。" : "已原子保存；工程换算、阈值及其他热加载参数已应用。"); });
         }).catch(function () { showError("无法连接服务，配置未确认保存。"); });
     });
     document.getElementById("reload-settings").addEventListener("click", load);

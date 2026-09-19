@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "config/config_store.hpp"
 
+#include "acquisition/serial_settings.hpp"
+
 #include <arpa/inet.h>
 #include <algorithm>
 #include <array>
@@ -66,7 +68,8 @@ public:
                      keys_.size() == 29U || keys_.size() == 30U ||
                      keys_.size() == 31U || keys_.size() == 32U ||
                      keys_.size() == 33U || keys_.size() == 34U ||
-                     keys_.size() == 35U || keys_.size() == 36U);
+                     keys_.size() == 35U || keys_.size() == 36U ||
+                     keys_.size() == 37U || keys_.size() == 38U);
             }
             if (!consume(',')) {
                 return false;
@@ -379,7 +382,8 @@ private:
         }
         if (key == "acquisition_device" || key == "rtu_device" || key == "modbus_tcp_bind" ||
             key == "iec_ied_name" || key == "overview_title" || key == "overview_device" ||
-            key == "sntp_server" || key == "v3_current_encoding") {
+            key == "sntp_server" || key == "v3_current_encoding" ||
+            key == "v3_current_serial" || key == "v3_temperature_serial") {
             std::string value;
             if (!parse_string(value)) {
                 return false;
@@ -398,6 +402,10 @@ private:
                 values.overview_device = std::move(value);
             } else if (key == "v3_current_encoding") {
                 values.v3_current_encoding = std::move(value);
+            } else if (key == "v3_current_serial") {
+                values.v3_current_serial = std::move(value);
+            } else if (key == "v3_temperature_serial") {
+                values.v3_temperature_serial = std::move(value);
             } else {
                 values.sntp_server = std::move(value);
             }
@@ -779,6 +787,12 @@ bool ConfigStore::validate(const Values& values) noexcept {
         std::isfinite(*values.v3_temperature_multiplier) &&
         *values.v3_temperature_multiplier > 0.0F &&
         std::isfinite(*values.v3_temperature_offset);
+    bool current_serial_valid = false;
+    bool temperature_serial_valid = false;
+    (void)acquisition::parse_serial_profile(
+        values.v3_current_serial, current_serial_valid);
+    (void)acquisition::parse_serial_profile(
+        values.v3_temperature_serial, temperature_serial_valid);
     return values.tls_enabled && !web_port_conflicts_with_modbus &&
         !web_port_conflicts_with_iec && !modbus_port_conflicts_with_iec &&
         !ftp_port_conflicts &&
@@ -810,7 +824,8 @@ bool ConfigStore::validate(const Values& values) noexcept {
                 return !threshold || std::isfinite(*threshold);
             }) &&
         (current_unconfigured || current_configured) &&
-        (temperature_unconfigured || temperature_configured);
+        (temperature_unconfigured || temperature_configured) &&
+        current_serial_valid && temperature_serial_valid;
 }
 
 std::string ConfigStore::serialize(const Snapshot& snapshot) {
@@ -852,7 +867,9 @@ std::string ConfigStore::serialize(const Snapshot& snapshot) {
         "  \"v3_current_multiplier\": " + nullable_float_json(values.v3_current_multiplier) + ",\n"
         "  \"v3_current_offset\": " + nullable_float_json(values.v3_current_offset) + ",\n"
         "  \"v3_temperature_multiplier\": " + nullable_float_json(values.v3_temperature_multiplier) + ",\n"
-        "  \"v3_temperature_offset\": " + nullable_float_json(values.v3_temperature_offset) + "\n"
+        "  \"v3_temperature_offset\": " + nullable_float_json(values.v3_temperature_offset) + ",\n"
+        "  \"v3_current_serial\": \"" + json_escape(values.v3_current_serial) + "\",\n"
+        "  \"v3_temperature_serial\": \"" + json_escape(values.v3_temperature_serial) + "\"\n"
         "}\n";
 }
 

@@ -47,6 +47,9 @@
                         <label>FTP 端口<input name="ftp_port" type="number" min="1" max="65535" required><small>默认 21；修改或启停后需重启服务</small></label>
                     </div><div class="settings-actions panel-actions"><span></span><a class="outline-button link-button" href="/api/v1/point-table/export.csv">下载 v3 Modbus 点表 CSV</a></div></section>
                     <section class="panel settings-panel"><div class="panel-header"><div><h2>v3 工程值换算</h2><p>仅在取得厂商编码和倍率后填写；未配置时仍采集报文，但不发布看似正常的工程值</p></div><span class="count-badge">保存后热生效</span></div><div class="settings-grid">
+                        <label>电流串口 profile<input name="v3_current_serial" list="v3-serial-profiles" autocomplete="off"><small>例如 9600/8E1；未知填 unconfigured；修改后重启生效</small></label>
+                        <label>温度串口 profile<input name="v3_temperature_serial" list="v3-serial-profiles" autocomplete="off"><small>例如 19200/8N2；未知填 unconfigured；修改后重启生效</small></label>
+                        <datalist id="v3-serial-profiles"><option value="unconfigured"><option value="9600/8N1"><option value="19200/8N1"><option value="38400/8N1"><option value="57600/8N1"><option value="115200/8N1"></datalist>
                         <label>电流字编码<select name="v3_current_encoding"><option value="unconfigured">未配置</option><option value="unsigned16">unsigned16</option><option value="signed16">signed16</option></select><small>必须与电流倍率、偏移同时配置</small></label>
                         <label>电流倍率<input name="v3_current_multiplier" type="number" min="0" step="any"><small>必须为正有限数；单位由现场协议确定</small></label>
                         <label>电流偏移<input name="v3_current_offset" type="number" step="any"><small>有限数；与倍率成组配置</small></label>

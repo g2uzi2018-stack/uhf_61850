@@ -267,6 +267,7 @@ def main() -> int:
                 fail("IED name was not moved out of acquisition settings")
             if (
                 b'name="v3_current_encoding"' not in settings_body
+                or b'name="v3_current_serial"' not in settings_body
                 or b'name="v3_alarm_pd1"' not in settings_body
             ):
                 fail("v3 conversion/alarm settings were not served")
@@ -483,6 +484,8 @@ def main() -> int:
                 or alarm_schema.get("maxItems") != 12
                 or schema_properties.get("v3_current_encoding", {}).get("enum") !=
                     ["unconfigured", "unsigned16", "signed16"]
+                or "unconfigured" not in
+                    schema_properties.get("v3_current_serial", {}).get("pattern", "")
             ):
                 fail("configuration schema is incomplete")
             logs_status, logs_body, _ = request(
@@ -514,6 +517,7 @@ def main() -> int:
                 },
             )
             assert_status(stale_config_status, 409, "stale config version")
+            config_payload["v3_current_serial"] = "9600/8N1"
             changed_config_status, changed_config_body, _ = request(
                 port,
                 "PUT",
@@ -528,7 +532,7 @@ def main() -> int:
             )
             assert_status(changed_config_status, 200, "config update")
             assert_json(changed_config_body, "version", config_version + 1, "config update")
-            assert_json(changed_config_body, "restart_required", False, "config update")
+            assert_json(changed_config_body, "restart_required", True, "serial config restart")
 
             password_payload = {
                 "current_password": initial_password,

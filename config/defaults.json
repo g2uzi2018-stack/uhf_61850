@@ -34,5 +34,7 @@
   "v3_current_multiplier": null,
   "v3_current_offset": null,
   "v3_temperature_multiplier": null,
-  "v3_temperature_offset": null
+  "v3_temperature_offset": null,
+  "v3_current_serial": "unconfigured",
+  "v3_temperature_serial": "unconfigured"
 }

@@ -113,6 +113,13 @@ def free_port():
         return sock.getsockname()[1]
 
 
+def distinct_free_port(*excluded):
+    while True:
+        port = free_port()
+        if port not in excluded:
+            return port
+
+
 def main():
     binary, web_root = sys.argv[1:3]
     partial_scale = subprocess.run(
@@ -135,15 +142,64 @@ def main():
     )
     assert invalid_scale.returncode == 2
     assert b"multipliers must be positive" in invalid_scale.stderr
+    invalid_serial = subprocess.run(
+        [binary, "--web", "--v3-current-serial", "12000/8N1"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert invalid_serial.returncode == 2
+    assert b"invalid --v3-current-serial" in invalid_serial.stderr
     devices = [Device("pd"), Device("current"), Device("temperature")]
     for device in devices:
         device.start()
     web_port = free_port()
-    modbus_port = free_port()
+    modbus_port = distinct_free_port(web_port)
     identity = "host-e2e-board"
     key = "host-e2e-key"
     code = base64.b32encode(hmac.new(key.encode(), identity.encode(), hashlib.sha256).digest()[:12]).decode().rstrip("=")
     with tempfile.TemporaryDirectory(prefix="uhf-v3-e2e-") as root:
+        unconfigured_state = os.path.join(root, "unconfigured")
+        unconfigured_web_port = distinct_free_port(web_port, modbus_port)
+        unconfigured_modbus_port = distinct_free_port(
+            web_port, modbus_port, unconfigured_web_port
+        )
+        unconfigured_command = [
+            binary, "--web", "--http-recovery", "--v3",
+            "--web-root", web_root, "--state-dir", unconfigured_state,
+            "--data-dir", os.path.join(unconfigured_state, "data"),
+            "--listen", f"127.0.0.1:{unconfigured_web_port}",
+            "--modbus-tcp-listen", f"127.0.0.1:{unconfigured_modbus_port}",
+            "--no-modbus-rtu", "--no-iec61850",
+            "--v3-pd-device", devices[0].path,
+            "--v3-current-device", "/definitely/missing-current-device",
+            "--v3-temperature-device", "/definitely/missing-temperature-device",
+            "--v3-device-id", identity, "--v3-activation-key", key,
+            "--v3-activation-code", code,
+        ]
+        unconfigured_process = subprocess.Popen(
+            unconfigured_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        try:
+            wait_port(unconfigured_web_port)
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", unconfigured_web_port, timeout=2
+            )
+            connection.request("GET", "/api/v1/snapshot/latest")
+            unconfigured_response = connection.getresponse()
+            unconfigured_snapshot = json.loads(unconfigured_response.read())
+            connection.close()
+            assert unconfigured_response.status == 200
+            assert unconfigured_snapshot["sources"]["current"]["has_sample"] is False
+            assert unconfigured_snapshot["sources"]["temperature"]["has_sample"] is False
+        finally:
+            unconfigured_process.send_signal(signal.SIGTERM)
+            try:
+                unconfigured_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                unconfigured_process.kill()
+                unconfigured_process.wait(timeout=2)
+
         command = [binary, "--web", "--http-recovery", "--v3",
                    "--web-root", web_root, "--state-dir", root,
                    "--data-dir", os.path.join(root, "data"),
@@ -153,6 +209,8 @@ def main():
                    "--v3-pd-device", devices[0].path,
                    "--v3-current-device", devices[1].path,
                    "--v3-temperature-device", devices[2].path,
+                   "--v3-current-serial", "115200/8N1",
+                   "--v3-temperature-serial", "115200/8N1",
                    "--v3-device-id", identity, "--v3-activation-key", key,
                    "--v3-activation-code", code]
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

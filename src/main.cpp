@@ -47,6 +47,10 @@ struct WebOptions {
     std::string v3_pd_device{"/dev/ttyS1"};
     std::string v3_current_device{"/dev/ttyS2"};
     std::string v3_temperature_device{"/dev/ttyS3"};
+    std::optional<uhf::acquisition::SerialSettings> v3_current_serial_settings;
+    std::optional<uhf::acquisition::SerialSettings> v3_temperature_serial_settings;
+    bool v3_current_serial_explicit{false};
+    bool v3_temperature_serial_explicit{false};
     std::string v3_device_id;
     std::string v3_activation_key;
     std::optional<std::string> v3_activation_code;
@@ -119,6 +123,7 @@ void print_usage() {
                  "[--http-recovery] [--tls-cert PATH] [--tls-key PATH] "
                  "[--simulate|--v3|--no-acquisition] [--acquisition-device PATH] "
                  "[--v3-pd-device PATH] [--v3-current-device PATH] [--v3-temperature-device PATH] "
+                 "[--v3-current-serial BAUD/8N1] [--v3-temperature-serial BAUD/8N1] "
                  "[--v3-device-id ID] [--v3-activation-key KEY] [--v3-activation-code CODE] "
                  "[--activation-state PATH] "
                  "[--v3-current-multiplier N] [--v3-current-offset N] "
@@ -190,6 +195,24 @@ int main(int argc, char* argv[]) {
                 options.v3_current_device = argv[++index];
             } else if (option == "--v3-temperature-device" && index + 1 < argc) {
                 options.v3_temperature_device = argv[++index];
+            } else if (option == "--v3-current-serial" && index + 1 < argc) {
+                bool valid = false;
+                options.v3_current_serial_settings =
+                    uhf::acquisition::parse_serial_profile(argv[++index], valid);
+                if (!valid || !options.v3_current_serial_settings) {
+                    std::cerr << "invalid --v3-current-serial value\n";
+                    return 2;
+                }
+                options.v3_current_serial_explicit = true;
+            } else if (option == "--v3-temperature-serial" && index + 1 < argc) {
+                bool valid = false;
+                options.v3_temperature_serial_settings =
+                    uhf::acquisition::parse_serial_profile(argv[++index], valid);
+                if (!valid || !options.v3_temperature_serial_settings) {
+                    std::cerr << "invalid --v3-temperature-serial value\n";
+                    return 2;
+                }
+                options.v3_temperature_serial_explicit = true;
             } else if (option == "--v3-device-id" && index + 1 < argc) {
                 options.v3_device_id = argv[++index];
             } else if (option == "--v3-activation-key" && index + 1 < argc) {
@@ -320,6 +343,18 @@ int main(int argc, char* argv[]) {
             if (!options.acquisition_device_explicit) {
                 options.acquisition_device = configured.values.acquisition_device;
             }
+            if (!options.v3_current_serial_explicit) {
+                bool valid = false;
+                options.v3_current_serial_settings =
+                    uhf::acquisition::parse_serial_profile(
+                        configured.values.v3_current_serial, valid);
+            }
+            if (!options.v3_temperature_serial_explicit) {
+                bool valid = false;
+                options.v3_temperature_serial_settings =
+                    uhf::acquisition::parse_serial_profile(
+                        configured.values.v3_temperature_serial, valid);
+            }
             if (!options.modbus_rtu_explicit) {
                 options.modbus_rtu_device = configured.values.rtu_device;
             }
@@ -354,6 +389,10 @@ int main(int argc, char* argv[]) {
                 runtime_options.v3_pd_device = options.v3_pd_device;
                 runtime_options.v3_current_device = options.v3_current_device;
                 runtime_options.v3_temperature_device = options.v3_temperature_device;
+                runtime_options.v3_current_serial_settings =
+                    options.v3_current_serial_settings;
+                runtime_options.v3_temperature_serial_settings =
+                    options.v3_temperature_serial_settings;
                 runtime_options.activation_options.state_file = options.activation_state;
                 runtime_options.activation_options.device_id = options.v3_device_id;
                 runtime_options.activation_options.manufacturer_key = options.v3_activation_key;

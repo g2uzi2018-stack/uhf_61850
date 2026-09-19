@@ -54,7 +54,9 @@ const char* valid_object() {
         "v3_current_multiplier":0.25,
         "v3_current_offset":-1.5,
         "v3_temperature_multiplier":0.1,
-        "v3_temperature_offset":0
+        "v3_temperature_offset":0,
+        "v3_current_serial":"9600/8E1",
+        "v3_temperature_serial":"19200/8N2"
     })";
 }
 
@@ -91,6 +93,10 @@ int main() {
                     "v3 current multiplier") ||
             !expect(initial.values.v3_temperature_multiplier == 0.1F,
                     "v3 temperature multiplier") ||
+            !expect(initial.values.v3_current_serial == "9600/8E1",
+                    "v3 current serial profile") ||
+            !expect(initial.values.v3_temperature_serial == "19200/8N2",
+                    "v3 temperature serial profile") ||
             !expect(std::filesystem::is_regular_file(path), "initial file") ||
             !expect(std::filesystem::file_size(path) < 16U * 1024U, "bounded file")) {
             return 1;
@@ -224,6 +230,23 @@ int main() {
                 "negative v3 conversion multiplier accepted")) {
             return 1;
         }
+        const std::string unsupported_serial = [] {
+            std::string value = valid_object();
+            const std::string profile = "\"v3_current_serial\":\"9600/8E1\"";
+            const std::size_t position = value.find(profile);
+            if (position != std::string::npos) {
+                value.replace(
+                    position, profile.size(),
+                    "\"v3_current_serial\":\"12000/8N1\"");
+            }
+            return value;
+        }();
+        if (!expect(
+                store.update(1U, unsupported_serial) ==
+                    uhf::config::UpdateResult::invalid,
+                "unsupported v3 serial profile accepted")) {
+            return 1;
+        }
         const std::filesystem::path blocked_temporary = path.string() + ".tmp";
         std::filesystem::create_directory(blocked_temporary);
         const uhf::config::UpdateResult storage_failure = store.update(1U, valid_object());
@@ -261,6 +284,8 @@ int main() {
                     "current conversion offset") ||
             !expect(changed.values.v3_temperature_offset == 0.0F,
                     "temperature conversion offset") ||
+            !expect(changed.values.v3_current_serial == "9600/8E1",
+                    "current serial profile") ||
             !expect(std::filesystem::file_size(path) < 16U * 1024U, "updated file bound")) {
             return 1;
         }
@@ -276,6 +301,8 @@ int main() {
                     std::string::npos, "saved v3 current encoding") ||
             !expect(saved.find("\"v3_temperature_multiplier\": 0.1") !=
                     std::string::npos, "saved v3 temperature multiplier") ||
+            !expect(saved.find("\"v3_temperature_serial\": \"19200/8N2\"") !=
+                    std::string::npos, "saved v3 temperature serial profile") ||
             !expect(saved.find("Smoke") == std::string::npos, "no test secret")) {
             return 1;
         }
@@ -301,7 +328,9 @@ int main() {
             !expect(reopened_snapshot.values.v3_current_encoding == "signed16",
                     "v3 encoding survives restart") ||
             !expect(reopened_snapshot.values.v3_current_multiplier == 0.25F,
-                    "v3 multiplier survives restart")) {
+                    "v3 multiplier survives restart") ||
+            !expect(reopened_snapshot.values.v3_current_serial == "9600/8E1",
+                    "v3 serial profile survives restart")) {
             return 1;
         }
 

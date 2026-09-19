@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
+#include "acquisition/serial_settings.hpp"
 #include "domain/snapshot.hpp"
 #include "domain/modbus.hpp"
 
@@ -31,6 +32,7 @@ public:
 class PosixSerialPort final : public ISerialPort {
 public:
     explicit PosixSerialPort(const std::string& device);
+    PosixSerialPort(const std::string& device, SerialSettings settings);
     ~PosixSerialPort() override;
 
     PosixSerialPort(const PosixSerialPort&) = delete;
