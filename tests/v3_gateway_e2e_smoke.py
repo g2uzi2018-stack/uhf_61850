@@ -146,6 +146,26 @@ def assert_port_closed(port):
         )
 
 
+def read_health(port, cookie):
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+    connection.request("GET", "/api/v1/health", headers={"Cookie": cookie})
+    response = connection.getresponse()
+    payload = json.loads(response.read())
+    connection.close()
+    assert response.status == 200
+    return payload
+
+
+def wait_rtu_health(port, cookie, expected, timeout=3):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        payload = read_health(port, cookie)
+        if payload["modbus_rtu"]["status"] == expected:
+            return payload
+        time.sleep(0.01)
+    raise AssertionError(f"gateway RTU health did not become {expected}")
+
+
 def receive_exact(file_descriptor, size, timeout=2):
     payload = bytearray()
     deadline = time.monotonic() + timeout
@@ -497,12 +517,7 @@ def main():
             configuration = json.loads(config_response.read())
             connection.close()
             assert config_response.status == 200
-            connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
-            connection.request("GET", "/api/v1/health", headers={"Cookie": cookie})
-            health_response = connection.getresponse()
-            health_before_rtu = json.loads(health_response.read())
-            connection.close()
-            assert health_response.status == 200
+            health_before_rtu = read_health(web_port, cookie)
             assert health_before_rtu["modbus_rtu"]["status"] == "down"
             assert configuration["v3_alarm_thresholds"] == [None] * 12
             assert configuration["v3_current_encoding"] == "unconfigured"
@@ -685,21 +700,7 @@ def main():
             expected_current = 30.0 if iec_probe else 10.0
             assert not os.path.lexists(runtime_rtu_device)
             os.symlink(rtu_device, runtime_rtu_device)
-            rtu_health_deadline = time.monotonic() + 3
-            while time.monotonic() < rtu_health_deadline:
-                connection = http.client.HTTPConnection(
-                    "127.0.0.1", web_port, timeout=2
-                )
-                connection.request("GET", "/api/v1/health", headers={"Cookie": cookie})
-                health_response = connection.getresponse()
-                health_after_open = json.loads(health_response.read())
-                connection.close()
-                assert health_response.status == 200
-                if health_after_open["modbus_rtu"]["status"] == "up":
-                    break
-                time.sleep(0.01)
-            else:
-                raise AssertionError("gateway did not open replacement RTU device")
+            wait_rtu_health(web_port, cookie, "up")
             rtu_request_body = bytes((rtu_unit_id, 3, 0, 1, 0, 2))
             rtu_crc = crc16(rtu_request_body)
             os.write(
@@ -710,12 +711,7 @@ def main():
             assert rtu_response[:3] == bytes((rtu_unit_id, 3, 4))
             assert abs(struct.unpack(">f", rtu_response[3:7])[0] - expected_current) < 0.01
             assert crc16(rtu_response[:-2]) == rtu_response[-2] | rtu_response[-1] << 8
-            connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
-            connection.request("GET", "/api/v1/health", headers={"Cookie": cookie})
-            health_response = connection.getresponse()
-            health_after_rtu = json.loads(health_response.read())
-            connection.close()
-            assert health_response.status == 200
+            health_after_rtu = read_health(web_port, cookie)
             assert health_after_rtu["modbus_rtu"]["status"] == "up"
 
             alarm_request_body = bytes((rtu_unit_id, 2, 0, 6, 0, 1))
@@ -727,6 +723,38 @@ def main():
             alarm_response = receive_exact(rtu_master, 6)
             assert alarm_response[:4] == bytes((rtu_unit_id, 2, 1, 1))
             assert crc16(alarm_response[:-2]) == alarm_response[-2] | alarm_response[-1] << 8
+
+            # Leave half a request in the old stream, then replace the tty.
+            # The server must report the loss and discard those bytes before
+            # accepting a complete request from the replacement device.
+            os.write(rtu_master, rtu_request_body[:4])
+            time.sleep(0.1)
+            os.close(rtu_master)
+            os.close(rtu_slave)
+            rtu_master = -1
+            rtu_slave = -1
+            os.unlink(runtime_rtu_device)
+            wait_rtu_health(web_port, cookie, "down")
+
+            rtu_master, rtu_slave = pty.openpty()
+            tty.setraw(rtu_master)
+            tty.setraw(rtu_slave)
+            rtu_device = os.ttyname(rtu_slave)
+            os.symlink(rtu_device, runtime_rtu_device)
+            wait_rtu_health(web_port, cookie, "up")
+            os.write(
+                rtu_master,
+                rtu_request_body + bytes((rtu_crc & 0xFF, rtu_crc >> 8)),
+            )
+            replacement_response = receive_exact(rtu_master, 9)
+            assert replacement_response[:3] == bytes((rtu_unit_id, 3, 4))
+            assert abs(
+                struct.unpack(">f", replacement_response[3:7])[0] - expected_current
+            ) < 0.01
+            assert crc16(replacement_response[:-2]) == (
+                replacement_response[-2] | replacement_response[-1] << 8
+            )
+            assert read_health(web_port, cookie)["modbus_rtu"]["status"] == "up"
             connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
             connection.request("GET", "/api/v1/packets", headers={"Cookie": cookie})
             packet_response = connection.getresponse()
@@ -780,8 +808,10 @@ def main():
                 process.wait(timeout=2)
     for device in devices:
         device.close()
-    os.close(rtu_master)
-    os.close(rtu_slave)
+    if rtu_master >= 0:
+        os.close(rtu_master)
+    if rtu_slave >= 0:
+        os.close(rtu_slave)
 
 
 if __name__ == "__main__":
