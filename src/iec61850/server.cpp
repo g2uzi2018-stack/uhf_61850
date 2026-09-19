@@ -42,8 +42,11 @@ Server::Server(acquisition::SnapshotStore& snapshot_store, ServerOptions options
       options_(std::move(options)),
       model_(options_.model_definition
           ? std::make_unique<Model>(std::move(*options_.model_definition))
+          : options_.v3_snapshot_store != nullptr
+          ? std::make_unique<Model>(default_v3_model_definition(options_.ied_name))
           : std::make_unique<Model>(options_.ied_name)),
-      alarm_provider_(options_.alarm_provider) {
+      alarm_provider_(options_.alarm_provider),
+      v3_snapshot_store_(options_.v3_snapshot_store) {
     IedServerConfig server_config = IedServerConfig_create();
     if (server_config == nullptr) {
         throw std::runtime_error("unable to create IEC 61850 server configuration");
@@ -223,6 +226,96 @@ void Server::publish_invalid_values(bool communication_alarm) {
         server_, model_->alarm_quality(), quality_for(acquisition::Availability::invalid, false));
     update_timestamp(model_->alarm_time(), timestamp_ms);
     update_communication_alarm(communication_alarm, timestamp_ms);
+    if (model_->is_v3()) {
+        publish_v3_invalid_values();
+    }
+    IedServer_unlockDataModel(server_);
+}
+
+void Server::publish_v3_invalid_values() {
+    const std::uint64_t timestamp_ms = now_milliseconds();
+    const auto invalid_quality = static_cast<Quality>(QUALITY_VALIDITY_INVALID);
+    for (std::size_t index = 0U; index < 3U; ++index) {
+        IedServer_updateFloatAttributeValue(server_, model_->v3_pd_peak_value(index), 0.0F);
+        IedServer_updateQuality(server_, model_->v3_pd_peak_quality(index), invalid_quality);
+        update_timestamp(model_->v3_pd_peak_time(index), timestamp_ms);
+    }
+    for (std::size_t index = 0U; index < 35U; ++index) {
+        IedServer_updateFloatAttributeValue(server_, model_->v3_measurement_value(index), 0.0F);
+        IedServer_updateQuality(server_, model_->v3_measurement_quality(index), invalid_quality);
+        update_timestamp(model_->v3_measurement_time(index), timestamp_ms);
+    }
+    for (std::size_t index = 0U; index < 3U; ++index) {
+        IedServer_updateFloatAttributeValue(server_, model_->v3_temperature_value(index), 0.0F);
+        IedServer_updateQuality(server_, model_->v3_temperature_quality(index), invalid_quality);
+        update_timestamp(model_->v3_temperature_time(index), timestamp_ms);
+    }
+    for (std::size_t index = 0U; index < 15U; ++index) {
+        IedServer_updateBooleanAttributeValue(server_, model_->v3_discrete_value(index), false);
+        IedServer_updateQuality(server_, model_->v3_discrete_quality(index), invalid_quality);
+        update_timestamp(model_->v3_discrete_time(index), timestamp_ms);
+    }
+}
+
+void Server::publish_v3_snapshot(const v3::UnifiedSnapshot& snapshot) {
+    const std::uint64_t timestamp_ms = now_milliseconds();
+    const auto valid_quality = static_cast<Quality>(QUALITY_VALIDITY_GOOD);
+    const auto invalid_quality = static_cast<Quality>(QUALITY_VALIDITY_INVALID);
+    IedServer_lockDataModel(server_);
+    for (std::size_t channel = 0U; channel < 3U; ++channel) {
+        const v3::PdFeature& peak = snapshot.pd[channel].features[2];
+        const bool valid = snapshot.pd_valid[channel] && peak.valid;
+        IedServer_updateFloatAttributeValue(
+            server_, model_->v3_pd_peak_value(channel), valid ? peak.value : 0.0F);
+        IedServer_updateQuality(
+            server_, model_->v3_pd_peak_quality(channel), valid ? valid_quality : invalid_quality);
+        update_timestamp(model_->v3_pd_peak_time(channel), timestamp_ms);
+    }
+    for (std::size_t index = 0U; index < snapshot.measurements.size(); ++index) {
+        const v3::Value& value = snapshot.measurements[index];
+        IedServer_updateFloatAttributeValue(
+            server_, model_->v3_measurement_value(index), value.valid() ? value.value : 0.0F);
+        IedServer_updateQuality(
+            server_, model_->v3_measurement_quality(index),
+            value.valid() ? valid_quality : invalid_quality);
+        update_timestamp(model_->v3_measurement_time(index), timestamp_ms);
+    }
+    for (std::size_t index = 0U; index < snapshot.temperature.size(); ++index) {
+        const v3::Value& value = snapshot.temperature[index];
+        IedServer_updateFloatAttributeValue(
+            server_, model_->v3_temperature_value(index), value.valid() ? value.value : 0.0F);
+        IedServer_updateQuality(
+            server_, model_->v3_temperature_quality(index),
+            value.valid() ? valid_quality : invalid_quality);
+        update_timestamp(model_->v3_temperature_time(index), timestamp_ms);
+    }
+    const std::array<bool, 15U> discrete_valid = {
+        snapshot.pd_status.has_sample,
+        snapshot.current_status.has_sample,
+        snapshot.temperature_status.has_sample,
+        snapshot.alarm_valid[0], snapshot.alarm_valid[1], snapshot.alarm_valid[2],
+        snapshot.alarm_valid[3], snapshot.alarm_valid[4], snapshot.alarm_valid[5],
+        snapshot.alarm_valid[6], snapshot.alarm_valid[7], snapshot.alarm_valid[8],
+        snapshot.alarm_valid[9], snapshot.alarm_valid[10], snapshot.alarm_valid[11]};
+    const std::array<bool, 15U> discrete_active = {
+        !snapshot.pd_status.online, !snapshot.current_status.online,
+        !snapshot.temperature_status.online,
+        snapshot.alarm_active[0], snapshot.alarm_active[1], snapshot.alarm_active[2],
+        snapshot.alarm_active[3], snapshot.alarm_active[4], snapshot.alarm_active[5],
+        snapshot.alarm_active[6], snapshot.alarm_active[7], snapshot.alarm_active[8],
+        snapshot.alarm_active[9], snapshot.alarm_active[10], snapshot.alarm_active[11]};
+    for (std::size_t index = 0U; index < discrete_valid.size(); ++index) {
+        IedServer_updateBooleanAttributeValue(
+            server_, model_->v3_discrete_value(index), discrete_active[index]);
+        IedServer_updateQuality(
+            server_, model_->v3_discrete_quality(index),
+            discrete_valid[index] ? valid_quality : invalid_quality);
+        update_timestamp(model_->v3_discrete_time(index), timestamp_ms);
+    }
+    update_communication_alarm(
+        snapshot.pd_status.communication_alarm || snapshot.current_status.communication_alarm ||
+            snapshot.temperature_status.communication_alarm,
+        timestamp_ms);
     IedServer_unlockDataModel(server_);
 }
 
@@ -284,6 +377,18 @@ void Server::publish_snapshot(const acquisition::ServingView& serving_view) {
 }
 
 void Server::update_loop() {
+    if (v3_snapshot_store_ != nullptr && model_->is_v3()) {
+        std::uint64_t last_generation = 0U;
+        while (!stop_requested_.load()) {
+            const v3::UnifiedSnapshot snapshot = v3_snapshot_store_->snapshot();
+            if (snapshot.generation != last_generation) {
+                publish_v3_snapshot(snapshot);
+                last_generation = snapshot.generation;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        return;
+    }
     std::uint64_t last_generation = 0U;
     std::optional<acquisition::Availability> last_availability;
     bool last_has_snapshot = false;

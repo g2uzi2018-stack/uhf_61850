@@ -6,6 +6,7 @@
 
 #include <array>
 #include <atomic>
+#include <bitset>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -45,6 +46,12 @@ public:
 };
 
 enum class Source { pd, current, temperature };
+constexpr std::size_t kAlarmCount = 12U;
+
+struct AlarmThresholds {
+    std::array<float, kAlarmCount> values{};
+    AlarmThresholds();
+};
 
 struct SourceStatus {
     bool has_sample{false};
@@ -63,6 +70,8 @@ struct UnifiedSnapshot {
     CurrentValues current{};
     TemperatureValues temperature{};
     ValueTable measurements{};
+    std::bitset<kAlarmCount> alarm_active{};
+    std::bitset<kAlarmCount> alarm_valid{};
     SourceStatus pd_status;
     SourceStatus current_status;
     SourceStatus temperature_status;
@@ -70,7 +79,8 @@ struct UnifiedSnapshot {
 
 class SnapshotStore {
 public:
-    explicit SnapshotStore(std::uint32_t alarm_after_failures = 3U);
+    explicit SnapshotStore(std::uint32_t alarm_after_failures = 3U,
+                           AlarmThresholds thresholds = {});
 
     void publish_pd_channel(std::size_t channel, PdChannel value,
                             std::chrono::steady_clock::time_point at);
@@ -83,12 +93,14 @@ public:
                            std::string error);
     void record_failure(Source source, std::chrono::steady_clock::time_point at,
                         std::string error);
+    void update_alarm_thresholds(AlarmThresholds thresholds);
     UnifiedSnapshot snapshot() const;
 
 private:
     SourceStatus& status_for(UnifiedSnapshot& value, Source source) const noexcept;
     const SourceStatus& status_for(const UnifiedSnapshot& value, Source source) const noexcept;
     void mark_success(Source source, std::chrono::steady_clock::time_point at);
+    void recompute_alarms() noexcept;
 
     mutable std::mutex mutex_;
     UnifiedSnapshot value_;
@@ -97,6 +109,7 @@ private:
                                      MeanPolicy::reject_nonpositive};
     std::uint64_t current_sequence_{0};
     std::array<bool, kChannelCount> pd_channel_online_{};
+    AlarmThresholds thresholds_;
 };
 
 struct CollectorOptions {

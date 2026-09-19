@@ -52,11 +52,13 @@ struct SclModelDefinition {
     std::string alarm_description;
     std::string communication_alarm_description;
     std::uint8_t max_report_controls{2U};
+    bool v3_monitoring{false};
     std::vector<SclDataSet> data_sets;
     std::vector<SclReportControl> reports;
 };
 
 SclModelDefinition default_model_definition(std::string ied_name = "UHFPD1");
+SclModelDefinition default_v3_model_definition(std::string ied_name = "UHFMON1");
 
 bool parse_scl_model(
     std::string_view contents,

@@ -157,6 +157,67 @@ Model::Model(SclModelDefinition definition)
             measurement_times_[index] = child_attribute(measurement, "t");
         }
 
+        v3_ = definition_.v3_monitoring;
+        if (v3_) {
+            LogicalNode* spdc2 = LogicalNode_create("SPDC2", device);
+            LogicalNode* spdc3 = LogicalNode_create("SPDC3", device);
+            LogicalNode* mmxu1 = LogicalNode_create("MMXU1", device);
+            LogicalNode* stmp1 = LogicalNode_create("STMP1", device);
+            if (spdc2 == nullptr || spdc3 == nullptr || mmxu1 == nullptr || stmp1 == nullptr) {
+                throw std::runtime_error("unable to create v3 logical nodes");
+            }
+            v3_pd_peak_values_[0] = peak_value_;
+            v3_pd_peak_qualities_[0] = peak_quality_;
+            v3_pd_peak_times_[0] = peak_time_;
+            for (std::size_t channel = 1U; channel < 3U; ++channel) {
+                LogicalNode* node = channel == 1U ? spdc2 : spdc3;
+                DataObject* object = CDC_MV_create(
+                    "UhfPaDsch", as_model_node(node), CDC_OPTION_DESC, false);
+                if (object == nullptr) {
+                    throw std::runtime_error("unable to create v3 PD object");
+                }
+                v3_pd_peak_values_[channel] = child_attribute(object, "mag.f");
+                v3_pd_peak_qualities_[channel] = child_attribute(object, "q");
+                v3_pd_peak_times_[channel] = child_attribute(object, "t");
+            }
+            for (std::size_t index = 0U; index < v3_measurement_values_.size(); ++index) {
+                const std::string name = "AnIn" + std::to_string(index + 1U);
+                DataObject* object = CDC_MV_create(
+                    name.c_str(), as_model_node(mmxu1), CDC_OPTION_DESC, false);
+                if (object == nullptr) {
+                    throw std::runtime_error("unable to create v3 current object");
+                }
+                v3_measurement_values_[index] = child_attribute(object, "mag.f");
+                v3_measurement_qualities_[index] = child_attribute(object, "q");
+                v3_measurement_times_[index] = child_attribute(object, "t");
+            }
+            for (std::size_t index = 0U; index < v3_temperature_values_.size(); ++index) {
+                const std::string name = "AnIn" + std::to_string(index + 1U);
+                DataObject* object = CDC_MV_create(
+                    name.c_str(), as_model_node(stmp1), CDC_OPTION_DESC, false);
+                if (object == nullptr) {
+                    throw std::runtime_error("unable to create v3 temperature object");
+                }
+                v3_temperature_values_[index] = child_attribute(object, "mag.f");
+                v3_temperature_qualities_[index] = child_attribute(object, "q");
+                v3_temperature_times_[index] = child_attribute(object, "t");
+            }
+            v3_discrete_values_[0] = communication_alarm_value_;
+            v3_discrete_qualities_[0] = communication_alarm_quality_;
+            v3_discrete_times_[0] = communication_alarm_time_;
+            for (std::size_t index = 1U; index < v3_discrete_values_.size(); ++index) {
+                const std::string name = "Ind" + std::to_string(index + 1U);
+                DataObject* object = CDC_SPS_create(
+                    name.c_str(), as_model_node(ggio1), CDC_OPTION_DESC);
+                if (object == nullptr) {
+                    throw std::runtime_error("unable to create v3 discrete object");
+                }
+                v3_discrete_values_[index] = child_attribute(object, "stVal");
+                v3_discrete_qualities_[index] = child_attribute(object, "q");
+                v3_discrete_times_[index] = child_attribute(object, "t");
+            }
+        }
+
         constexpr std::uint8_t report_options = static_cast<std::uint8_t>(
             RPT_OPT_SEQ_NUM | RPT_OPT_TIME_STAMP | RPT_OPT_REASON_FOR_INCLUSION |
             RPT_OPT_DATA_SET | RPT_OPT_DATA_REFERENCE);
@@ -262,6 +323,45 @@ DataAttribute* Model::communication_alarm_time() const noexcept {
 
 const SclModelDefinition& Model::definition() const noexcept {
     return definition_;
+}
+
+bool Model::is_v3() const noexcept { return v3_; }
+
+DataAttribute* Model::v3_pd_peak_value(std::size_t index) const noexcept {
+    return index < v3_pd_peak_values_.size() ? v3_pd_peak_values_[index] : nullptr;
+}
+DataAttribute* Model::v3_pd_peak_quality(std::size_t index) const noexcept {
+    return index < v3_pd_peak_qualities_.size() ? v3_pd_peak_qualities_[index] : nullptr;
+}
+DataAttribute* Model::v3_pd_peak_time(std::size_t index) const noexcept {
+    return index < v3_pd_peak_times_.size() ? v3_pd_peak_times_[index] : nullptr;
+}
+DataAttribute* Model::v3_measurement_value(std::size_t index) const noexcept {
+    return index < v3_measurement_values_.size() ? v3_measurement_values_[index] : nullptr;
+}
+DataAttribute* Model::v3_measurement_quality(std::size_t index) const noexcept {
+    return index < v3_measurement_qualities_.size() ? v3_measurement_qualities_[index] : nullptr;
+}
+DataAttribute* Model::v3_measurement_time(std::size_t index) const noexcept {
+    return index < v3_measurement_times_.size() ? v3_measurement_times_[index] : nullptr;
+}
+DataAttribute* Model::v3_temperature_value(std::size_t index) const noexcept {
+    return index < v3_temperature_values_.size() ? v3_temperature_values_[index] : nullptr;
+}
+DataAttribute* Model::v3_temperature_quality(std::size_t index) const noexcept {
+    return index < v3_temperature_qualities_.size() ? v3_temperature_qualities_[index] : nullptr;
+}
+DataAttribute* Model::v3_temperature_time(std::size_t index) const noexcept {
+    return index < v3_temperature_times_.size() ? v3_temperature_times_[index] : nullptr;
+}
+DataAttribute* Model::v3_discrete_value(std::size_t index) const noexcept {
+    return index < v3_discrete_values_.size() ? v3_discrete_values_[index] : nullptr;
+}
+DataAttribute* Model::v3_discrete_quality(std::size_t index) const noexcept {
+    return index < v3_discrete_qualities_.size() ? v3_discrete_qualities_[index] : nullptr;
+}
+DataAttribute* Model::v3_discrete_time(std::size_t index) const noexcept {
+    return index < v3_discrete_times_.size() ? v3_discrete_times_[index] : nullptr;
 }
 
 }  // namespace uhf::iec61850

@@ -63,6 +63,10 @@ uhf::v3::UpstreamSnapshot v3_upstream_snapshot(const uhf::v3::UnifiedSnapshot& s
     snapshot.discrete.set(0U, !source.pd_status.online);
     snapshot.discrete.set(1U, !source.current_status.online);
     snapshot.discrete.set(2U, !source.temperature_status.online);
+    for (std::size_t alarm = 0U; alarm < uhf::v3::kAlarmCount; ++alarm) {
+        snapshot.discrete_valid.set(3U + alarm, source.alarm_valid[alarm]);
+        snapshot.discrete.set(3U + alarm, source.alarm_active[alarm]);
+    }
     return snapshot;
 }
 

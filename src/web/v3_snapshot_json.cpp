@@ -69,6 +69,19 @@ std::string render_v3_snapshot_json(const v3::UnifiedSnapshot& snapshot) {
         body.append("\",\"value\":");
         append_value(body, snapshot.measurements[index]);
     }
+    body.append("],\"alarms\":[");
+    for (std::size_t alarm = 0U; alarm < v3::kAlarmCount; ++alarm) {
+        if (alarm != 0U) {
+            body.push_back(',');
+        }
+        body.append("{\"index\":");
+        body.append(std::to_string(alarm));
+        body.append(",\"valid\":");
+        body.append(snapshot.alarm_valid[alarm] ? "true" : "false");
+        body.append(",\"active\":");
+        body.append(snapshot.alarm_active[alarm] ? "true" : "false");
+        body.push_back('}');
+    }
     body.append("],\"pd\":[");
     for (std::size_t channel = 0U; channel < v3::kChannelCount; ++channel) {
         if (channel != 0U) {

@@ -24,7 +24,12 @@ std::vector<std::uint8_t> request(std::uint8_t function, std::uint16_t start,
 
 int main() {
     try {
-        uhf::v3::SnapshotStore v3_snapshots;
+        uhf::v3::AlarmThresholds thresholds;
+        thresholds.values.fill(100000.0F);
+        thresholds.values[0] = 400.0F;
+        thresholds.values[3] = 0.0F;
+        thresholds.values[9] = 20.0F;
+        uhf::v3::SnapshotStore v3_snapshots(3U, thresholds);
         const auto now = std::chrono::steady_clock::now();
         uhf::v3::CurrentValues current{};
         for (std::size_t i = 0U; i < current.size(); ++i) {
@@ -42,6 +47,8 @@ int main() {
         words[2] = 456U;
         const uhf::v3::PdChannel pd = uhf::v3::decode_pd_channel(words, received);
         v3_snapshots.publish_pd_channel(0U, pd, now);
+        v3_snapshots.publish_pd_channel(1U, pd, now);
+        v3_snapshots.publish_pd_channel(2U, pd, now);
 
         uhf::acquisition::SnapshotStore legacy;
         uhf::modbus::ModbusTcpServer server(
@@ -57,6 +64,16 @@ int main() {
               "v3 Modbus TCP PD mirror");
         check(mirror[9] == 0U && mirror[10] == 123U,
               "v3 Modbus TCP PD raw value");
+        const auto alarms = server.handle_request(request(0x02U, 0U, 15U));
+        check(alarms.size() == 11U && alarms[7] == 0x02U && alarms[8] == 2U,
+              "v3 Modbus TCP discrete response");
+        check(alarms[9] == 0x48U && alarms[10] == 0U,
+              "strict threshold alarm encoding");
+        current[0] = uhf::v3::valid_value(0.0F);
+        v3_snapshots.publish_current(current, now);
+        const auto recovered = server.handle_request(request(0x02U, 6U, 1U));
+        check(recovered.size() == 10U && recovered[8] == 1U && recovered[9] == 0U,
+              "threshold alarm automatic recovery");
         const auto invalid = server.handle_request(request(0x06U, 1U, 1U));
         check(invalid.size() == 9U && invalid[7] == 0x86U && invalid[8] == 1U,
               "v3 Modbus TCP illegal function");

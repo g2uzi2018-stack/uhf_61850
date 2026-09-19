@@ -5,6 +5,7 @@
 #include "iec61850/endpoint.hpp"
 #include "iec61850/model.hpp"
 #include "iec61850/stats.hpp"
+#include "v3/acquisition.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -23,6 +24,7 @@ struct ServerOptions {
     std::string ied_name{"UHFPD1"};
     std::function<bool()> alarm_provider;
     std::optional<SclModelDefinition> model_definition;
+    const v3::SnapshotStore* v3_snapshot_store{nullptr};
 };
 
 class Server final {
@@ -47,6 +49,8 @@ private:
     void update_loop();
     void publish_invalid_values(bool communication_alarm = false);
     void publish_snapshot(const acquisition::ServingView& serving_view);
+    void publish_v3_snapshot(const v3::UnifiedSnapshot& snapshot);
+    void publish_v3_invalid_values();
     void update_communication_alarm(bool active, std::uint64_t timestamp_ms);
     void update_timestamp(DataAttribute* attribute, std::uint64_t timestamp_ms);
 
@@ -58,6 +62,7 @@ private:
     std::atomic<bool> running_{false};
     std::thread update_worker_;
     std::function<bool()> alarm_provider_;
+    const v3::SnapshotStore* v3_snapshot_store_{nullptr};
     mutable std::mutex lifecycle_mutex_;
 };
 

@@ -919,6 +919,10 @@ if(UHF_ENABLE_IEC61850)
         src/acquisition/acquisition.cpp
         src/domain/modbus.cpp
         src/domain/snapshot.cpp
+        src/v3/acquisition.cpp
+        src/v3/measurements.cpp
+        src/v3/protocol.cpp
+        src/v3/register_map.cpp
     )
     target_compile_features(uhf_iec61850_request_limit_smoke PRIVATE cxx_std_17)
     target_include_directories(uhf_iec61850_request_limit_smoke PRIVATE
@@ -933,7 +937,7 @@ if(UHF_ENABLE_IEC61850)
         "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/logging"
         "${PROJECT_BINARY_DIR}/third_party/libiec61850/config"
     )
-    target_link_libraries(uhf_iec61850_request_limit_smoke PRIVATE iec61850)
+    target_link_libraries(uhf_iec61850_request_limit_smoke PRIVATE iec61850 Threads::Threads)
     if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(uhf_iec61850_request_limit_smoke PRIVATE
             -Wall
@@ -1023,6 +1027,10 @@ if(UHF_ENABLE_IEC61850)
         src/acquisition/acquisition.cpp
         src/domain/modbus.cpp
         src/domain/snapshot.cpp
+        src/v3/acquisition.cpp
+        src/v3/measurements.cpp
+        src/v3/protocol.cpp
+        src/v3/register_map.cpp
     )
     target_compile_features(uhf_iec61850_server_smoke PRIVATE cxx_std_17)
     target_include_directories(uhf_iec61850_server_smoke PRIVATE
@@ -1038,6 +1046,7 @@ if(UHF_ENABLE_IEC61850)
         "${PROJECT_BINARY_DIR}/third_party/libiec61850/config"
     )
     target_link_libraries(uhf_iec61850_server_smoke PRIVATE iec61850)
+    target_link_libraries(uhf_iec61850_server_smoke PRIVATE Threads::Threads)
     if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(uhf_iec61850_server_smoke PRIVATE
             -Wall
@@ -1328,6 +1337,7 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}/config/UHFPD1.icd"
                 "${PROJECT_SOURCE_DIR}/UHFPD12PD.icd")
         add_test(NAME uhf_iec61850_server_smoke COMMAND uhf_iec61850_server_smoke)
+        add_test(NAME uhf_iec61850_v3_model_smoke COMMAND uhf_iec61850_server_smoke --v3)
         add_test(
             NAME uhf_iec61850_uploaded_server_smoke
             COMMAND uhf_iec61850_server_smoke "${PROJECT_SOURCE_DIR}/UHFPD12PD.icd")

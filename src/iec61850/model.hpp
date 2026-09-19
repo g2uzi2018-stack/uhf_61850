@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <string>
+#include <bitset>
 
 namespace uhf::iec61850 {
 
@@ -36,6 +37,19 @@ public:
     DataAttribute* communication_alarm_quality() const noexcept;
     DataAttribute* communication_alarm_time() const noexcept;
     const SclModelDefinition& definition() const noexcept;
+    bool is_v3() const noexcept;
+    DataAttribute* v3_pd_peak_value(std::size_t index) const noexcept;
+    DataAttribute* v3_pd_peak_quality(std::size_t index) const noexcept;
+    DataAttribute* v3_pd_peak_time(std::size_t index) const noexcept;
+    DataAttribute* v3_measurement_value(std::size_t index) const noexcept;
+    DataAttribute* v3_measurement_quality(std::size_t index) const noexcept;
+    DataAttribute* v3_measurement_time(std::size_t index) const noexcept;
+    DataAttribute* v3_temperature_value(std::size_t index) const noexcept;
+    DataAttribute* v3_temperature_quality(std::size_t index) const noexcept;
+    DataAttribute* v3_temperature_time(std::size_t index) const noexcept;
+    DataAttribute* v3_discrete_value(std::size_t index) const noexcept;
+    DataAttribute* v3_discrete_quality(std::size_t index) const noexcept;
+    DataAttribute* v3_discrete_time(std::size_t index) const noexcept;
 
 private:
     IedModel* model_{nullptr};
@@ -52,6 +66,19 @@ private:
     DataAttribute* communication_alarm_value_{nullptr};
     DataAttribute* communication_alarm_quality_{nullptr};
     DataAttribute* communication_alarm_time_{nullptr};
+    bool v3_{false};
+    std::array<DataAttribute*, 3U> v3_pd_peak_values_{};
+    std::array<DataAttribute*, 3U> v3_pd_peak_qualities_{};
+    std::array<DataAttribute*, 3U> v3_pd_peak_times_{};
+    std::array<DataAttribute*, 35U> v3_measurement_values_{};
+    std::array<DataAttribute*, 35U> v3_measurement_qualities_{};
+    std::array<DataAttribute*, 35U> v3_measurement_times_{};
+    std::array<DataAttribute*, 3U> v3_temperature_values_{};
+    std::array<DataAttribute*, 3U> v3_temperature_qualities_{};
+    std::array<DataAttribute*, 3U> v3_temperature_times_{};
+    std::array<DataAttribute*, 15U> v3_discrete_values_{};
+    std::array<DataAttribute*, 15U> v3_discrete_qualities_{};
+    std::array<DataAttribute*, 15U> v3_discrete_times_{};
     SclModelDefinition definition_;
 };
 

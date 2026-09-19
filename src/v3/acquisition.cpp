@@ -2,6 +2,7 @@
 #include "v3/acquisition.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -65,6 +66,10 @@ TemperatureValues temperature_values_with_quality(
 
 }  // namespace
 
+AlarmThresholds::AlarmThresholds() {
+    values.fill(std::numeric_limits<float>::quiet_NaN());
+}
+
 std::chrono::steady_clock::time_point SteadyClock::now() const {
     return std::chrono::steady_clock::now();
 }
@@ -75,8 +80,10 @@ void SteadyClock::sleep_for(std::chrono::steady_clock::duration duration) {
     }
 }
 
-SnapshotStore::SnapshotStore(std::uint32_t alarm_after_failures)
-    : alarm_after_failures_(alarm_after_failures == 0U ? 1U : alarm_after_failures) {}
+SnapshotStore::SnapshotStore(std::uint32_t alarm_after_failures,
+                             AlarmThresholds thresholds)
+    : alarm_after_failures_(alarm_after_failures == 0U ? 1U : alarm_after_failures),
+      thresholds_(std::move(thresholds)) {}
 
 SourceStatus& SnapshotStore::status_for(UnifiedSnapshot& value, Source source) const noexcept {
     return source_status(value, source);
@@ -121,6 +128,7 @@ void SnapshotStore::publish_pd_channel(
         status.communication_alarm = false;
         status.consecutive_failures = 0U;
     }
+    recompute_alarms();
 }
 
 void SnapshotStore::publish_current(CurrentValues value,
@@ -135,6 +143,7 @@ void SnapshotStore::publish_current(CurrentValues value,
     ++current_sequence_;
     (void)calculator_.on_current(current_sequence_, value_.current);
     value_.measurements = calculator_.snapshot();
+    recompute_alarms();
     ++value_.generation;
     mark_success(Source::current, at);
 }
@@ -145,6 +154,7 @@ void SnapshotStore::publish_temperature(TemperatureValues value,
     value_.temperature = std::move(value);
     calculator_.on_temperature(value_.temperature);
     value_.measurements = calculator_.snapshot();
+    recompute_alarms();
     ++value_.generation;
     mark_success(Source::temperature, at);
 }
@@ -179,6 +189,7 @@ void SnapshotStore::record_failure(Source source,
             invalidate_pd(value_.pd[channel]);
         }
     }
+    recompute_alarms();
     ++value_.generation;
 }
 
@@ -204,7 +215,39 @@ void SnapshotStore::record_pd_failure(std::size_t channel,
     status.communication_alarm = status.consecutive_failures >= alarm_after_failures_;
     value_.pd_valid[channel] = false;
     invalidate_pd(value_.pd[channel]);
+    recompute_alarms();
     ++value_.generation;
+}
+
+void SnapshotStore::update_alarm_thresholds(AlarmThresholds thresholds) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    thresholds_ = std::move(thresholds);
+    recompute_alarms();
+    ++value_.generation;
+}
+
+void SnapshotStore::recompute_alarms() noexcept {
+    value_.alarm_active.reset();
+    value_.alarm_valid.reset();
+    auto set_alarm = [this](std::size_t index, float value, bool valid) {
+        if (index >= kAlarmCount || !std::isfinite(thresholds_.values[index]) || !valid) {
+            return;
+        }
+        value_.alarm_valid.set(index);
+        value_.alarm_active.set(index, value > thresholds_.values[index]);
+    };
+    for (std::size_t channel = 0U; channel < kChannelCount; ++channel) {
+        const PdChannel& pd = value_.pd[channel];
+        set_alarm(channel, pd.features[2].value,
+                  value_.pd_valid[channel] && pd.features[2].valid);
+    }
+    for (std::size_t index = 0U; index < 6U; ++index) {
+        set_alarm(3U + index, value_.current[index].value, value_.current[index].valid());
+    }
+    for (std::size_t index = 0U; index < 3U; ++index) {
+        set_alarm(9U + index, value_.temperature[index].value,
+                  value_.temperature[index].valid());
+    }
 }
 
 UnifiedSnapshot SnapshotStore::snapshot() const {

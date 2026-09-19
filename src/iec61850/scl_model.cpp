@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "iec61850/scl_model.hpp"
+#include "v3/measurements.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -269,6 +270,52 @@ SclModelDefinition default_model_definition(std::string ied_name) {
         0U, 60000U, 1U, true, true, true});
     definition.reports.push_back(SclReportControl{
         "RPState", "局放遥信数据报告控制块", "RPState", "DSState", true,
+        4000U, 60000U, 2U, true, true, true});
+    return definition;
+}
+
+SclModelDefinition default_v3_model_definition(std::string ied_name) {
+    SclModelDefinition definition = default_model_definition(std::move(ied_name));
+    definition.v3_monitoring = true;
+    definition.ied_description = "局放、环流、测温综合监测主IED";
+    definition.logical_device_description = "综合监测管理机";
+    definition.data_sets.clear();
+    definition.reports.clear();
+
+    SclDataSet measurements;
+    measurements.name = "DSV3Measurements";
+    measurements.description = "三合一监测值与计算值";
+    const auto add = [&measurements](std::string ln_class, std::string do_name,
+                                     std::string da_name, std::string fc) {
+        measurements.entries.push_back(SclDataSetEntry{
+            "PDMON", "", std::move(ln_class), "1", std::move(do_name),
+            std::move(da_name), std::move(fc)});
+    };
+    for (std::size_t channel = 1U; channel <= 3U; ++channel) {
+        measurements.entries.push_back(SclDataSetEntry{
+            "PDMON", "", "SPDC", std::to_string(channel), "UhfPaDsch", "mag.f", "MX"});
+    }
+    for (std::size_t index = 1U; index <= v3::kValueCount; ++index) {
+        add("MMXU", "AnIn" + std::to_string(index), "mag.f", "MX");
+    }
+    for (std::size_t index = 1U; index <= 3U; ++index) {
+        add("STMP", "AnIn" + std::to_string(index), "mag.f", "MX");
+    }
+    definition.data_sets.push_back(std::move(measurements));
+
+    SclDataSet state;
+    state.name = "DSV3State";
+    state.description = "三路通讯及十二个测量报警";
+    for (std::size_t index = 1U; index <= 15U; ++index) {
+        state.entries.push_back(SclDataSetEntry{
+            "PDMON", "", "GGIO", "1", "Ind" + std::to_string(index), "stVal", "ST"});
+    }
+    definition.data_sets.push_back(std::move(state));
+    definition.reports.push_back(SclReportControl{
+        "RPV3Measurements", "三合一测量报告", "RPV3Measurements", "DSV3Measurements",
+        false, 0U, 60000U, 2U, true, true, true});
+    definition.reports.push_back(SclReportControl{
+        "RPV3State", "三合一状态报告", "RPV3State", "DSV3State", true,
         4000U, 60000U, 2U, true, true, true});
     return definition;
 }

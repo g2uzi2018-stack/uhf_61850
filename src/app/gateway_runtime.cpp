@@ -111,7 +111,9 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
         iec_options.port = options_.iec61850_port;
         iec_options.ied_name = options_.iec61850_ied_name;
         const std::optional<iec61850::SclModelDefinition> definition =
-            load_iec61850_definition();
+            options_.v3_enabled ? std::optional<iec61850::SclModelDefinition>{
+                iec61850::default_v3_model_definition(options_.iec61850_ied_name)}
+                : load_iec61850_definition();
         if (definition) {
             iec_options.model_definition = *definition;
             iec_options.model_definition->ied_name = options_.iec61850_ied_name;
@@ -125,6 +127,7 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
         if (persistence_worker_) {
             iec_options.alarm_provider = [this] { return persistence_worker_->alarm_active(); };
         }
+        iec_options.v3_snapshot_store = v3_snapshot_store_.get();
         iec61850_server_ = std::make_unique<iec61850::Server>(
             snapshot_store_, std::move(iec_options));
     }
@@ -298,7 +301,10 @@ std::optional<iec61850::SclModelDefinition> GatewayRuntime::load_iec61850_defini
 }
 
 bool GatewayRuntime::reload_iec61850_model() {
-    std::optional<iec61850::SclModelDefinition> definition = load_iec61850_definition();
+    std::optional<iec61850::SclModelDefinition> definition = options_.v3_enabled
+        ? std::optional<iec61850::SclModelDefinition>{
+              iec61850::default_v3_model_definition(options_.iec61850_ied_name)}
+        : load_iec61850_definition();
     if (!definition) {
         return false;
     }
@@ -317,6 +323,7 @@ bool GatewayRuntime::reload_iec61850_model() {
     candidate_options.port = iec_current_port_;
     candidate_options.ied_name = definition->ied_name;
     candidate_options.model_definition = *definition;
+    candidate_options.v3_snapshot_store = v3_snapshot_store_.get();
     if (persistence_worker_) {
         candidate_options.alarm_provider = [this] { return persistence_worker_->alarm_active(); };
     }

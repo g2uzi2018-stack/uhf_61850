@@ -5,6 +5,8 @@
 #include "iec61850/scl_model.hpp"
 #include "iec61850/server.hpp"
 #include "linked_list.h"
+#include "v3/acquisition.hpp"
+#include "v3/protocol.hpp"
 
 extern "C" {
 #include "hal_thread.h"
@@ -231,9 +233,71 @@ bool probe_running_model(const char* port_text, const char* prefix) {
     return point_ok && report_ok;
 }
 
+bool v3_model_is_readable() {
+    uhf::v3::SnapshotStore v3_snapshots;
+    const auto now = std::chrono::steady_clock::now();
+    uhf::v3::CurrentValues current{};
+    for (std::size_t index = 0U; index < current.size(); ++index) {
+        current[index] = uhf::v3::valid_value(static_cast<float>(index + 1U));
+    }
+    v3_snapshots.publish_current(current, now);
+    v3_snapshots.publish_temperature(
+        {uhf::v3::valid_value(20.0F), uhf::v3::valid_value(21.0F),
+         uhf::v3::valid_value(22.0F)}, now);
+    uhf::v3::ChannelRegisters words{};
+    words[2] = 123U;
+    uhf::v3::RegisterValidity received;
+    received.set();
+    const uhf::v3::PdChannel channel = uhf::v3::decode_pd_channel(words, received);
+    for (std::size_t index = 0U; index < uhf::v3::kChannelCount; ++index) {
+        v3_snapshots.publish_pd_channel(index, channel, now);
+    }
+
+    uhf::acquisition::SnapshotStore legacy_snapshots;
+    uhf::iec61850::ServerOptions options;
+    options.bind_address = "127.0.0.1";
+    options.port = 15106U;
+    options.ied_name = "TESTV3";
+    options.model_definition = uhf::iec61850::default_v3_model_definition("TESTV3");
+    options.v3_snapshot_store = &v3_snapshots;
+    uhf::iec61850::Server server(legacy_snapshots, std::move(options));
+    server.start();
+    IedConnection connection = IedConnection_create();
+    IedClientError error = IED_ERROR_OK;
+    IedConnection_setConnectTimeout(connection, 1000U);
+    IedConnection_connect(connection, &error, "127.0.0.1", 15106U);
+    bool ok = error == IED_ERROR_OK;
+    if (ok) {
+        MmsValue* peak = IedConnection_readObject(
+            connection, &error, "TESTV3PDMON/SPDC2.UhfPaDsch.mag.f", IEC61850_FC_MX);
+        ok = error == IED_ERROR_OK && peak != nullptr &&
+            std::fabs(static_cast<double>(MmsValue_toFloat(peak)) - 123.0) < 0.01;
+        if (peak != nullptr) {
+            MmsValue_delete(peak);
+        }
+        MmsValue* calculated = IedConnection_readObject(
+            connection, &error, "TESTV3PDMON/MMXU1.AnIn1.mag.f", IEC61850_FC_MX);
+        ok = ok && error == IED_ERROR_OK && calculated != nullptr;
+        if (calculated != nullptr) {
+            MmsValue_delete(calculated);
+        }
+    }
+    IedConnection_close(connection);
+    IedConnection_destroy(connection);
+    server.stop();
+    return ok;
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
+    if (argc == 2 && std::string(argv[1]) == "--v3") {
+        const bool ok = v3_model_is_readable();
+        if (ok) {
+            std::cout << "IEC 61850 v3 model smoke: OK\n";
+        }
+        return ok ? 0 : 1;
+    }
     if (argc == 4 && std::string(argv[1]) == "--probe") {
         const bool ok = probe_running_model(argv[2], argv[3]);
         if (ok) {

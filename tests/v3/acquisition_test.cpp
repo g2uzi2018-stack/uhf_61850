@@ -75,11 +75,12 @@ private:
 };
 
 enum class DeviceKind { pd, current, temperature };
+enum class ReplyFault { none, crc, short_frame, exception, timeout };
 
 class PtyDevice {
 public:
-    explicit PtyDevice(DeviceKind kind, bool corrupt_first = false)
-        : kind_(kind), corrupt_first_(corrupt_first), master_(::posix_openpt(
+    explicit PtyDevice(DeviceKind kind, ReplyFault fault = ReplyFault::none)
+        : kind_(kind), fault_(fault), master_(::posix_openpt(
               O_RDWR | O_NOCTTY | O_NONBLOCK)) {
         check(master_ >= 0, "posix_openpt");
         check(::grantpt(master_) == 0 && ::unlockpt(master_) == 0, "grant/unlock PTY");
@@ -124,6 +125,20 @@ private:
         const std::uint16_t count = static_cast<std::uint16_t>(
             static_cast<std::uint16_t>(request[4]) << 8U | request[5]);
         const auto words = registers(start, count);
+        if (fault_ == ReplyFault::timeout && !fault_used_) {
+            fault_used_ = true;
+            return;
+        }
+        if (fault_ == ReplyFault::exception && !fault_used_) {
+            fault_used_ = true;
+            std::vector<std::uint8_t> response{request[0],
+                                               static_cast<std::uint8_t>(request[1] | 0x80U), 2U};
+            const std::uint16_t crc = modbus_crc16(response.data(), response.size());
+            response.push_back(static_cast<std::uint8_t>(crc & 255U));
+            response.push_back(static_cast<std::uint8_t>(crc >> 8U));
+            (void)::write(master_, response.data(), response.size());
+            return;
+        }
         std::vector<std::uint8_t> response{request[0], request[1],
                                            static_cast<std::uint8_t>(count * 2U)};
         for (const std::uint16_t word : words) {
@@ -133,9 +148,15 @@ private:
         const std::uint16_t crc = modbus_crc16(response.data(), response.size());
         response.push_back(static_cast<std::uint8_t>(crc & 255U));
         response.push_back(static_cast<std::uint8_t>(crc >> 8U));
-        if (corrupt_first_ && !corrupted_) {
+        if (fault_ == ReplyFault::short_frame && !fault_used_) {
+            fault_used_ = true;
+            response.resize(3U);
+            (void)::write(master_, response.data(), response.size());
+            return;
+        }
+        if (fault_ == ReplyFault::crc && !fault_used_) {
             response.back() ^= 1U;
-            corrupted_ = true;
+            fault_used_ = true;
         }
         std::size_t offset = 0U;
         while (offset < response.size()) {
@@ -175,8 +196,8 @@ private:
     }
 
     DeviceKind kind_;
-    bool corrupt_first_;
-    bool corrupted_{false};
+    ReplyFault fault_;
+    bool fault_used_{false};
     int master_;
     std::string slave_path_;
     std::atomic<bool> stop_{false};
@@ -198,7 +219,7 @@ int main() {
         options.temperature_scale = {0.1F, 0.0F};
 
         PtyDevice pd_device(DeviceKind::pd);
-        PtyDevice current_device(DeviceKind::current, true);
+        PtyDevice current_device(DeviceKind::current, ReplyFault::crc);
         PtyDevice temperature_device(DeviceKind::temperature);
         PtyPort pd_port(pd_device.slave_path());
         PtyPort current_port(current_device.slave_path());
@@ -222,6 +243,24 @@ int main() {
         check(current_device.request_count() == 2U, "CRC error caused one bounded retry");
         check(result.pd_status.online && result.current_status.online &&
               result.temperature_status.online, "all source statuses recovered");
+
+        const auto fault_check = [](ReplyFault fault) {
+            uhf::v3::SnapshotStore fault_snapshots;
+            uhf::v3::SteadyClock fault_clock;
+            uhf::v3::CollectorOptions fault_options;
+            fault_options.response_timeout = std::chrono::milliseconds(20);
+            fault_options.retry_delay = std::chrono::milliseconds(1);
+            fault_options.quarantine_duration = std::chrono::milliseconds(1);
+            fault_options.max_retries = 1U;
+            PtyDevice device(DeviceKind::current, fault);
+            PtyPort port(device.slave_path());
+            uhf::v3::PortCollector collector(port, fault_snapshots, fault_clock, fault_options);
+            check(collector.poll_current(), "collector recovers from one injected frame fault");
+            check(device.request_count() == 2U, "one frame fault consumes one retry");
+        };
+        fault_check(ReplyFault::short_frame);
+        fault_check(ReplyFault::exception);
+        fault_check(ReplyFault::timeout);
         std::cout << "v3 acquisition: PTY three-port collection and CRC retry passed\n";
         return 0;
     } catch (const std::exception& error) {
