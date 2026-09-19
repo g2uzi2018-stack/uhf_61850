@@ -41,6 +41,13 @@ struct ReportState {
     std::atomic<float> first_measurement_value{0.0F};
 };
 
+struct StateReportState {
+    std::atomic<unsigned int> count{0U};
+    std::atomic<std::uint32_t> data_set_size{0U};
+    std::atomic<bool> current_communication_alarm_changed{false};
+    std::atomic<bool> current_communication_alarm{false};
+};
+
 void report_callback(void* parameter, ClientReport report) {
     auto* state = static_cast<ReportState*>(parameter);
     MmsValue* values = ClientReport_getDataSetValues(report);
@@ -55,6 +62,26 @@ void report_callback(void* parameter, ClientReport report) {
             if (value != nullptr && MmsValue_getType(value) == MMS_FLOAT) {
                 state->first_measurement_value.store(MmsValue_toFloat(value));
                 state->first_measurement_changed.store(true);
+            }
+        }
+        state->count.fetch_add(1U);
+    }
+}
+
+void state_report_callback(void* parameter, ClientReport report) {
+    auto* state = static_cast<StateReportState*>(parameter);
+    MmsValue* values = ClientReport_getDataSetValues(report);
+    if (values != nullptr) {
+        const std::uint32_t size = MmsValue_getArraySize(values);
+        state->data_set_size.store(size);
+        constexpr int kCurrentCommunicationAlarmIndex = 1;
+        if (size > static_cast<std::uint32_t>(kCurrentCommunicationAlarmIndex) &&
+            ClientReport_getReasonForInclusion(report, kCurrentCommunicationAlarmIndex) ==
+                IEC61850_REASON_DATA_CHANGE) {
+            MmsValue* value = MmsValue_getElement(values, kCurrentCommunicationAlarmIndex);
+            if (value != nullptr && MmsValue_getType(value) == MMS_BOOLEAN) {
+                state->current_communication_alarm.store(MmsValue_getBoolean(value));
+                state->current_communication_alarm_changed.store(true);
             }
         }
         state->count.fetch_add(1U);
@@ -400,6 +427,106 @@ bool v3_model_is_readable() {
                 connection, &error, rcb, RCB_ELEMENT_RPT_ENA, true);
             ok = expect(error == IED_ERROR_OK, "disable v3 measurement URCB") && ok;
             ClientReportControlBlock_destroy(rcb);
+        }
+
+        ClientDataSet state_data_set = IedConnection_readDataSetValues(
+            connection, &error, "TESTV3PDMON/LLN0.DSV3State", nullptr);
+        ok = expect(
+            error == IED_ERROR_OK && state_data_set != nullptr,
+            "read v3 static state data set") && ok;
+        if (state_data_set != nullptr) {
+            MmsValue* values = ClientDataSet_getValues(state_data_set);
+            MmsValue* current_communication_alarm = values == nullptr
+                ? nullptr : MmsValue_getElement(values, 1);
+            ok = expect(
+                ClientDataSet_getDataSetSize(state_data_set) == 15 && values != nullptr &&
+                    MmsValue_getArraySize(values) == 15 &&
+                    current_communication_alarm != nullptr &&
+                    MmsValue_getType(current_communication_alarm) == MMS_BOOLEAN &&
+                    !MmsValue_getBoolean(current_communication_alarm),
+                "v3 state data set contains 15 points and no current communication alarm") && ok;
+            ClientDataSet_destroy(state_data_set);
+        }
+
+        ClientReportControlBlock state_rcb = IedConnection_getRCBValues(
+            connection,
+            &error,
+            "TESTV3PDMON/LLN0.BR.RPV3State",
+            nullptr);
+        ok = expect(
+            error == IED_ERROR_OK && state_rcb != nullptr,
+            "read v3 state BRCB") && ok;
+        if (state_rcb != nullptr) {
+            ok = expect(ClientReportControlBlock_isBuffered(state_rcb),
+                        "v3 state report is buffered") && ok;
+            StateReportState report_state;
+            IedConnection_installReportHandler(
+                connection,
+                "TESTV3PDMON/LLN0.BR.RPV3State",
+                ClientReportControlBlock_getRptId(state_rcb),
+                state_report_callback,
+                &report_state);
+            ClientReportControlBlock_setTrgOps(state_rcb, TRG_OPT_DATA_CHANGED);
+            ClientReportControlBlock_setRptEna(state_rcb, true);
+            IedConnection_setRCBValues(
+                connection,
+                &error,
+                state_rcb,
+                RCB_ELEMENT_RPT_ENA | RCB_ELEMENT_TRG_OPS,
+                true);
+            ok = expect(error == IED_ERROR_OK, "enable v3 state BRCB") && ok;
+
+            for (std::size_t failure = 0U; failure < 3U; ++failure) {
+                v3_snapshots.record_failure(
+                    uhf::v3::Source::current,
+                    std::chrono::steady_clock::now(),
+                    "simulated timeout",
+                    current_utc + std::chrono::milliseconds(
+                        static_cast<std::int64_t>(failure + 1U)));
+            }
+            const auto report_deadline = std::chrono::steady_clock::now() +
+                std::chrono::seconds(6);
+            while ((!report_state.current_communication_alarm_changed.load() ||
+                    !report_state.current_communication_alarm.load()) &&
+                   std::chrono::steady_clock::now() < report_deadline) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+            ok = expect(
+                report_state.count.load() > 0U &&
+                    report_state.data_set_size.load() == 15 &&
+                    report_state.current_communication_alarm_changed.load() &&
+                    report_state.current_communication_alarm.load(),
+                "receive v3 current communication-alarm report after three failures") && ok;
+
+            ClientReportControlBlock_setRptEna(state_rcb, false);
+            IedConnection_setRCBValues(
+                connection, &error, state_rcb, RCB_ELEMENT_RPT_ENA, true);
+            ok = expect(error == IED_ERROR_OK, "disable v3 state BRCB") && ok;
+            ClientReportControlBlock_destroy(state_rcb);
+        }
+
+        v3_snapshots.publish_current(
+            current, std::chrono::steady_clock::now(), current_utc);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        MmsValue* recovered_communication_alarm = IedConnection_readObject(
+            connection,
+            &error,
+            "TESTV3PDMON/GGIO1.Ind2.stVal",
+            IEC61850_FC_ST);
+        const bool recovered_alarm_read = error == IED_ERROR_OK;
+        const Quality recovered_alarm_quality = IedConnection_readQualityValue(
+            connection,
+            &error,
+            "TESTV3PDMON/GGIO1.Ind2.q",
+            IEC61850_FC_ST);
+        ok = expect(
+            recovered_alarm_read && error == IED_ERROR_OK &&
+                recovered_communication_alarm != nullptr &&
+                !MmsValue_getBoolean(recovered_communication_alarm) &&
+                recovered_alarm_quality == static_cast<Quality>(QUALITY_VALIDITY_GOOD),
+            "successful current sample clears the served communication alarm") && ok;
+        if (recovered_communication_alarm != nullptr) {
+            MmsValue_delete(recovered_communication_alarm);
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(350));
