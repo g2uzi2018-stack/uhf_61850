@@ -2,6 +2,7 @@
 #pragma once
 
 #include "acquisition/acquisition.hpp"
+#include "activation/activation_manager.hpp"
 #include "config/config_store.hpp"
 #include "health/health.hpp"
 #include "iec61850/server.hpp"
@@ -25,6 +26,7 @@ namespace uhf::app {
 struct GatewayRuntimeOptions {
     bool simulate{false};
     bool v3_enabled{false};
+    activation::Options activation_options{};
     config::ConfigStore* config_store{nullptr};
     std::string acquisition_device{"/dev/ttyS1"};
     std::string v3_pd_device{"/dev/ttyS1"};
@@ -89,6 +91,7 @@ private:
     std::unique_ptr<v3::ISerialPort> v3_current_adapter_;
     std::unique_ptr<v3::ISerialPort> v3_temperature_adapter_;
     std::unique_ptr<v3::SnapshotStore> v3_snapshot_store_;
+    std::unique_ptr<activation::Manager> activation_manager_;
     std::unique_ptr<v3::AcquisitionScheduler> v3_scheduler_;
     std::unique_ptr<modbus::ModbusTcpServer> modbus_tcp_server_;
     std::unique_ptr<acquisition::ISerialPort> modbus_rtu_serial_port_;

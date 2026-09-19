@@ -138,6 +138,7 @@ configure_file(
 
 add_executable(uhf-gatewayd
     src/main.cpp
+    src/activation/activation_manager.cpp
     src/config/config_store.cpp
     src/app/gateway_runtime.cpp
     src/ftp/server.cpp
@@ -871,6 +872,25 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+add_executable(uhf_activation_smoke ${UHF_TEST_TARGET_OPTIONS}
+    tests/activation_smoke.cpp
+    src/activation/activation_manager.cpp
+)
+target_compile_features(uhf_activation_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_activation_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
+target_link_libraries(uhf_activation_smoke PRIVATE OpenSSL::Crypto)
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_activation_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+
     add_executable(uhf_config_store_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/config_store_smoke.cpp
     src/config/config_store.cpp
@@ -1346,6 +1366,7 @@ if(BUILD_TESTING)
     add_test(NAME uhf_storage_cleaner_smoke COMMAND uhf_storage_cleaner_smoke)
     add_test(NAME uhf_persistence_runtime_smoke COMMAND uhf_persistence_runtime_smoke)
     add_test(NAME uhf_v3_history_store_smoke COMMAND uhf_v3_history_store_smoke)
+    add_test(NAME uhf_activation_smoke COMMAND uhf_activation_smoke)
     add_test(NAME uhf_config_store_smoke COMMAND uhf_config_store_smoke)
     add_test(NAME uhf_systemd_notify_smoke COMMAND uhf_systemd_notify_smoke)
     add_test(NAME uhf_tls_context_smoke COMMAND uhf_tls_context_smoke)

@@ -18,6 +18,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <stdexcept>
@@ -46,6 +47,10 @@ struct WebOptions {
     std::string v3_pd_device{"/dev/ttyS1"};
     std::string v3_current_device{"/dev/ttyS2"};
     std::string v3_temperature_device{"/dev/ttyS3"};
+    std::string v3_device_id;
+    std::string v3_activation_key;
+    std::optional<std::string> v3_activation_code;
+    std::filesystem::path activation_state;
     float v3_current_multiplier{std::numeric_limits<float>::quiet_NaN()};
     float v3_current_offset{std::numeric_limits<float>::quiet_NaN()};
     float v3_temperature_multiplier{std::numeric_limits<float>::quiet_NaN()};
@@ -110,6 +115,8 @@ void print_usage() {
                  "[--http-recovery] [--tls-cert PATH] [--tls-key PATH] "
                  "[--simulate|--v3|--no-acquisition] [--acquisition-device PATH] "
                  "[--v3-pd-device PATH] [--v3-current-device PATH] [--v3-temperature-device PATH] "
+                 "[--v3-device-id ID] [--v3-activation-key KEY] [--v3-activation-code CODE] "
+                 "[--activation-state PATH] "
                  "[--v3-current-multiplier N] [--v3-current-offset N] "
                  "[--v3-temperature-multiplier N] [--v3-temperature-offset N] "
                  "[--modbus-tcp-listen IPV4:PORT] [--modbus-rtu-device PATH] "
@@ -179,6 +186,14 @@ int main(int argc, char* argv[]) {
                 options.v3_current_device = argv[++index];
             } else if (option == "--v3-temperature-device" && index + 1 < argc) {
                 options.v3_temperature_device = argv[++index];
+            } else if (option == "--v3-device-id" && index + 1 < argc) {
+                options.v3_device_id = argv[++index];
+            } else if (option == "--v3-activation-key" && index + 1 < argc) {
+                options.v3_activation_key = argv[++index];
+            } else if (option == "--v3-activation-code" && index + 1 < argc) {
+                options.v3_activation_code = std::string(argv[++index]);
+            } else if (option == "--activation-state" && index + 1 < argc) {
+                options.activation_state = argv[++index];
             } else if (option == "--v3-current-multiplier" && index + 1 < argc) {
                 if (!parse_float(argv[++index], options.v3_current_multiplier)) {
                     std::cerr << "invalid --v3-current-multiplier value\n";
@@ -248,8 +263,11 @@ int main(int argc, char* argv[]) {
         if (options.simulate && !options.privileged_socket_explicit) {
             options.privileged_socket = options.state_directory / "privileged.sock";
         }
-            if (!options.config_file_explicit) {
+        if (!options.config_file_explicit) {
             options.config_file = options.state_directory / "config.json";
+        }
+        if (options.activation_state.empty()) {
+            options.activation_state = options.state_directory / "activation.state";
         }
 
         try {
@@ -310,6 +328,10 @@ int main(int argc, char* argv[]) {
                 runtime_options.v3_pd_device = options.v3_pd_device;
                 runtime_options.v3_current_device = options.v3_current_device;
                 runtime_options.v3_temperature_device = options.v3_temperature_device;
+                runtime_options.activation_options.state_file = options.activation_state;
+                runtime_options.activation_options.device_id = options.v3_device_id;
+                runtime_options.activation_options.manufacturer_key = options.v3_activation_key;
+                runtime_options.activation_options.requested_code = options.v3_activation_code;
                 runtime_options.v3_scheduler_options.collector.current_scale = {
                     options.v3_current_multiplier, options.v3_current_offset};
                 runtime_options.v3_scheduler_options.collector.temperature_scale = {

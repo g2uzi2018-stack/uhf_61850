@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <stdexcept>
 #include <utility>
 
 namespace uhf::app {
@@ -58,9 +59,15 @@ std::optional<iec61850::SclModelDefinition> parse_file(
 GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& logger)
     : options_(std::move(options)),
       logger_(logger),
-      iec_current_bind_(options_.iec61850_bind),
+    iec_current_bind_(options_.iec61850_bind),
       iec_current_port_(options_.iec61850_port) {
     if (options_.v3_enabled) {
+        activation_manager_ = std::make_unique<activation::Manager>(
+            options_.activation_options);
+        if (!activation_manager_->active()) {
+            throw std::runtime_error(
+                "v3 activation is required before acquisition and gateway services start");
+        }
         if (options_.simulate) {
             throw std::invalid_argument(
                 "v3 mode requires explicit PTY/device paths; --simulate is for the legacy loopback");
