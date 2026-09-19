@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
@@ -9,6 +11,8 @@
 #include <string_view>
 
 namespace uhf::config {
+
+constexpr std::size_t kV3AlarmThresholdCount = 12U;
 
 struct Values {
     std::string acquisition_device{"/dev/ttyS1"};
@@ -40,6 +44,7 @@ struct Values {
     std::int32_t storage_event_rearm_dbm{-50};
     std::uint32_t storage_event_delta_db{10U};
     std::uint32_t storage_event_merge_seconds{60U};
+    std::array<std::optional<float>, kV3AlarmThresholdCount> v3_alarm_thresholds{};
 };
 
 struct Snapshot {

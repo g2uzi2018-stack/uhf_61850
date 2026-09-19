@@ -48,7 +48,8 @@ const char* valid_object() {
         "storage_event_threshold_dbm":-45,
         "storage_event_rearm_dbm":-50,
         "storage_event_delta_db":10,
-        "storage_event_merge_seconds":60
+        "storage_event_merge_seconds":60,
+        "v3_alarm_thresholds":[100.5,null,null,9,null,null,null,null,null,19,null,null]
     })";
 }
 
@@ -75,6 +76,10 @@ int main() {
             !expect(initial.values.overview_title == "现场局放监测", "overview title") ||
             !expect(initial.values.phase_start_degree == 45U, "phase start") ||
             !expect(!initial.values.time_sync_enabled, "manual time mode") ||
+            !expect(initial.values.v3_alarm_thresholds[0] == 100.5F,
+                    "v3 PD threshold") ||
+            !expect(!initial.values.v3_alarm_thresholds[1],
+                    "v3 unconfigured threshold") ||
             !expect(std::filesystem::is_regular_file(path), "initial file") ||
             !expect(std::filesystem::file_size(path) < 16U * 1024U, "bounded file")) {
             return 1;
@@ -160,6 +165,35 @@ int main() {
                 "conflicting FTP port accepted")) {
             return 1;
         }
+        const std::string invalid_alarm_count = [] {
+            std::string value = valid_object();
+            const std::string thresholds =
+                "\"v3_alarm_thresholds\":[100.5,null,null,9,null,null,null,null,null,19,null,null]";
+            const std::size_t position = value.find(thresholds);
+            if (position != std::string::npos) {
+                value.replace(
+                    position, thresholds.size(),
+                    "\"v3_alarm_thresholds\":[100.5,null]");
+            }
+            return value;
+        }();
+        if (!expect(
+                store.update(1U, invalid_alarm_count) == uhf::config::UpdateResult::invalid,
+                "short v3 alarm array accepted")) {
+            return 1;
+        }
+        const std::filesystem::path blocked_temporary = path.string() + ".tmp";
+        std::filesystem::create_directory(blocked_temporary);
+        const uhf::config::UpdateResult storage_failure = store.update(1U, valid_object());
+        if (!expect(storage_failure == uhf::config::UpdateResult::storage_error,
+                    "atomic config write failure was not surfaced") ||
+            !expect(store.snapshot().version == 1U,
+                    "failed config write changed the active version") ||
+            !expect(store.snapshot().values.acquisition_slave_id == 2U,
+                    "failed config write changed active values")) {
+            return 1;
+        }
+        std::filesystem::remove(blocked_temporary, cleanup_error);
         const uhf::config::UpdateResult updated = store.update(1U, valid_object());
         const uhf::config::Snapshot changed = store.snapshot();
         if (!expect(updated == uhf::config::UpdateResult::updated, "valid update") ||
@@ -177,6 +211,10 @@ int main() {
             !expect(changed.values.storage_event_rearm_dbm == -50, "event rearm") ||
             !expect(changed.values.storage_event_delta_db == 10U, "event delta") ||
             !expect(changed.values.storage_event_merge_seconds == 60U, "event merge window") ||
+            !expect(changed.values.v3_alarm_thresholds[3] == 9.0F,
+                    "current alarm threshold") ||
+            !expect(changed.values.v3_alarm_thresholds[9] == 19.0F,
+                    "temperature alarm threshold") ||
             !expect(std::filesystem::file_size(path) < 16U * 1024U, "updated file bound")) {
             return 1;
         }
@@ -186,6 +224,8 @@ int main() {
         if (!expect(saved.find("\"version\": 2") != std::string::npos, "saved version") ||
             !expect(saved.find("\"iec_port\": 15102") != std::string::npos, "saved IEC port") ||
             !expect(saved.find("\"phase_start_degree\": 45") != std::string::npos, "saved phase start") ||
+            !expect(saved.find("\"v3_alarm_thresholds\": [100.5,null,null,9") !=
+                    std::string::npos, "saved v3 alarm thresholds") ||
             !expect(saved.find("Smoke") == std::string::npos, "no test secret")) {
             return 1;
         }
@@ -203,7 +243,11 @@ int main() {
             !expect(reopened_snapshot.values.modbus_tcp_unit_id == 4U, "TCP unit survives restart") ||
             !expect(reopened_snapshot.values.iec_port == 15102U, "IEC port survives restart") ||
             !expect(reopened_snapshot.values.iec_ied_name == "RENAMED1", "IED name survives restart") ||
-            !expect(reopened_snapshot.values.overview_title == "现场局放监测", "overview survives restart")) {
+            !expect(reopened_snapshot.values.overview_title == "现场局放监测", "overview survives restart") ||
+            !expect(reopened_snapshot.values.v3_alarm_thresholds[0] == 100.5F,
+                    "v3 alarm threshold survives restart") ||
+            !expect(!reopened_snapshot.values.v3_alarm_thresholds[2],
+                    "v3 disabled alarm survives restart")) {
             return 1;
         }
 

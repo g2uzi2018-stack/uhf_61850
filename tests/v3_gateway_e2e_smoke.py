@@ -173,10 +173,56 @@ def main():
                 },
             )
             login_response = connection.getresponse()
-            login_response.read()
+            login_payload = json.loads(login_response.read())
             cookie = login_response.getheader("Set-Cookie", "").split(";", 1)[0]
             connection.close()
             assert login_response.status == 200 and cookie.startswith("uhf_session=")
+            csrf_token = login_payload["csrf_token"]
+            connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
+            connection.request("GET", "/api/v1/config", headers={"Cookie": cookie})
+            config_response = connection.getresponse()
+            configuration = json.loads(config_response.read())
+            connection.close()
+            assert config_response.status == 200
+            assert configuration["v3_alarm_thresholds"] == [None] * 12
+            config_version = configuration.pop("version")
+            configuration["v3_alarm_thresholds"] = [
+                None, None, None, 9, None, None, None, None, None, 19, None, None
+            ]
+            connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
+            connection.request(
+                "PUT",
+                "/api/v1/config",
+                body=json.dumps(configuration, separators=(",", ":")),
+                headers={
+                    "Content-Type": "application/json",
+                    "Cookie": cookie,
+                    "X-CSRF-Token": csrf_token,
+                    "If-Match": f'"{config_version}"',
+                },
+            )
+            update_response = connection.getresponse()
+            update_payload = json.loads(update_response.read())
+            connection.close()
+            assert update_response.status == 200
+            assert update_payload["restart_required"] is False
+            deadline = time.time() + 3
+            while time.time() < deadline:
+                connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
+                connection.request("GET", "/api/v1/snapshot/latest")
+                alarm_response = connection.getresponse()
+                alarm_payload = json.loads(alarm_response.read())
+                connection.close()
+                alarms = alarm_payload.get("alarms", [])
+                if (len(alarms) == 12 and all(
+                    alarms[index]["valid"] and alarms[index]["active"]
+                    for index in (3, 9)
+                )):
+                    break
+                time.sleep(0.05)
+            else:
+                raise AssertionError("v3 alarm thresholds were not hot reloaded")
+            assert not alarms[1]["valid"] and not alarms[1]["active"]
             connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
             connection.request("GET", "/api/v1/packets", headers={"Cookie": cookie})
             packet_response = connection.getresponse()

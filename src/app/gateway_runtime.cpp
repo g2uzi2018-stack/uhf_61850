@@ -66,6 +66,19 @@ std::optional<iec61850::SclModelDefinition> parse_file(
     return definition;
 }
 
+v3::AlarmThresholds alarm_thresholds_from_config(const config::Values& values) {
+    v3::AlarmThresholds thresholds;
+    static_assert(
+        config::kV3AlarmThresholdCount == v3::kAlarmCount,
+        "configuration and runtime alarm counts must remain aligned");
+    for (std::size_t index = 0U; index < thresholds.values.size(); ++index) {
+        if (values.v3_alarm_thresholds[index]) {
+            thresholds.values[index] = *values.v3_alarm_thresholds[index];
+        }
+    }
+    return thresholds;
+}
+
 }  // namespace
 
 GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& logger)
@@ -94,7 +107,11 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
             *v3_current_serial_port_, *v3_packet_trace_, v3::PacketSource::current);
         v3_temperature_adapter_ = std::make_unique<V3SerialAdapter>(
             *v3_temperature_serial_port_, *v3_packet_trace_, v3::PacketSource::temperature);
-        v3_snapshot_store_ = std::make_unique<v3::SnapshotStore>();
+        const v3::AlarmThresholds alarm_thresholds = options_.config_store != nullptr
+            ? alarm_thresholds_from_config(options_.config_store->snapshot().values)
+            : v3::AlarmThresholds{};
+        v3_snapshot_store_ = std::make_unique<v3::SnapshotStore>(
+            3U, alarm_thresholds);
         v3_scheduler_ = std::make_unique<v3::AcquisitionScheduler>(
             *v3_pd_adapter_, *v3_current_adapter_, *v3_temperature_adapter_,
             *v3_snapshot_store_, options_.v3_scheduler_options);
@@ -473,6 +490,10 @@ void GatewayRuntime::apply_runtime_configuration(std::uint64_t& applied_version)
         options_.acquisition_options.max_retries = configured.values.acquisition_max_retries;
         options_.poll_interval = std::chrono::milliseconds(configured.values.acquisition_period_ms);
         acquisition_engine_->update_options(options_.acquisition_options);
+    }
+    if (v3_snapshot_store_) {
+        v3_snapshot_store_->update_alarm_thresholds(
+            alarm_thresholds_from_config(configured.values));
     }
     if (modbus_tcp_server_) {
         modbus::ModbusTcpOptions modbus_options;

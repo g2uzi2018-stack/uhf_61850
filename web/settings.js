@@ -8,6 +8,12 @@
     var csrfToken = "";
     var modbusTcpBind = "192.168.3.230";
     var configuration = null;
+    var alarmFields = [
+        "v3_alarm_pd1", "v3_alarm_pd2", "v3_alarm_pd3",
+        "v3_alarm_ia", "v3_alarm_ib", "v3_alarm_ic",
+        "v3_alarm_IA", "v3_alarm_IB", "v3_alarm_IC",
+        "v3_alarm_ta", "v3_alarm_tb", "v3_alarm_tc"
+    ];
     var numericFields = [
         "acquisition_slave_id", "acquisition_period_ms", "acquisition_response_timeout_ms",
         "acquisition_max_retries", "rtu_unit_id", "modbus_tcp_port", "modbus_tcp_unit_id",
@@ -45,6 +51,10 @@
             modbusTcpBind = String(config.modbus_tcp_bind);
             document.getElementById("config-version").innerHTML = "<i></i>配置版本 " + version;
             numericFields.forEach(function (name) { setValue(name, config[name]); });
+            var thresholds = Array.isArray(config.v3_alarm_thresholds) ? config.v3_alarm_thresholds : [];
+            alarmFields.forEach(function (name, index) {
+                form.elements[name].value = thresholds[index] === null || thresholds[index] === undefined ? "" : String(thresholds[index]);
+            });
             setValue("iec_enabled", config.iec_enabled);
             setValue("ftp_enabled", config.ftp_enabled);
             document.getElementById("runtime-status").textContent = "配置已加载 · 版本 " + version;
@@ -56,6 +66,14 @@
         var payload = Object.assign({}, configuration || {});
         delete payload.version;
         numericFields.forEach(function (name) { payload[name] = Number(form.elements[name].value); });
+        payload.v3_alarm_thresholds = alarmFields.map(function (name) {
+            var value = form.elements[name].value.trim();
+            return value === "" ? null : Number(value);
+        });
+        if (payload.v3_alarm_thresholds.some(function (value) { return value !== null && !Number.isFinite(value); })) {
+            showError("v3 报警阈值必须是有限数值，留空表示未配置。");
+            return;
+        }
         payload.iec_enabled = form.elements.iec_enabled.checked;
         payload.ftp_enabled = form.elements.ftp_enabled.checked;
         payload.iec_ied_name = configuration && configuration.iec_ied_name ? configuration.iec_ied_name : "UHFPD1";

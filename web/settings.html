@@ -28,8 +28,8 @@
             <header class="topbar"><div class="topbar-status"><span class="status-dot up"></span><span id="runtime-status">配置读取中</span></div><div class="topbar-account"><div class="account-summary"><div class="mini-avatar">A</div><div><strong>admin</strong><span>系统管理员</span></div></div><button class="logout-button" type="button" data-action="logout">退出登录</button></div></header>
             <div class="page-content settings-content">
                 <div class="breadcrumb"><span>设备配置</span><b>/</b><strong>采集与转发</strong></div>
-                <div class="page-heading"><div><div class="heading-kicker">COMMUNICATION &amp; STORAGE</div><h1>采集与转发</h1><p>配置 PD1000 采集、Modbus 镜像、IEC 61850 和本地存储参数。</p></div><span class="heading-badge" id="config-version"><i></i>版本读取中</span></div>
-                <div class="settings-notice"><strong>生效范围</strong><span>采集从站号、轮询周期、响应超时、重试次数，以及存储周期、保留天数和最低空间保存后由后台运行线程热加载；串口设备、RTU 地址和监听端口等项目会先原子落盘，并在下次安全重启时应用。IED 名称已移至网络设置。</span></div>
+                <div class="page-heading"><div><div class="heading-kicker">COMMUNICATION &amp; STORAGE</div><h1>采集与转发</h1><p>配置采集、Modbus 转发、IEC 61850 和本地存储参数。</p></div><span class="heading-badge" id="config-version"><i></i>版本读取中</span></div>
+                <div class="settings-notice"><strong>生效范围</strong><span>采集参数、v3 报警阈值和存储策略保存后由后台运行线程热加载；串口设备、RTU 地址和监听端口等项目会先原子落盘，并在下次安全重启时应用。IED 名称已移至网络设置。</span></div>
                 <form id="settings-form">
                     <section class="panel settings-panel"><div class="panel-header"><div><h2>PD1000 采集主站</h2><p>485-1 固定使用 /dev/ttyS1、115200 / 8N1、功能码 0x04</p></div><span class="count-badge">31 笔 / 轮</span></div><div class="settings-grid">
                         <label>从站地址<input name="acquisition_slave_id" type="number" min="1" max="247" required><small>默认 1，范围 1–247</small></label>
@@ -46,6 +46,20 @@
                         <label>FTP 文件传输<input name="ftp_enabled" type="checkbox"><small>使用管理员账号；仅建议在可信管理网启用</small></label>
                         <label>FTP 端口<input name="ftp_port" type="number" min="1" max="65535" required><small>默认 21；修改或启停后需重启服务</small></label>
                     </div><div class="settings-actions panel-actions"><span></span><a class="outline-button link-button" href="/api/v1/point-table/export.csv">下载 v3 Modbus 点表 CSV</a></div></section>
+                    <section class="panel settings-panel"><div class="panel-header"><div><h2>v3 测量报警阈值</h2><p>严格按“测量值 &gt; 阈值”置位；留空表示该点未配置，遥信质量保持无效</p></div><span class="count-badge">保存后热生效</span></div><div class="settings-grid">
+                        <label>局放 1 峰值<input name="v3_alarm_pd1" type="number" step="any"><small>对应报警 1；局放特征峰值</small></label>
+                        <label>局放 2 峰值<input name="v3_alarm_pd2" type="number" step="any"><small>对应报警 2；局放特征峰值</small></label>
+                        <label>局放 3 峰值<input name="v3_alarm_pd3" type="number" step="any"><small>对应报警 3；局放特征峰值</small></label>
+                        <label>Ia<input name="v3_alarm_ia" type="number" step="any"><small>对应报警 4；单位随现场倍率</small></label>
+                        <label>Ib<input name="v3_alarm_ib" type="number" step="any"><small>对应报警 5；单位随现场倍率</small></label>
+                        <label>Ic<input name="v3_alarm_ic" type="number" step="any"><small>对应报警 6；单位随现场倍率</small></label>
+                        <label>IA<input name="v3_alarm_IA" type="number" step="any"><small>对应报警 7；单位随现场倍率</small></label>
+                        <label>IB<input name="v3_alarm_IB" type="number" step="any"><small>对应报警 8；单位随现场倍率</small></label>
+                        <label>IC<input name="v3_alarm_IC" type="number" step="any"><small>对应报警 9；单位随现场倍率</small></label>
+                        <label>TA<input name="v3_alarm_ta" type="number" step="any"><small>对应报警 10；单位随现场倍率</small></label>
+                        <label>TB<input name="v3_alarm_tb" type="number" step="any"><small>对应报警 11；单位随现场倍率</small></label>
+                        <label>TC<input name="v3_alarm_tc" type="number" step="any"><small>对应报警 12；单位随现场倍率</small></label>
+                    </div></section>
                     <section class="panel settings-panel"><div class="panel-header"><div><h2>存储策略</h2><p>周期帧与事件包写入数据目录，由后台清理线程维护</p></div><span class="count-badge">原子写入</span></div><div class="settings-grid">
                         <label>周期保存间隔（秒）<input name="storage_period_seconds" type="number" min="60" max="86400" required><small>默认 300 秒</small></label>
                         <label>保留天数<input name="storage_retention_days" type="number" min="1" max="30" required><small>范围 1–30 天</small></label>

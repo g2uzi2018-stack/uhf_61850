@@ -2,11 +2,15 @@
 #include "config/config_store.hpp"
 
 #include <arpa/inet.h>
+#include <algorithm>
+#include <array>
 #include <cctype>
 #include <cerrno>
 #include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <fcntl.h>
 #include <fstream>
 #include <limits>
@@ -55,9 +59,11 @@ public:
                 skip_space();
                 return position_ == input_.size() &&
                     (keys_.size() == 18U || keys_.size() == 19U ||
-                     keys_.size() == 22U || keys_.size() == 23U ||
+                     keys_.size() == 20U || keys_.size() == 22U ||
+                     keys_.size() == 23U || keys_.size() == 24U ||
                      keys_.size() == 27U || keys_.size() == 28U ||
-                     keys_.size() == 29U || keys_.size() == 30U);
+                     keys_.size() == 29U || keys_.size() == 30U ||
+                     keys_.size() == 31U);
             }
             if (!consume(',')) {
                 return false;
@@ -254,6 +260,90 @@ private:
         return false;
     }
 
+    bool parse_nullable_float(std::optional<float>& result) {
+        if (input_.substr(position_, 4U) == "null") {
+            position_ += 4U;
+            result.reset();
+            return true;
+        }
+        const std::size_t begin = position_;
+        if (position_ < input_.size() && input_[position_] == '-') {
+            ++position_;
+        }
+        bool have_digit = false;
+        while (position_ < input_.size() && input_[position_] >= '0' &&
+               input_[position_] <= '9') {
+            have_digit = true;
+            ++position_;
+        }
+        if (position_ < input_.size() && input_[position_] == '.') {
+            ++position_;
+            bool fractional_digit = false;
+            while (position_ < input_.size() && input_[position_] >= '0' &&
+                   input_[position_] <= '9') {
+                fractional_digit = true;
+                ++position_;
+            }
+            if (!fractional_digit) {
+                position_ = begin;
+                return false;
+            }
+        }
+        if (!have_digit) {
+            position_ = begin;
+            return false;
+        }
+        if (position_ < input_.size() &&
+            (input_[position_] == 'e' || input_[position_] == 'E')) {
+            ++position_;
+            if (position_ < input_.size() &&
+                (input_[position_] == '+' || input_[position_] == '-')) {
+                ++position_;
+            }
+            const std::size_t exponent_begin = position_;
+            while (position_ < input_.size() && input_[position_] >= '0' &&
+                   input_[position_] <= '9') {
+                ++position_;
+            }
+            if (exponent_begin == position_) {
+                position_ = begin;
+                return false;
+            }
+        }
+        const std::string text(input_.substr(begin, position_ - begin));
+        char* end = nullptr;
+        errno = 0;
+        const float parsed = std::strtof(text.c_str(), &end);
+        if (errno != 0 || end != text.c_str() + text.size() || !std::isfinite(parsed)) {
+            position_ = begin;
+            return false;
+        }
+        result = parsed;
+        return true;
+    }
+
+    bool parse_alarm_thresholds(
+        std::array<std::optional<float>, uhf::config::kV3AlarmThresholdCount>& values) {
+        if (!consume('[')) {
+            return false;
+        }
+        for (std::size_t index = 0U; index < values.size(); ++index) {
+            skip_space();
+            if (!parse_nullable_float(values[index])) {
+                return false;
+            }
+            skip_space();
+            if (index + 1U < values.size()) {
+                if (!consume(',')) {
+                    return false;
+                }
+            } else if (!consume(']')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     template <typename Integer>
     static bool assign_unsigned(std::uint64_t value, Integer minimum, Integer maximum, Integer& output) {
         const std::uint64_t lower = static_cast<std::uint64_t>(minimum);
@@ -333,6 +423,9 @@ private:
             return parse_signed(rearm_value) &&
                 assign_signed(rearm_value, std::int32_t{-70}, std::int32_t{15},
                     values.storage_event_rearm_dbm);
+        }
+        if (key == "v3_alarm_thresholds") {
+            return parse_alarm_thresholds(values.v3_alarm_thresholds);
         }
         if (!parse_unsigned(value)) {
             return false;
@@ -457,6 +550,31 @@ std::string json_escape(std::string_view value) {
         }
         result.push_back(character);
     }
+    return result;
+}
+
+std::string alarm_thresholds_json(
+    const std::array<std::optional<float>, uhf::config::kV3AlarmThresholdCount>& values) {
+    std::string result{"["};
+    for (std::size_t index = 0U; index < values.size(); ++index) {
+        if (index != 0U) {
+            result.push_back(',');
+        }
+        if (!values[index]) {
+            result.append("null");
+            continue;
+        }
+        std::array<char, 64U> buffer{};
+        const auto converted = std::to_chars(
+            buffer.data(), buffer.data() + buffer.size(), *values[index],
+            std::chars_format::general, std::numeric_limits<float>::max_digits10);
+        if (converted.ec != std::errc{}) {
+            result.append("null");
+        } else {
+            result.append(buffer.data(), converted.ptr);
+        }
+    }
+    result.push_back(']');
     return result;
 }
 
@@ -638,7 +756,12 @@ bool ConfigStore::validate(const Values& values) noexcept {
         values.storage_event_rearm_dbm <= 15 &&
         values.storage_event_rearm_dbm < values.storage_event_threshold_dbm &&
         values.storage_event_delta_db >= 1U && values.storage_event_delta_db <= 85U &&
-        values.storage_event_merge_seconds <= 3600U;
+        values.storage_event_merge_seconds <= 3600U &&
+        std::all_of(
+            values.v3_alarm_thresholds.begin(), values.v3_alarm_thresholds.end(),
+            [](const std::optional<float>& threshold) {
+                return !threshold || std::isfinite(*threshold);
+            });
 }
 
 std::string ConfigStore::serialize(const Snapshot& snapshot) {
@@ -674,7 +797,8 @@ std::string ConfigStore::serialize(const Snapshot& snapshot) {
         "  \"storage_event_threshold_dbm\": " + std::to_string(values.storage_event_threshold_dbm) + ",\n"
         "  \"storage_event_rearm_dbm\": " + std::to_string(values.storage_event_rearm_dbm) + ",\n"
         "  \"storage_event_delta_db\": " + std::to_string(values.storage_event_delta_db) + ",\n"
-        "  \"storage_event_merge_seconds\": " + std::to_string(values.storage_event_merge_seconds) + "\n"
+        "  \"storage_event_merge_seconds\": " + std::to_string(values.storage_event_merge_seconds) + ",\n"
+        "  \"v3_alarm_thresholds\": " + alarm_thresholds_json(values.v3_alarm_thresholds) + "\n"
         "}\n";
 }
 

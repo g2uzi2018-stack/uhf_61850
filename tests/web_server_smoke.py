@@ -470,7 +470,13 @@ def main() -> int:
                 port, "GET", "/api/v1/config/schema", headers={"Cookie": cookie}
             )
             assert_status(schema_status, 200, "config schema lookup")
-            if json.loads(schema_body).get("properties", {}).get("iec_port", {}).get("maximum") != 65535:
+            schema_properties = json.loads(schema_body).get("properties", {})
+            alarm_schema = schema_properties.get("v3_alarm_thresholds", {})
+            if (
+                schema_properties.get("iec_port", {}).get("maximum") != 65535
+                or alarm_schema.get("minItems") != 12
+                or alarm_schema.get("maxItems") != 12
+            ):
                 fail("configuration schema is incomplete")
             logs_status, logs_body, _ = request(
                 port, "GET", "/api/v1/logs", headers={"Cookie": cookie}

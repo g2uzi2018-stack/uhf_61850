@@ -33,7 +33,13 @@
     "storage_event_threshold_dbm": {"type": "integer", "minimum": -70, "maximum": 15},
     "storage_event_rearm_dbm": {"type": "integer", "minimum": -70, "maximum": 15},
     "storage_event_delta_db": {"type": "integer", "minimum": 1, "maximum": 85},
-    "storage_event_merge_seconds": {"type": "integer", "minimum": 0, "maximum": 3600}
+    "storage_event_merge_seconds": {"type": "integer", "minimum": 0, "maximum": 3600},
+    "v3_alarm_thresholds": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {"type": ["number", "null"]}
+    }
   },
   "required": [
     "acquisition_device", "acquisition_slave_id", "acquisition_period_ms",
@@ -43,6 +49,6 @@
     "overview_title", "overview_device", "phase_start_degree", "time_sync_enabled", "sntp_server",
     "storage_period_seconds", "storage_retention_days", "storage_min_free_bytes",
     "storage_event_threshold_dbm", "storage_event_rearm_dbm", "storage_event_delta_db",
-    "storage_event_merge_seconds"
+    "storage_event_merge_seconds", "v3_alarm_thresholds"
   ]
 }
