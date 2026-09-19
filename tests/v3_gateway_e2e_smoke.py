@@ -155,6 +155,16 @@ def receive_exact(file_descriptor, size, timeout=2):
     return bytes(payload)
 
 
+def receive_socket_exact(sock, size):
+    payload = bytearray()
+    while len(payload) < size:
+        chunk = sock.recv(size - len(payload))
+        if not chunk:
+            raise AssertionError("v3 Modbus TCP connection closed before response")
+        payload.extend(chunk)
+    return bytes(payload)
+
+
 def main():
     binary, web_root = sys.argv[1:3]
     iec_probe = sys.argv[3] if len(sys.argv) > 3 else None
@@ -579,11 +589,13 @@ def main():
             assert first_segment - channel_one_starts[0] < 1.0
             assert channel_one_starts[1] - channel_one_starts[0] >= 2.99
             with socket.create_connection(("127.0.0.1", modbus_port), timeout=2) as sock:
-                sock.sendall(struct.pack(">HHHBBHH", 1, 0, 6, 1, 3, 1, 2))
-                response = bytearray()
-                while len(response) < 13:
-                    response.extend(sock.recv(64))
-            assert response[7] == 3 and response[8] == 4
+                sock.sendall(
+                    struct.pack(">HHHBBHH", 0x5630, 0, 6, rtu_unit_id, 3, 1, 2)
+                )
+                response = receive_socket_exact(sock, 13)
+            assert struct.unpack(">HHH", response[:6]) == (0x5630, 0, 7)
+            assert response[6:9] == bytes((rtu_unit_id, 3, 4))
+            assert abs(struct.unpack(">f", response[9:13])[0] - expected_current) < 0.01
         finally:
             process.send_signal(signal.SIGTERM)
             try:
