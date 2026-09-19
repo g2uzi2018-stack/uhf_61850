@@ -37,8 +37,11 @@
 
 ## 源材料
 
-- `docs/spec/嵌入式开发需求书-局放监测管理机-v1.0.docx`
-- `docs/spec/寄存器对应表（modbus-rtu）PD1000.20260825183514491.xlsx`
+- `docs/spec/v3.0/嵌入式开发需求书-综合监测管理机-v3.0.docx`（当前 v3.0 综合管理机核心开发需求）
+- `docs/spec/v3.0/电缆局放通信规约.docx`（当前 v3.0 局放下行协议规约）
+- `docs/spec/reference/开发需求20240829-1.docx`（同类项目开发需求参考）
+- `docs/spec/reference/嵌入式开发需求书-局放监测管理机-v1.0.docx`（v1.0/v2.0 历史需求归档）
+- `docs/spec/reference/寄存器对应表（modbus-rtu）PD1000.20260825183514491.xlsx`（旧版 PD1000 寄存器表归档）
 - 目标板 `/data` 旧实现（只读参考）
 
 仓库中不得保存目标机 SSH 私钥、Git 密码、初始管理员明文密码或其他运行时密钥。
