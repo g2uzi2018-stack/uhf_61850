@@ -34,6 +34,8 @@ struct GatewayRuntimeOptions {
     std::string v3_current_device{"/dev/ttyS2"};
     std::string v3_temperature_device{"/dev/ttyS3"};
     v3::SchedulerOptions v3_scheduler_options{};
+    bool reload_v3_current_conversion{true};
+    bool reload_v3_temperature_conversion{true};
     acquisition::AcquisitionOptions acquisition_options{};
     std::chrono::milliseconds poll_interval{std::chrono::seconds(6)};
     bool start_modbus_tcp{true};

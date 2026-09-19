@@ -115,6 +115,26 @@ def free_port():
 
 def main():
     binary, web_root = sys.argv[1:3]
+    partial_scale = subprocess.run(
+        [binary, "--web", "--v3-current-multiplier", "1"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert partial_scale.returncode == 2
+    assert b"must be provided together" in partial_scale.stderr
+    invalid_scale = subprocess.run(
+        [
+            binary, "--web",
+            "--v3-temperature-multiplier", "0",
+            "--v3-temperature-offset", "0",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert invalid_scale.returncode == 2
+    assert b"multipliers must be positive" in invalid_scale.stderr
     devices = [Device("pd"), Device("current"), Device("temperature")]
     for device in devices:
         device.start()
@@ -134,9 +154,7 @@ def main():
                    "--v3-current-device", devices[1].path,
                    "--v3-temperature-device", devices[2].path,
                    "--v3-device-id", identity, "--v3-activation-key", key,
-                   "--v3-activation-code", code,
-                   "--v3-current-multiplier", "1", "--v3-current-offset", "0",
-                   "--v3-temperature-multiplier", "0.1", "--v3-temperature-offset", "0"]
+                   "--v3-activation-code", code]
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             wait_port(web_port)
@@ -155,6 +173,9 @@ def main():
                 time.sleep(0.1)
             assert body is not None and body["sources"]["current"]["online"]
             assert body["sources"]["temperature"]["online"]
+            measurements = {entry["name"]: entry["value"] for entry in body["measurements"]}
+            assert measurements["Ia"]["valid"] is False
+            assert measurements["TA"]["valid"] is False
             password = os.path.join(root, "initial-password")
             with open(password, "r", encoding="utf-8") as password_file:
                 initial_password = password_file.read().strip()
@@ -185,10 +206,18 @@ def main():
             connection.close()
             assert config_response.status == 200
             assert configuration["v3_alarm_thresholds"] == [None] * 12
+            assert configuration["v3_current_encoding"] == "unconfigured"
+            assert configuration["v3_current_multiplier"] is None
+            assert configuration["v3_temperature_multiplier"] is None
             config_version = configuration.pop("version")
             configuration["v3_alarm_thresholds"] = [
                 None, None, None, 9, None, None, None, None, None, 19, None, None
             ]
+            configuration["v3_current_encoding"] = "unsigned16"
+            configuration["v3_current_multiplier"] = 1
+            configuration["v3_current_offset"] = 0
+            configuration["v3_temperature_multiplier"] = 0.1
+            configuration["v3_temperature_offset"] = 0
             connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
             connection.request(
                 "PUT",
@@ -214,10 +243,15 @@ def main():
                 alarm_payload = json.loads(alarm_response.read())
                 connection.close()
                 alarms = alarm_payload.get("alarms", [])
+                live_measurements = {
+                    entry["name"]: entry["value"]
+                    for entry in alarm_payload.get("measurements", [])
+                }
                 if (len(alarms) == 12 and all(
                     alarms[index]["valid"] and alarms[index]["active"]
                     for index in (3, 9)
-                )):
+                ) and live_measurements.get("Ia", {}).get("value") == 10.0
+                    and live_measurements.get("TA", {}).get("value") == 20.0):
                     break
                 time.sleep(0.05)
             else:

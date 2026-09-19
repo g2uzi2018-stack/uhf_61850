@@ -49,7 +49,12 @@ const char* valid_object() {
         "storage_event_rearm_dbm":-50,
         "storage_event_delta_db":10,
         "storage_event_merge_seconds":60,
-        "v3_alarm_thresholds":[100.5,null,null,9,null,null,null,null,null,19,null,null]
+        "v3_alarm_thresholds":[100.5,null,null,9,null,null,null,null,null,19,null,null],
+        "v3_current_encoding":"signed16",
+        "v3_current_multiplier":0.25,
+        "v3_current_offset":-1.5,
+        "v3_temperature_multiplier":0.1,
+        "v3_temperature_offset":0
     })";
 }
 
@@ -80,6 +85,12 @@ int main() {
                     "v3 PD threshold") ||
             !expect(!initial.values.v3_alarm_thresholds[1],
                     "v3 unconfigured threshold") ||
+            !expect(initial.values.v3_current_encoding == "signed16",
+                    "v3 current encoding") ||
+            !expect(initial.values.v3_current_multiplier == 0.25F,
+                    "v3 current multiplier") ||
+            !expect(initial.values.v3_temperature_multiplier == 0.1F,
+                    "v3 temperature multiplier") ||
             !expect(std::filesystem::is_regular_file(path), "initial file") ||
             !expect(std::filesystem::file_size(path) < 16U * 1024U, "bounded file")) {
             return 1;
@@ -182,6 +193,37 @@ int main() {
                 "short v3 alarm array accepted")) {
             return 1;
         }
+        const std::string partial_conversion = [] {
+            std::string value = valid_object();
+            const std::string offset = "\"v3_current_offset\":-1.5,";
+            const std::size_t position = value.find(offset);
+            if (position != std::string::npos) {
+                value.erase(position, offset.size());
+            }
+            return value;
+        }();
+        if (!expect(
+                store.update(1U, partial_conversion) == uhf::config::UpdateResult::invalid,
+                "partial v3 current conversion accepted")) {
+            return 1;
+        }
+        const std::string negative_multiplier = [] {
+            std::string value = valid_object();
+            const std::string multiplier = "\"v3_temperature_multiplier\":0.1";
+            const std::size_t position = value.find(multiplier);
+            if (position != std::string::npos) {
+                value.replace(
+                    position, multiplier.size(),
+                    "\"v3_temperature_multiplier\":-0.1");
+            }
+            return value;
+        }();
+        if (!expect(
+                store.update(1U, negative_multiplier) ==
+                    uhf::config::UpdateResult::invalid,
+                "negative v3 conversion multiplier accepted")) {
+            return 1;
+        }
         const std::filesystem::path blocked_temporary = path.string() + ".tmp";
         std::filesystem::create_directory(blocked_temporary);
         const uhf::config::UpdateResult storage_failure = store.update(1U, valid_object());
@@ -215,6 +257,10 @@ int main() {
                     "current alarm threshold") ||
             !expect(changed.values.v3_alarm_thresholds[9] == 19.0F,
                     "temperature alarm threshold") ||
+            !expect(changed.values.v3_current_offset == -1.5F,
+                    "current conversion offset") ||
+            !expect(changed.values.v3_temperature_offset == 0.0F,
+                    "temperature conversion offset") ||
             !expect(std::filesystem::file_size(path) < 16U * 1024U, "updated file bound")) {
             return 1;
         }
@@ -226,6 +272,10 @@ int main() {
             !expect(saved.find("\"phase_start_degree\": 45") != std::string::npos, "saved phase start") ||
             !expect(saved.find("\"v3_alarm_thresholds\": [100.5,null,null,9") !=
                     std::string::npos, "saved v3 alarm thresholds") ||
+            !expect(saved.find("\"v3_current_encoding\": \"signed16\"") !=
+                    std::string::npos, "saved v3 current encoding") ||
+            !expect(saved.find("\"v3_temperature_multiplier\": 0.1") !=
+                    std::string::npos, "saved v3 temperature multiplier") ||
             !expect(saved.find("Smoke") == std::string::npos, "no test secret")) {
             return 1;
         }
@@ -247,7 +297,11 @@ int main() {
             !expect(reopened_snapshot.values.v3_alarm_thresholds[0] == 100.5F,
                     "v3 alarm threshold survives restart") ||
             !expect(!reopened_snapshot.values.v3_alarm_thresholds[2],
-                    "v3 disabled alarm survives restart")) {
+                    "v3 disabled alarm survives restart") ||
+            !expect(reopened_snapshot.values.v3_current_encoding == "signed16",
+                    "v3 encoding survives restart") ||
+            !expect(reopened_snapshot.values.v3_current_multiplier == 0.25F,
+                    "v3 multiplier survives restart")) {
             return 1;
         }
 

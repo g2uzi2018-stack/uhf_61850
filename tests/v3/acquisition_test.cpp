@@ -258,6 +258,31 @@ int main() {
         check(result.pd_status.online && result.current_status.online &&
               result.temperature_status.online, "all source statuses recovered");
 
+        snapshots.reset_engineering_values(true, false);
+        const uhf::v3::UnifiedSnapshot current_reset = snapshots.snapshot();
+        check(!current_reset.current[0].valid() &&
+              !current_reset.measurements[0].valid(),
+              "current conversion reset invalidates current and derived values");
+        check(current_reset.temperature[0].valid() &&
+              current_reset.measurements[8].valid(),
+              "current conversion reset preserves temperature values");
+        check(current.poll_current(), "current republished after conversion reset");
+        snapshots.reset_engineering_values(false, true);
+        const uhf::v3::UnifiedSnapshot temperature_reset = snapshots.snapshot();
+        check(temperature_reset.current[0].valid() &&
+              temperature_reset.measurements[0].valid(),
+              "temperature conversion reset preserves current values");
+        check(!temperature_reset.temperature[0].valid() &&
+              !temperature_reset.measurements[8].valid(),
+              "temperature conversion reset invalidates temperature values");
+
+        uhf::v3::CollectorOptions invalid_scale = current.options();
+        invalid_scale.current_scale = {0.0F, 0.0F};
+        current.update_options(invalid_scale);
+        check(current.poll_current(), "invalid scale does not terminate collection");
+        check(!snapshots.snapshot().current[0].valid(),
+              "invalid scale never publishes an engineering value");
+
         const auto fault_check = [](ReplyFault fault) {
             uhf::v3::SnapshotStore fault_snapshots;
             uhf::v3::SteadyClock fault_clock;

@@ -61,9 +61,12 @@ public:
                     (keys_.size() == 18U || keys_.size() == 19U ||
                      keys_.size() == 20U || keys_.size() == 22U ||
                      keys_.size() == 23U || keys_.size() == 24U ||
+                     keys_.size() == 25U ||
                      keys_.size() == 27U || keys_.size() == 28U ||
                      keys_.size() == 29U || keys_.size() == 30U ||
-                     keys_.size() == 31U);
+                     keys_.size() == 31U || keys_.size() == 32U ||
+                     keys_.size() == 33U || keys_.size() == 34U ||
+                     keys_.size() == 35U || keys_.size() == 36U);
             }
             if (!consume(',')) {
                 return false;
@@ -376,7 +379,7 @@ private:
         }
         if (key == "acquisition_device" || key == "rtu_device" || key == "modbus_tcp_bind" ||
             key == "iec_ied_name" || key == "overview_title" || key == "overview_device" ||
-            key == "sntp_server") {
+            key == "sntp_server" || key == "v3_current_encoding") {
             std::string value;
             if (!parse_string(value)) {
                 return false;
@@ -393,6 +396,8 @@ private:
                 values.overview_title = std::move(value);
             } else if (key == "overview_device") {
                 values.overview_device = std::move(value);
+            } else if (key == "v3_current_encoding") {
+                values.v3_current_encoding = std::move(value);
             } else {
                 values.sntp_server = std::move(value);
             }
@@ -426,6 +431,18 @@ private:
         }
         if (key == "v3_alarm_thresholds") {
             return parse_alarm_thresholds(values.v3_alarm_thresholds);
+        }
+        if (key == "v3_current_multiplier") {
+            return parse_nullable_float(values.v3_current_multiplier);
+        }
+        if (key == "v3_current_offset") {
+            return parse_nullable_float(values.v3_current_offset);
+        }
+        if (key == "v3_temperature_multiplier") {
+            return parse_nullable_float(values.v3_temperature_multiplier);
+        }
+        if (key == "v3_temperature_offset") {
+            return parse_nullable_float(values.v3_temperature_offset);
         }
         if (!parse_unsigned(value)) {
             return false;
@@ -576,6 +593,20 @@ std::string alarm_thresholds_json(
     }
     result.push_back(']');
     return result;
+}
+
+std::string nullable_float_json(const std::optional<float>& value) {
+    if (!value) {
+        return "null";
+    }
+    std::array<char, 64U> buffer{};
+    const auto converted = std::to_chars(
+        buffer.data(), buffer.data() + buffer.size(), *value,
+        std::chars_format::general, std::numeric_limits<float>::max_digits10);
+    if (converted.ec != std::errc{}) {
+        return "null";
+    }
+    return std::string(buffer.data(), converted.ptr);
 }
 
 bool parse_version(std::string_view contents, std::uint64_t& version) {
@@ -732,6 +763,22 @@ bool ConfigStore::validate(const Values& values) noexcept {
     const bool ftp_port_conflicts = values.ftp_enabled &&
         (values.ftp_port == values.web_port || values.ftp_port == values.modbus_tcp_port ||
          (values.iec_enabled && values.ftp_port == values.iec_port));
+    const bool current_unconfigured = values.v3_current_encoding == "unconfigured" &&
+        !values.v3_current_multiplier && !values.v3_current_offset;
+    const bool current_configured =
+        (values.v3_current_encoding == "unsigned16" ||
+         values.v3_current_encoding == "signed16") &&
+        values.v3_current_multiplier && values.v3_current_offset &&
+        std::isfinite(*values.v3_current_multiplier) &&
+        *values.v3_current_multiplier > 0.0F &&
+        std::isfinite(*values.v3_current_offset);
+    const bool temperature_unconfigured =
+        !values.v3_temperature_multiplier && !values.v3_temperature_offset;
+    const bool temperature_configured =
+        values.v3_temperature_multiplier && values.v3_temperature_offset &&
+        std::isfinite(*values.v3_temperature_multiplier) &&
+        *values.v3_temperature_multiplier > 0.0F &&
+        std::isfinite(*values.v3_temperature_offset);
     return values.tls_enabled && !web_port_conflicts_with_modbus &&
         !web_port_conflicts_with_iec && !modbus_port_conflicts_with_iec &&
         !ftp_port_conflicts &&
@@ -761,7 +808,9 @@ bool ConfigStore::validate(const Values& values) noexcept {
             values.v3_alarm_thresholds.begin(), values.v3_alarm_thresholds.end(),
             [](const std::optional<float>& threshold) {
                 return !threshold || std::isfinite(*threshold);
-            });
+            }) &&
+        (current_unconfigured || current_configured) &&
+        (temperature_unconfigured || temperature_configured);
 }
 
 std::string ConfigStore::serialize(const Snapshot& snapshot) {
@@ -798,7 +847,12 @@ std::string ConfigStore::serialize(const Snapshot& snapshot) {
         "  \"storage_event_rearm_dbm\": " + std::to_string(values.storage_event_rearm_dbm) + ",\n"
         "  \"storage_event_delta_db\": " + std::to_string(values.storage_event_delta_db) + ",\n"
         "  \"storage_event_merge_seconds\": " + std::to_string(values.storage_event_merge_seconds) + ",\n"
-        "  \"v3_alarm_thresholds\": " + alarm_thresholds_json(values.v3_alarm_thresholds) + "\n"
+        "  \"v3_alarm_thresholds\": " + alarm_thresholds_json(values.v3_alarm_thresholds) + ",\n"
+        "  \"v3_current_encoding\": \"" + json_escape(values.v3_current_encoding) + "\",\n"
+        "  \"v3_current_multiplier\": " + nullable_float_json(values.v3_current_multiplier) + ",\n"
+        "  \"v3_current_offset\": " + nullable_float_json(values.v3_current_offset) + ",\n"
+        "  \"v3_temperature_multiplier\": " + nullable_float_json(values.v3_temperature_multiplier) + ",\n"
+        "  \"v3_temperature_offset\": " + nullable_float_json(values.v3_temperature_offset) + "\n"
         "}\n";
 }
 

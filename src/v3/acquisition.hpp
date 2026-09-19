@@ -117,6 +117,7 @@ public:
                         std::chrono::system_clock::time_point utc =
                             std::chrono::system_clock::now());
     void update_alarm_thresholds(AlarmThresholds thresholds);
+    void reset_engineering_values(bool reset_current, bool reset_temperature);
     UnifiedSnapshot snapshot() const;
     UnifiedSnapshot snapshot(std::chrono::steady_clock::time_point now) const;
 
@@ -211,6 +212,8 @@ public:
     void start();
     void stop() noexcept;
     bool running() const noexcept;
+    void update_current_conversion(WordEncoding encoding, LinearScale scale);
+    void update_temperature_conversion(LinearScale scale);
 
 private:
     void run_pd();

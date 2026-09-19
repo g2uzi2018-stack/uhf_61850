@@ -55,6 +55,10 @@ struct WebOptions {
     float v3_current_offset{std::numeric_limits<float>::quiet_NaN()};
     float v3_temperature_multiplier{std::numeric_limits<float>::quiet_NaN()};
     float v3_temperature_offset{std::numeric_limits<float>::quiet_NaN()};
+    bool v3_current_multiplier_explicit{false};
+    bool v3_current_offset_explicit{false};
+    bool v3_temperature_multiplier_explicit{false};
+    bool v3_temperature_offset_explicit{false};
     bool modbus_tcp_explicit{false};
     std::string modbus_tcp_bind{"192.168.3.230"};
     std::uint16_t modbus_tcp_port{502};
@@ -199,21 +203,25 @@ int main(int argc, char* argv[]) {
                     std::cerr << "invalid --v3-current-multiplier value\n";
                     return 2;
                 }
+                options.v3_current_multiplier_explicit = true;
             } else if (option == "--v3-current-offset" && index + 1 < argc) {
                 if (!parse_float(argv[++index], options.v3_current_offset)) {
                     std::cerr << "invalid --v3-current-offset value\n";
                     return 2;
                 }
+                options.v3_current_offset_explicit = true;
             } else if (option == "--v3-temperature-multiplier" && index + 1 < argc) {
                 if (!parse_float(argv[++index], options.v3_temperature_multiplier)) {
                     std::cerr << "invalid --v3-temperature-multiplier value\n";
                     return 2;
                 }
+                options.v3_temperature_multiplier_explicit = true;
             } else if (option == "--v3-temperature-offset" && index + 1 < argc) {
                 if (!parse_float(argv[++index], options.v3_temperature_offset)) {
                     std::cerr << "invalid --v3-temperature-offset value\n";
                     return 2;
                 }
+                options.v3_temperature_offset_explicit = true;
             } else if (option == "--modbus-tcp-listen" && index + 1 < argc) {
                 if (!parse_listen(argv[++index], options.modbus_tcp_bind, options.modbus_tcp_port)) {
                     std::cerr << "invalid --modbus-tcp-listen value\n";
@@ -249,6 +257,24 @@ int main(int argc, char* argv[]) {
                 print_usage();
                 return 2;
             }
+        }
+
+        if (options.v3_current_multiplier_explicit !=
+            options.v3_current_offset_explicit) {
+            std::cerr << "v3 current multiplier and offset must be provided together\n";
+            return 2;
+        }
+        if (options.v3_temperature_multiplier_explicit !=
+            options.v3_temperature_offset_explicit) {
+            std::cerr << "v3 temperature multiplier and offset must be provided together\n";
+            return 2;
+        }
+        if ((options.v3_current_multiplier_explicit &&
+             options.v3_current_multiplier <= 0.0F) ||
+            (options.v3_temperature_multiplier_explicit &&
+             options.v3_temperature_multiplier <= 0.0F)) {
+            std::cerr << "v3 conversion multipliers must be positive\n";
+            return 2;
         }
 
         if (options.simulate && !options.modbus_tcp_explicit) {
@@ -336,6 +362,10 @@ int main(int argc, char* argv[]) {
                     options.v3_current_multiplier, options.v3_current_offset};
                 runtime_options.v3_scheduler_options.collector.temperature_scale = {
                     options.v3_temperature_multiplier, options.v3_temperature_offset};
+                runtime_options.reload_v3_current_conversion =
+                    !options.v3_current_multiplier_explicit;
+                runtime_options.reload_v3_temperature_conversion =
+                    !options.v3_temperature_multiplier_explicit;
                 runtime_options.acquisition_options.slave_id = configured.values.acquisition_slave_id;
                 runtime_options.acquisition_options.response_timeout = std::chrono::milliseconds(
                     configured.values.acquisition_response_timeout_ms);

@@ -45,6 +45,11 @@ struct Values {
     std::uint32_t storage_event_delta_db{10U};
     std::uint32_t storage_event_merge_seconds{60U};
     std::array<std::optional<float>, kV3AlarmThresholdCount> v3_alarm_thresholds{};
+    std::string v3_current_encoding{"unconfigured"};
+    std::optional<float> v3_current_multiplier;
+    std::optional<float> v3_current_offset;
+    std::optional<float> v3_temperature_multiplier;
+    std::optional<float> v3_temperature_offset;
 };
 
 struct Snapshot {

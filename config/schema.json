@@ -39,7 +39,12 @@
       "minItems": 12,
       "maxItems": 12,
       "items": {"type": ["number", "null"]}
-    }
+    },
+    "v3_current_encoding": {"type": "string", "enum": ["unconfigured", "unsigned16", "signed16"]},
+    "v3_current_multiplier": {"type": ["number", "null"], "exclusiveMinimum": 0},
+    "v3_current_offset": {"type": ["number", "null"]},
+    "v3_temperature_multiplier": {"type": ["number", "null"], "exclusiveMinimum": 0},
+    "v3_temperature_offset": {"type": ["number", "null"]}
   },
   "required": [
     "acquisition_device", "acquisition_slave_id", "acquisition_period_ms",
@@ -49,6 +54,8 @@
     "overview_title", "overview_device", "phase_start_degree", "time_sync_enabled", "sntp_server",
     "storage_period_seconds", "storage_retention_days", "storage_min_free_bytes",
     "storage_event_threshold_dbm", "storage_event_rearm_dbm", "storage_event_delta_db",
-    "storage_event_merge_seconds", "v3_alarm_thresholds"
+    "storage_event_merge_seconds", "v3_alarm_thresholds", "v3_current_encoding",
+    "v3_current_multiplier", "v3_current_offset", "v3_temperature_multiplier",
+    "v3_temperature_offset"
   ]
 }

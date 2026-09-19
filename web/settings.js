@@ -14,6 +14,10 @@
         "v3_alarm_IA", "v3_alarm_IB", "v3_alarm_IC",
         "v3_alarm_ta", "v3_alarm_tb", "v3_alarm_tc"
     ];
+    var conversionFields = [
+        "v3_current_multiplier", "v3_current_offset",
+        "v3_temperature_multiplier", "v3_temperature_offset"
+    ];
     var numericFields = [
         "acquisition_slave_id", "acquisition_period_ms", "acquisition_response_timeout_ms",
         "acquisition_max_retries", "rtu_unit_id", "modbus_tcp_port", "modbus_tcp_unit_id",
@@ -55,6 +59,10 @@
             alarmFields.forEach(function (name, index) {
                 form.elements[name].value = thresholds[index] === null || thresholds[index] === undefined ? "" : String(thresholds[index]);
             });
+            setValue("v3_current_encoding", config.v3_current_encoding || "unconfigured");
+            conversionFields.forEach(function (name) {
+                form.elements[name].value = config[name] === null || config[name] === undefined ? "" : String(config[name]);
+            });
             setValue("iec_enabled", config.iec_enabled);
             setValue("ftp_enabled", config.ftp_enabled);
             document.getElementById("runtime-status").textContent = "配置已加载 · 版本 " + version;
@@ -72,6 +80,27 @@
         });
         if (payload.v3_alarm_thresholds.some(function (value) { return value !== null && !Number.isFinite(value); })) {
             showError("v3 报警阈值必须是有限数值，留空表示未配置。");
+            return;
+        }
+        payload.v3_current_encoding = form.elements.v3_current_encoding.value;
+        conversionFields.forEach(function (name) {
+            var value = form.elements[name].value.trim();
+            payload[name] = value === "" ? null : Number(value);
+        });
+        var currentConfigured = payload.v3_current_encoding !== "unconfigured";
+        var currentComplete = payload.v3_current_multiplier !== null && payload.v3_current_offset !== null;
+        var temperatureComplete = payload.v3_temperature_multiplier !== null && payload.v3_temperature_offset !== null;
+        var temperatureEmpty = payload.v3_temperature_multiplier === null && payload.v3_temperature_offset === null;
+        if ((currentConfigured !== currentComplete) ||
+            (!currentConfigured && (payload.v3_current_multiplier !== null || payload.v3_current_offset !== null)) ||
+            (!temperatureEmpty && !temperatureComplete) ||
+            (payload.v3_current_multiplier !== null &&
+                (!Number.isFinite(payload.v3_current_multiplier) || payload.v3_current_multiplier <= 0)) ||
+            (payload.v3_current_offset !== null && !Number.isFinite(payload.v3_current_offset)) ||
+            (payload.v3_temperature_multiplier !== null &&
+                (!Number.isFinite(payload.v3_temperature_multiplier) || payload.v3_temperature_multiplier <= 0)) ||
+            (payload.v3_temperature_offset !== null && !Number.isFinite(payload.v3_temperature_offset))) {
+            showError("v3 编码与倍率必须成组配置；倍率必须为正有限数，留空表示未配置。");
             return;
         }
         payload.iec_enabled = form.elements.iec_enabled.checked;

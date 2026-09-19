@@ -46,6 +46,13 @@
                         <label>FTP 文件传输<input name="ftp_enabled" type="checkbox"><small>使用管理员账号；仅建议在可信管理网启用</small></label>
                         <label>FTP 端口<input name="ftp_port" type="number" min="1" max="65535" required><small>默认 21；修改或启停后需重启服务</small></label>
                     </div><div class="settings-actions panel-actions"><span></span><a class="outline-button link-button" href="/api/v1/point-table/export.csv">下载 v3 Modbus 点表 CSV</a></div></section>
+                    <section class="panel settings-panel"><div class="panel-header"><div><h2>v3 工程值换算</h2><p>仅在取得厂商编码和倍率后填写；未配置时仍采集报文，但不发布看似正常的工程值</p></div><span class="count-badge">保存后热生效</span></div><div class="settings-grid">
+                        <label>电流字编码<select name="v3_current_encoding"><option value="unconfigured">未配置</option><option value="unsigned16">unsigned16</option><option value="signed16">signed16</option></select><small>必须与电流倍率、偏移同时配置</small></label>
+                        <label>电流倍率<input name="v3_current_multiplier" type="number" min="0" step="any"><small>必须为正有限数；单位由现场协议确定</small></label>
+                        <label>电流偏移<input name="v3_current_offset" type="number" step="any"><small>有限数；与倍率成组配置</small></label>
+                        <label>温度倍率<input name="v3_temperature_multiplier" type="number" min="0" step="any"><small>必须为正有限数；例如 0.1 仅可由厂商确认后填写</small></label>
+                        <label>温度偏移<input name="v3_temperature_offset" type="number" step="any"><small>有限数；与倍率成组配置</small></label>
+                    </div></section>
                     <section class="panel settings-panel"><div class="panel-header"><div><h2>v3 测量报警阈值</h2><p>严格按“测量值 &gt; 阈值”置位；留空表示该点未配置，遥信质量保持无效</p></div><span class="count-badge">保存后热生效</span></div><div class="settings-grid">
                         <label>局放 1 峰值<input name="v3_alarm_pd1" type="number" step="any"><small>对应报警 1；局放特征峰值</small></label>
                         <label>局放 2 峰值<input name="v3_alarm_pd2" type="number" step="any"><small>对应报警 2；局放特征峰值</small></label>

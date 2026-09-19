@@ -265,6 +265,11 @@ def main() -> int:
                 fail("authenticated settings page was not served")
             if b'name="iec_ied_name"' in settings_body:
                 fail("IED name was not moved out of acquisition settings")
+            if (
+                b'name="v3_current_encoding"' not in settings_body
+                or b'name="v3_alarm_pd1"' not in settings_body
+            ):
+                fail("v3 conversion/alarm settings were not served")
             for page, marker in (('/logs.html', '日志与健康'), ('/storage.html', '存储与日志'), ('/network.html', '网络设置'), ('/maintenance.html', '系统维护')):
                 page_status, page_body, _ = request(port, "GET", page, headers={"Cookie": cookie})
                 assert_status(page_status, 200, f"authenticated {page}")
@@ -476,6 +481,8 @@ def main() -> int:
                 schema_properties.get("iec_port", {}).get("maximum") != 65535
                 or alarm_schema.get("minItems") != 12
                 or alarm_schema.get("maxItems") != 12
+                or schema_properties.get("v3_current_encoding", {}).get("enum") !=
+                    ["unconfigured", "unsigned16", "signed16"]
             ):
                 fail("configuration schema is incomplete")
             logs_status, logs_body, _ = request(

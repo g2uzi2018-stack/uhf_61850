@@ -29,5 +29,10 @@
   "storage_event_rearm_dbm": -50,
   "storage_event_delta_db": 10,
   "storage_event_merge_seconds": 60,
-  "v3_alarm_thresholds": [null, null, null, null, null, null, null, null, null, null, null, null]
+  "v3_alarm_thresholds": [null, null, null, null, null, null, null, null, null, null, null, null],
+  "v3_current_encoding": "unconfigured",
+  "v3_current_multiplier": null,
+  "v3_current_offset": null,
+  "v3_temperature_multiplier": null,
+  "v3_temperature_offset": null
 }

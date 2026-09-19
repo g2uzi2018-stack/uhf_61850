@@ -245,6 +245,30 @@ void SnapshotStore::update_alarm_thresholds(AlarmThresholds thresholds) {
     ++value_.generation;
 }
 
+void SnapshotStore::reset_engineering_values(
+    bool reset_current, bool reset_temperature) {
+    if (!reset_current && !reset_temperature) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (reset_current) {
+        value_.current = {};
+        calculator_ = MonitoringCalculator(
+            WarmupPolicy::use_available, MeanPolicy::reject_nonpositive);
+        current_sequence_ = 0U;
+        if (!reset_temperature) {
+            calculator_.on_temperature(value_.temperature);
+        }
+    }
+    if (reset_temperature) {
+        value_.temperature = {};
+        calculator_.invalidate_temperature();
+    }
+    value_.measurements = calculator_.snapshot();
+    recompute_alarms();
+    ++value_.generation;
+}
+
 void SnapshotStore::recompute_alarms() noexcept {
     value_.alarm_active.reset();
     value_.alarm_valid.reset();
@@ -482,6 +506,7 @@ bool PortCollector::poll_current() {
     std::array<std::uint16_t, 8> words{};
     std::copy(registers.begin(), registers.end(), words.begin());
     if (!std::isfinite(options_.current_scale.multiplier) ||
+        options_.current_scale.multiplier <= 0.0F ||
         !std::isfinite(options_.current_scale.offset)) {
         snapshots_.publish_current(CurrentValues{}, clock_.now(), clock_.utc_now());
         last_error_ = "current scale is not configured";
@@ -504,6 +529,7 @@ bool PortCollector::poll_temperature() {
     std::array<std::uint16_t, 6> words{};
     std::copy(registers.begin(), registers.end(), words.begin());
     if (!std::isfinite(options_.temperature_scale.multiplier) ||
+        options_.temperature_scale.multiplier <= 0.0F ||
         !std::isfinite(options_.temperature_scale.offset)) {
         snapshots_.publish_temperature(TemperatureValues{}, clock_.now(), clock_.utc_now());
         last_error_ = "temperature scale is not configured";
@@ -572,6 +598,20 @@ void AcquisitionScheduler::stop() noexcept {
 }
 
 bool AcquisitionScheduler::running() const noexcept { return running_.load(); }
+
+void AcquisitionScheduler::update_current_conversion(
+    WordEncoding encoding, LinearScale scale) {
+    CollectorOptions options = current_collector_->options();
+    options.current_encoding = encoding;
+    options.current_scale = scale;
+    current_collector_->update_options(std::move(options));
+}
+
+void AcquisitionScheduler::update_temperature_conversion(LinearScale scale) {
+    CollectorOptions options = temperature_collector_->options();
+    options.temperature_scale = scale;
+    temperature_collector_->update_options(std::move(options));
+}
 
 void AcquisitionScheduler::wait_period(
     std::chrono::milliseconds period, std::chrono::steady_clock::time_point started) {

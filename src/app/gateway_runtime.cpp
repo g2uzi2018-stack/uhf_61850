@@ -5,9 +5,11 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <string>
 #include <stdexcept>
 #include <utility>
@@ -79,6 +81,42 @@ v3::AlarmThresholds alarm_thresholds_from_config(const config::Values& values) {
     return thresholds;
 }
 
+struct V3Conversion {
+    v3::WordEncoding current_encoding{v3::WordEncoding::unsigned16};
+    v3::LinearScale current_scale{
+        std::numeric_limits<float>::quiet_NaN(),
+        std::numeric_limits<float>::quiet_NaN()};
+    v3::LinearScale temperature_scale{
+        std::numeric_limits<float>::quiet_NaN(),
+        std::numeric_limits<float>::quiet_NaN()};
+};
+
+V3Conversion conversion_from_config(const config::Values& values) {
+    V3Conversion conversion;
+    if (values.v3_current_encoding == "signed16") {
+        conversion.current_encoding = v3::WordEncoding::signed16;
+    }
+    if (values.v3_current_encoding != "unconfigured" &&
+        values.v3_current_multiplier && values.v3_current_offset) {
+        conversion.current_scale = {
+            *values.v3_current_multiplier, *values.v3_current_offset};
+    }
+    if (values.v3_temperature_multiplier && values.v3_temperature_offset) {
+        conversion.temperature_scale = {
+            *values.v3_temperature_multiplier, *values.v3_temperature_offset};
+    }
+    return conversion;
+}
+
+bool same_float(float left, float right) noexcept {
+    return (std::isnan(left) && std::isnan(right)) || left == right;
+}
+
+bool same_scale(v3::LinearScale left, v3::LinearScale right) noexcept {
+    return same_float(left.multiplier, right.multiplier) &&
+        same_float(left.offset, right.offset);
+}
+
 }  // namespace
 
 GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& logger)
@@ -107,6 +145,20 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
             *v3_current_serial_port_, *v3_packet_trace_, v3::PacketSource::current);
         v3_temperature_adapter_ = std::make_unique<V3SerialAdapter>(
             *v3_temperature_serial_port_, *v3_packet_trace_, v3::PacketSource::temperature);
+        if (options_.config_store != nullptr) {
+            const V3Conversion conversion = conversion_from_config(
+                options_.config_store->snapshot().values);
+            if (options_.reload_v3_current_conversion) {
+                options_.v3_scheduler_options.collector.current_encoding =
+                    conversion.current_encoding;
+                options_.v3_scheduler_options.collector.current_scale =
+                    conversion.current_scale;
+            }
+            if (options_.reload_v3_temperature_conversion) {
+                options_.v3_scheduler_options.collector.temperature_scale =
+                    conversion.temperature_scale;
+            }
+        }
         const v3::AlarmThresholds alarm_thresholds = options_.config_store != nullptr
             ? alarm_thresholds_from_config(options_.config_store->snapshot().values)
             : v3::AlarmThresholds{};
@@ -492,6 +544,34 @@ void GatewayRuntime::apply_runtime_configuration(std::uint64_t& applied_version)
         acquisition_engine_->update_options(options_.acquisition_options);
     }
     if (v3_snapshot_store_) {
+        const V3Conversion conversion = conversion_from_config(configured.values);
+        bool reset_current = false;
+        bool reset_temperature = false;
+        if (options_.reload_v3_current_conversion &&
+            (options_.v3_scheduler_options.collector.current_encoding !=
+                 conversion.current_encoding ||
+             !same_scale(
+                 options_.v3_scheduler_options.collector.current_scale,
+                 conversion.current_scale))) {
+            options_.v3_scheduler_options.collector.current_encoding =
+                conversion.current_encoding;
+            options_.v3_scheduler_options.collector.current_scale =
+                conversion.current_scale;
+            v3_scheduler_->update_current_conversion(
+                conversion.current_encoding, conversion.current_scale);
+            reset_current = true;
+        }
+        if (options_.reload_v3_temperature_conversion &&
+            !same_scale(
+                options_.v3_scheduler_options.collector.temperature_scale,
+                conversion.temperature_scale)) {
+            options_.v3_scheduler_options.collector.temperature_scale =
+                conversion.temperature_scale;
+            v3_scheduler_->update_temperature_conversion(conversion.temperature_scale);
+            reset_temperature = true;
+        }
+        v3_snapshot_store_->reset_engineering_values(
+            reset_current, reset_temperature);
         v3_snapshot_store_->update_alarm_thresholds(
             alarm_thresholds_from_config(configured.values));
     }
