@@ -68,9 +68,12 @@ uhf::v3::UpstreamSnapshot v3_upstream_snapshot(const uhf::v3::UnifiedSnapshot& s
             snapshot.pd[channel].spectrum_received.reset();
         }
     }
-    snapshot.discrete_valid.set(0U, true);
-    snapshot.discrete_valid.set(1U, true);
-    snapshot.discrete_valid.set(2U, true);
+    snapshot.discrete_valid.set(0U,
+        source.pd_status.has_sample || source.pd_status.consecutive_failures != 0U);
+    snapshot.discrete_valid.set(1U,
+        source.current_status.has_sample || source.current_status.consecutive_failures != 0U);
+    snapshot.discrete_valid.set(2U,
+        source.temperature_status.has_sample || source.temperature_status.consecutive_failures != 0U);
     snapshot.discrete.set(0U, !source.pd_status.online);
     snapshot.discrete.set(1U, !source.current_status.online);
     snapshot.discrete.set(2U, !source.temperature_status.online);

@@ -30,6 +30,14 @@ int main() {
         thresholds.values[3] = 0.0F;
         thresholds.values[9] = 20.0F;
         uhf::v3::SnapshotStore v3_snapshots(3U, thresholds);
+        uhf::acquisition::SnapshotStore legacy;
+        uhf::modbus::ModbusTcpServer server(
+            legacy, uhf::modbus::ModbusTcpOptions{"127.0.0.1", 1502U, 1U, 2U},
+            &v3_snapshots);
+        const auto startup_status = server.handle_request(request(0x02U, 0U, 3U));
+        check(startup_status.size() == 9U && startup_status[7] == 0x82U &&
+                  startup_status[8] == 4U,
+              "startup communication status is unknown, not a false fault");
         const auto now = std::chrono::steady_clock::now();
         uhf::v3::CurrentValues current{};
         for (std::size_t i = 0U; i < current.size(); ++i) {
@@ -50,10 +58,6 @@ int main() {
         v3_snapshots.publish_pd_channel(1U, pd, now);
         v3_snapshots.publish_pd_channel(2U, pd, now);
 
-        uhf::acquisition::SnapshotStore legacy;
-        uhf::modbus::ModbusTcpServer server(
-            legacy, uhf::modbus::ModbusTcpOptions{"127.0.0.1", 1502U, 1U, 2U},
-            &v3_snapshots);
         const auto holding = server.handle_request(request(0x03U, 1U, 2U));
         check(holding.size() == 13U, "v3 Modbus TCP holding response size");
         check(holding[7] == 0x03U && holding[8] == 4U, "v3 Modbus TCP holding PDU");
