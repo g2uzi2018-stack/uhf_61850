@@ -66,6 +66,14 @@ int main() {
     assert(record->snapshot.current_status.last_success_utc == timestamp);
     assert(uhf::storage::V3HistoryStore::to_csv(*record).find("Ia") != std::string::npos);
 
+    snapshot.generation = 43U;
+    const auto blocked_temporary = root / "v3-123456-43.bin.tmp";
+    std::filesystem::create_directory(blocked_temporary);
+    assert(!store.save(snapshot, timestamp));
+    const auto preserved = store.read(*path);
+    assert(preserved && preserved->generation == 42U);
+    std::filesystem::remove(blocked_temporary, error);
+
     std::ifstream current_file(*path, std::ios::binary);
     const std::vector<std::uint8_t> current_bytes{
         std::istreambuf_iterator<char>(current_file), std::istreambuf_iterator<char>()};

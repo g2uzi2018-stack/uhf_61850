@@ -45,8 +45,10 @@ int main() {
     try {
         const std::filesystem::path frames = root / "frames";
         const std::filesystem::path events = root / "events";
+        const std::filesystem::path v3 = root / "v3";
         std::filesystem::create_directories(frames);
         std::filesystem::create_directories(events);
+        std::filesystem::create_directories(v3);
         const auto now = std::chrono::system_clock::time_point(
             std::chrono::milliseconds(1'700'000'000'000LL));
         const auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -57,10 +59,13 @@ int main() {
             events, "event", now_ms - 48LL * 60LL * 60LL * 1000LL, 2U);
         const std::filesystem::path recent_event = data_file(
             events, "event", now_ms - 60LL * 60LL * 1000LL, 3U);
+        const std::filesystem::path old_v3 = data_file(
+            v3, "v3", now_ms - 48LL * 60LL * 60LL * 1000LL, 5U);
         const std::filesystem::path newest_frame = data_file(frames, "frame", now_ms, 4U);
         const std::filesystem::path temporary = frames / "frame-in-progress.tmp";
         if (!expect(create_file(old_frame), "old frame fixture") ||
             !expect(create_file(old_event), "old event fixture") ||
+            !expect(create_file(old_v3), "old v3 history fixture") ||
             !expect(create_file(recent_event), "recent event fixture") ||
             !expect(create_file(newest_frame), "newest frame fixture") ||
             !expect(create_file(temporary), "temporary fixture")) {
@@ -73,7 +78,7 @@ int main() {
         options.low_watermark_percent = 10U;
         options.recovery_percent = 15U;
         options.recovery_extra_bytes = 100U;
-        std::vector<std::uintmax_t> readings = {100U, 200U, 300U};
+        std::vector<std::uintmax_t> readings = {100U, 150U, 200U, 300U};
         std::size_t calls = 0U;
         const uhf::storage::SpaceProbe probe =
             [&readings, &calls](const std::filesystem::path&, uhf::storage::DiskSpace& space) {
@@ -87,10 +92,11 @@ int main() {
         const uhf::storage::CleanupResult result = cleaner.run(now);
         if (!expect(result.low_threshold_bytes == 150U, "low threshold") ||
             !expect(result.recovery_threshold_bytes == 250U, "recovery threshold") ||
-            !expect(result.removed_files == 2U, "expired files removed first") ||
+            !expect(result.removed_files == 3U, "expired files removed first") ||
             !expect(!result.writes_paused, "writes remain enabled after recovery") ||
             !expect(!std::filesystem::exists(old_frame), "old frame removed") ||
             !expect(!std::filesystem::exists(old_event), "old event removed") ||
+            !expect(!std::filesystem::exists(old_v3), "old v3 history removed") ||
             !expect(std::filesystem::exists(recent_event), "recent event preserved") ||
             !expect(std::filesystem::exists(newest_frame), "newest frame protected") ||
             !expect(std::filesystem::exists(temporary), "temporary file protected")) {

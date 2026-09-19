@@ -35,6 +35,7 @@ struct PersistenceStats {
     bool low_watermark_active{false};
     bool writes_paused{false};
     bool cleanup_failed{false};
+    bool write_failed{false};
     std::size_t saved_frame_count{0U};
     std::size_t saved_event_count{0U};
     std::size_t dropped_frame_count{0U};

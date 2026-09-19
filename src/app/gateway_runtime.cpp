@@ -290,7 +290,8 @@ health::Input GatewayRuntime::health_input() const {
     }
     if (persistence_worker_) {
         const storage::PersistenceStats stats = persistence_worker_->stats();
-        input.storage_writable = !stats.writes_paused && !stats.cleanup_failed;
+        input.storage_writable =
+            !stats.writes_paused && !stats.cleanup_failed && !stats.write_failed;
         input.storage_low_watermark = stats.low_watermark_active;
     }
     return input;

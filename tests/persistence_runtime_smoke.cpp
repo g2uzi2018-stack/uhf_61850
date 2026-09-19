@@ -5,10 +5,13 @@
 #include "storage/event_store.hpp"
 #include "storage/persistence_runtime.hpp"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
+#include <functional>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -60,6 +63,17 @@ bool wait_for_file_count(
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     return false;
+}
+
+bool wait_for(
+    const std::function<bool()>& condition,
+    std::chrono::milliseconds timeout) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (condition()) return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+    return condition();
 }
 
 bool replace_once(std::string& value, const std::string& from, const std::string& to) {
@@ -189,6 +203,81 @@ bool run_v3_history_case(uhf::logging::Logger& logger) {
     return expect(readable, "v3 history record saved and readable");
 }
 
+bool run_v3_write_failure_recovery_case(uhf::logging::Logger& logger) {
+    const std::filesystem::path root = std::filesystem::temp_directory_path() /
+        ("uhf-persistence-v3-failure-" +
+         std::to_string(static_cast<long long>(::getpid())));
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+    uhf::acquisition::SnapshotStore legacy_store;
+    uhf::v3::SnapshotStore v3_store;
+    uhf::storage::PersistenceOptions options;
+    options.data_root = root;
+    options.v3_snapshot_store = &v3_store;
+    options.periodic_period = std::chrono::seconds::zero();
+    options.cleanup_period = std::chrono::hours(1);
+    options.cleaner_options.min_free_bytes = 0U;
+    options.cleaner_options.low_watermark_percent = 0U;
+    options.cleaner_options.recovery_percent = 0U;
+    options.cleaner_options.recovery_extra_bytes = 0U;
+    uhf::storage::PersistenceWorker worker(legacy_store, logger, options);
+
+    const std::filesystem::path history = root / "v3";
+    const std::filesystem::path backup = root / "v3-backup";
+    std::filesystem::rename(history, backup, error);
+    if (!expect(!error, "prepare deterministic v3 write failure")) {
+        std::filesystem::remove_all(root, error);
+        return false;
+    }
+    std::ofstream blocker(history, std::ios::binary);
+    blocker << "not a directory";
+    blocker.close();
+
+    uhf::v3::TemperatureValues temperature{};
+    temperature[0] = uhf::v3::valid_value(20.0F);
+    worker.start();
+    v3_store.publish_temperature(temperature, std::chrono::steady_clock::now());
+    const bool failure_observed = wait_for(
+        [&worker] {
+            const uhf::storage::PersistenceStats stats = worker.stats();
+            return stats.write_failed && stats.dropped_frame_count == 1U;
+        },
+        std::chrono::seconds(2));
+    worker.stop();
+    const auto failure_stats = worker.stats();
+    const auto recent_logs = logger.recent(100U);
+    const bool failure_logged = std::any_of(
+        recent_logs.begin(), recent_logs.end(), [](const uhf::logging::Entry& entry) {
+            return entry.event_code == "v3_history.save_failed";
+        });
+
+    std::filesystem::remove(history, error);
+    error.clear();
+    std::filesystem::rename(backup, history, error);
+    if (!expect(failure_observed, "v3 write failure updates runtime stats") ||
+        !expect(failure_stats.saved_frame_count == 0U, "failed v3 record is not counted saved") ||
+        !expect(failure_logged, "v3 write failure is logged") ||
+        !expect(!error, "restore v3 history directory")) {
+        std::filesystem::remove_all(root, error);
+        return false;
+    }
+
+    temperature[0] = uhf::v3::valid_value(21.0F);
+    v3_store.publish_temperature(temperature, std::chrono::steady_clock::now());
+    worker.start();
+    const bool recovered = wait_for(
+        [&worker] {
+            const uhf::storage::PersistenceStats stats = worker.stats();
+            return !stats.write_failed && stats.saved_frame_count == 1U;
+        },
+        std::chrono::seconds(2));
+    worker.stop();
+    const auto paths = uhf::storage::V3HistoryStore(history).list(10U);
+    std::filesystem::remove_all(root, error);
+    return expect(recovered, "successful v3 write clears failure state") &&
+        expect(paths.size() == 1U, "recovery saves exactly one intact v3 record");
+}
+
 }  // namespace
 
 int main() {
@@ -207,6 +296,9 @@ int main() {
             return 1;
         }
         if (!run_v3_history_case(logger)) {
+            return 1;
+        }
+        if (!run_v3_write_failure_recovery_case(logger)) {
             return 1;
         }
         uhf::acquisition::SnapshotStore snapshot_store;

@@ -133,6 +133,7 @@ void PersistenceWorker::save_completed_events(std::vector<EventBundle> bundles) 
             {
                 std::lock_guard<std::mutex> lock(stats_mutex_);
                 ++stats_.dropped_event_count;
+                stats_.write_failed = true;
             }
             logger_.log(
                 logging::Level::error,
@@ -141,8 +142,11 @@ void PersistenceWorker::save_completed_events(std::vector<EventBundle> bundles) 
                 "unable to persist completed event bundle");
             continue;
         }
-        std::lock_guard<std::mutex> lock(stats_mutex_);
-        ++stats_.saved_event_count;
+        {
+            std::lock_guard<std::mutex> lock(stats_mutex_);
+            ++stats_.saved_event_count;
+            stats_.write_failed = false;
+        }
     }
 }
 
@@ -186,9 +190,19 @@ void PersistenceWorker::run() {
                         dropped_generation = 0U;
                         std::lock_guard<std::mutex> lock(stats_mutex_);
                         ++stats_.saved_frame_count;
+                        stats_.write_failed = false;
                     } else if (dropped_generation != snapshot.generation) {
                         dropped_generation = snapshot.generation;
-                        increment_dropped_frame();
+                        {
+                            std::lock_guard<std::mutex> lock(stats_mutex_);
+                            ++stats_.dropped_frame_count;
+                            stats_.write_failed = true;
+                        }
+                        logger_.log(
+                            logging::Level::error,
+                            logging::Component::storage,
+                            "v3_history.save_failed",
+                            "unable to persist v3 monitoring history record");
                     }
                 }
             }
@@ -224,10 +238,13 @@ void PersistenceWorker::run() {
                     dropped_generation = 0U;
                     std::lock_guard<std::mutex> lock(stats_mutex_);
                     ++stats_.saved_frame_count;
+                    stats_.write_failed = false;
                 } else {
                     if (dropped_generation != serving_view.snapshot->generation) {
                         dropped_generation = serving_view.snapshot->generation;
-                        increment_dropped_frame();
+                        std::lock_guard<std::mutex> lock(stats_mutex_);
+                        ++stats_.dropped_frame_count;
+                        stats_.write_failed = true;
                     }
                     logger_.log(
                         logging::Level::error,
