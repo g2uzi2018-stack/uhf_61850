@@ -14,38 +14,11 @@ concurrency:
 
 jobs:
   host:
+    name: Existing product regression
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Export source and readable requirements for review
-        run: |
-          mkdir -p review-artifacts
-          git archive --format=zip HEAD -o review-artifacts/source.zip
-          python3 - <<'PY'
-          from pathlib import Path
-          from zipfile import ZipFile
-          import xml.etree.ElementTree as ET
-
-          ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
-          out = Path('review-artifacts')
-          for source in sorted(Path('docs/spec').rglob('*.docx')):
-              with ZipFile(source) as doc:
-                  root = ET.fromstring(doc.read('word/document.xml'))
-              lines = ['Source: ' + str(source), '']
-              for paragraph in root.findall('.//w:body//w:p', ns):
-                  text = ''.join(paragraph.itertext()) if False else ''.join(
-                      node.text or '' for node in paragraph.findall('.//w:t', ns))
-                  if text.strip():
-                      lines.append(text)
-              (out / (source.stem + '.txt')).write_text('\n'.join(lines), encoding='utf-8')
-          PY
-      - name: Upload review inputs
-        uses: actions/upload-artifact@v4
-        with:
-          name: v3-review-inputs
-          path: review-artifacts/
-          retention-days: 7
       - name: Install host dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake g++ make libssl-dev python3
       - name: Configure
@@ -58,7 +31,44 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: v3-host-test-logs
+          name: v3-product-regression-logs
           path: build/host/Testing/Temporary/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  core:
+    name: New v3 core (${{ matrix.mode }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: Debug
+            build_type: Debug
+            sanitizers: "OFF"
+          - mode: Release
+            build_type: Release
+            sanitizers: "OFF"
+          - mode: Sanitizers
+            build_type: Debug
+            sanitizers: "ON"
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure standalone core
+        run: cmake -S src/v3 -B build/v3 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DUHF_V3_SANITIZERS=${{ matrix.sanitizers }}
+      - name: Build
+        run: cmake --build build/v3 --parallel 2
+      - name: Test
+        run: ctest --test-dir build/v3 --output-on-failure
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-core-${{ matrix.mode }}-logs
+          path: build/v3/Testing/Temporary/
           if-no-files-found: ignore
           retention-days: 7
