@@ -329,6 +329,7 @@ def main():
         unconfigured_modbus_port = distinct_free_port(
             web_port, modbus_port, unconfigured_web_port
         )
+        late_current_device = os.path.join(root, "late-current-device")
         unconfigured_command = [
             binary, "--web", "--http-recovery", "--v3",
             "--web-root", web_root, "--state-dir", unconfigured_state,
@@ -337,7 +338,7 @@ def main():
             "--modbus-tcp-listen", f"127.0.0.1:{unconfigured_modbus_port}",
             "--no-modbus-rtu", "--no-iec61850",
             "--v3-pd-device", devices[0].path,
-            "--v3-current-device", "/definitely/missing-current-device",
+            "--v3-current-device", late_current_device,
             "--v3-temperature-device", "/definitely/missing-temperature-device",
             "--v3-current-serial", "115200/8N1",
             "--v3-device-id-file", identity_file,
@@ -372,6 +373,35 @@ def main():
             assert unconfigured_snapshot["sources"]["current"]["last_attempt_ms"] is not None
             assert unconfigured_snapshot["sources"]["current"]["consecutive_failures"] >= 1
             assert unconfigured_snapshot["sources"]["temperature"]["has_sample"] is False
+
+            assert not os.path.lexists(late_current_device)
+            os.symlink(devices[1].path, late_current_device)
+            recovery_deadline = time.monotonic() + 5
+            while time.monotonic() < recovery_deadline:
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", unconfigured_web_port, timeout=2
+                )
+                connection.request("GET", "/api/v1/snapshot/latest")
+                recovery_response = connection.getresponse()
+                recovered_snapshot = json.loads(recovery_response.read())
+                connection.close()
+                assert recovery_response.status == 200
+                current_source = recovered_snapshot["sources"]["current"]
+                if current_source["has_sample"] and current_source["online"]:
+                    break
+                time.sleep(0.05)
+            else:
+                raise AssertionError("configured current source did not recover")
+            assert current_source["consecutive_failures"] == 0
+            assert current_source["last_success_ms"] is not None
+            assert recovered_snapshot["sources"]["pd"]["online"] is True
+            assert recovered_snapshot["sources"]["temperature"]["has_sample"] is False
+            recovered_measurements = {
+                entry["name"]: entry["value"]
+                for entry in recovered_snapshot["measurements"]
+            }
+            assert recovered_measurements["Ia"]["valid"] is False
+            assert recovered_measurements["Ia"]["value"] is None
         finally:
             unconfigured_process.send_signal(signal.SIGTERM)
             try:
