@@ -1115,7 +1115,8 @@ HttpServer::HttpServer(
     Iec61850EndpointProvider iec61850_endpoint_provider,
     Iec61850ModelProvider iec61850_model_provider,
     Iec61850ReloadHandler iec61850_reload_handler,
-    const v3::SnapshotStore* v3_snapshot_store)
+    const v3::SnapshotStore* v3_snapshot_store,
+    const v3::PacketTraceBuffer* v3_packet_trace)
     : document_root_(std::move(document_root)),
       bind_address_(std::move(bind_address)),
       port_(port),
@@ -1123,6 +1124,7 @@ HttpServer::HttpServer(
       icd_store_(state_directory / "UHFPD1.icd"),
       snapshot_store_(snapshot_store),
       v3_snapshot_store_(v3_snapshot_store),
+      v3_packet_trace_(v3_packet_trace),
       health_input_provider_(std::move(health_input_provider)),
       iec61850_stats_provider_(std::move(iec61850_stats_provider)),
       iec61850_endpoint_provider_(std::move(iec61850_endpoint_provider)),
@@ -1473,6 +1475,40 @@ std::string HttpServer::logs_json(std::size_t limit) const {
     body.append(",\"evicted_count\":");
     body.append(std::to_string(logger_ == nullptr ? 0U : logger_->evicted_recent_count()));
     body.append("}\n");
+    return body;
+}
+
+std::string HttpServer::packets_json() const {
+    const v3::PacketTraceSnapshot trace = v3_packet_trace_->snapshot();
+    constexpr char kHex[] = "0123456789ABCDEF";
+    std::string body = "{\"schema_version\":1,\"memory_only\":true,\"max_entries\":" +
+        std::to_string(trace.max_entries) + ",\"max_bytes\":" +
+        std::to_string(trace.max_bytes) + ",\"retained_bytes\":" +
+        std::to_string(trace.retained_bytes) + ",\"dropped_entries\":" +
+        std::to_string(trace.dropped_entries) + ",\"entries\":[";
+    for (std::size_t index = 0U; index < trace.entries.size(); ++index) {
+        if (index != 0U) body.push_back(',');
+        const v3::PacketTraceEntry& entry = trace.entries[index];
+        const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+            entry.timestamp.time_since_epoch()).count();
+        body.append("{\"sequence\":");
+        body.append(std::to_string(entry.sequence));
+        body.append(",\"timestamp_ms\":");
+        body.append(std::to_string(milliseconds));
+        body.append(",\"source\":\"");
+        body.append(v3::packet_source_name(entry.source));
+        body.append("\",\"direction\":\"");
+        body.append(v3::packet_direction_name(entry.direction));
+        body.append("\",\"size\":");
+        body.append(std::to_string(entry.bytes.size()));
+        body.append(",\"hex\":\"");
+        for (const std::uint8_t byte : entry.bytes) {
+            body.push_back(kHex[byte >> 4U]);
+            body.push_back(kHex[byte & 0x0FU]);
+        }
+        body.append("\"}");
+    }
+    body.append("]}\n");
     return body;
 }
 
@@ -2423,7 +2459,7 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
         return false;
     }
 
-    if (request_path == "/api/v1/logs") {
+    if (request_path == "/api/v1/logs" || request_path == "/api/v1/packets") {
         if (parsed.method != "GET") {
             send_method_not_allowed(client_fd, tls, "GET");
             return false;
@@ -2438,6 +2474,19 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
             return false;
         }
         iterator->second.expires_at = now + kSessionLifetime;
+        if (request_path == "/api/v1/packets") {
+            if (v3_packet_trace_ == nullptr) {
+                send_error(client_fd, tls, 503, "packet trace unavailable outside v3 mode");
+                return false;
+            }
+            const std::string body = packets_json();
+            if (body.size() > kMaxResponseBytes) {
+                send_error(client_fd, tls, 500, "packet trace response too large");
+                return false;
+            }
+            send_json(client_fd, tls, 200, body, "Cache-Control: no-store\r\n");
+            return false;
+        }
         send_json(client_fd, tls, 200, logs_json(100U), "Cache-Control: no-store\r\n");
         return false;
     }

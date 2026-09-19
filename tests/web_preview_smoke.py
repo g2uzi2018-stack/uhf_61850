@@ -29,6 +29,8 @@ def main() -> int:
     overview_javascript = (web_dir / "overview.js").read_text(encoding="utf-8")
     network_html = (web_dir / "network.html").read_text(encoding="utf-8")
     network_javascript = (web_dir / "network.js").read_text(encoding="utf-8")
+    logs_html = (web_dir / "logs.html").read_text(encoding="utf-8")
+    logs_javascript = (web_dir / "logs.js").read_text(encoding="utf-8")
     login_javascript = (web_dir / "login.js").read_text(encoding="utf-8")
     stylesheet = (web_dir / "styles.css").read_text(encoding="utf-8")
 
@@ -68,6 +70,16 @@ def main() -> int:
     for marker in ("api/v1/session", "same-origin", "登录尝试过于频繁", "location.protocol"):
         if marker not in login_javascript:
             fail(f"login.js is missing {marker!r}")
+    for marker in (
+        "三路采集报文",
+        "最多 256 条",
+        "不会写入磁盘",
+        "packets-body",
+        "/api/v1/packets",
+        "dropped_entries",
+    ):
+        if marker not in logs_html and marker not in logs_javascript:
+            fail(f"packet trace view is missing {marker!r}")
     for marker in (
         "FTP 文件传输",
         "ftp_enabled",

@@ -11,6 +11,7 @@
 #include "modbus/tcp_server.hpp"
 #include "storage/persistence_runtime.hpp"
 #include "v3/acquisition.hpp"
+#include "v3/packet_trace.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -69,6 +70,7 @@ public:
 
     acquisition::SnapshotStore& snapshot_store() noexcept;
     const v3::SnapshotStore* v3_snapshot_store() const noexcept;
+    const v3::PacketTraceBuffer* v3_packet_trace() const noexcept;
     health::Input health_input() const;
     iec61850::RuntimeStats iec61850_stats() const noexcept;
     std::optional<iec61850::RuntimeEndpoint> iec61850_endpoint() const;
@@ -91,6 +93,7 @@ private:
     std::unique_ptr<v3::ISerialPort> v3_current_adapter_;
     std::unique_ptr<v3::ISerialPort> v3_temperature_adapter_;
     std::unique_ptr<v3::SnapshotStore> v3_snapshot_store_;
+    std::unique_ptr<v3::PacketTraceBuffer> v3_packet_trace_;
     std::unique_ptr<activation::Manager> activation_manager_;
     std::unique_ptr<v3::AcquisitionScheduler> v3_scheduler_;
     std::unique_ptr<modbus::ModbusTcpServer> modbus_tcp_server_;

@@ -158,6 +158,7 @@ def main() -> int:
                 "/api/v1/time",
                 "/api/v1/iec61850",
                 "/api/v1/point-table/export.csv",
+                "/api/v1/packets",
             ):
                 protected_status, _, _ = request(port, "GET", protected_path)
                 assert_status(protected_status, 401, f"unauthenticated {protected_path}")
@@ -223,6 +224,10 @@ def main() -> int:
                 or "v3-point-table.csv" not in point_headers.get("Content-Disposition", "")
             ):
                 fail("v3 point table export content or headers are incomplete")
+            packets_status, _, _ = request(
+                port, "GET", "/api/v1/packets", headers={"Cookie": cookie}
+            )
+            assert_status(packets_status, 503, "packet trace outside v3 mode")
 
             session_status, session_body, _ = request(
                 port, "GET", "/api/v1/session", headers={"Cookie": cookie}

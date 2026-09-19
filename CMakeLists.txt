@@ -170,6 +170,7 @@ add_executable(uhf-gatewayd
     src/platform/network/network_config.cpp
     src/v3/acquisition.cpp
     src/v3/measurements.cpp
+    src/v3/packet_trace.cpp
     src/v3/protocol.cpp
     src/v3/register_map.cpp
     src/web/v3_snapshot_json.cpp
@@ -702,6 +703,29 @@ if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 add_test(NAME uhf_v3_upstream_smoke COMMAND uhf_v3_upstream_smoke)
+
+add_executable(uhf_v3_packet_trace_smoke ${UHF_TEST_TARGET_OPTIONS}
+    tests/v3/packet_trace_test.cpp
+    src/v3/packet_trace.cpp
+)
+target_compile_features(uhf_v3_packet_trace_smoke PRIVATE cxx_std_17)
+target_include_directories(uhf_v3_packet_trace_smoke PRIVATE
+    "${PROJECT_SOURCE_DIR}/src"
+    "${PROJECT_SOURCE_DIR}/tests/v3"
+)
+target_link_libraries(uhf_v3_packet_trace_smoke PRIVATE Threads::Threads)
+if(UHF_ENABLE_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(uhf_v3_packet_trace_smoke PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wsign-conversion
+        -Wshadow
+        -Werror
+    )
+endif()
+add_test(NAME uhf_v3_packet_trace_smoke COMMAND uhf_v3_packet_trace_smoke)
 
 add_executable(uhf_frame_store_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/frame_store_smoke.cpp

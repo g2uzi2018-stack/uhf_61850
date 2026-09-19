@@ -155,6 +155,45 @@ def main():
                 time.sleep(0.1)
             assert body is not None and body["sources"]["current"]["online"]
             assert body["sources"]["temperature"]["online"]
+            password = os.path.join(root, "initial-password")
+            with open(password, "r", encoding="utf-8") as password_file:
+                initial_password = password_file.read().strip()
+            connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
+            login_body = json.dumps(
+                {"username": "admin", "password": initial_password},
+                separators=(",", ":"),
+            )
+            connection.request(
+                "POST",
+                "/api/v1/session",
+                body=login_body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Origin": f"http://127.0.0.1:{web_port}",
+                },
+            )
+            login_response = connection.getresponse()
+            login_response.read()
+            cookie = login_response.getheader("Set-Cookie", "").split(";", 1)[0]
+            connection.close()
+            assert login_response.status == 200 and cookie.startswith("uhf_session=")
+            connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
+            connection.request("GET", "/api/v1/packets", headers={"Cookie": cookie})
+            packet_response = connection.getresponse()
+            packet_payload = json.loads(packet_response.read())
+            connection.close()
+            assert packet_response.status == 200 and packet_payload["memory_only"] is True
+            assert len(packet_payload["entries"]) <= packet_payload["max_entries"] == 256
+            assert packet_payload["retained_bytes"] <= packet_payload["max_bytes"] == 65536
+            assert {entry["source"] for entry in packet_payload["entries"]} >= {
+                "pd", "current", "temperature"
+            }
+            assert {entry["direction"] for entry in packet_payload["entries"]} == {"tx", "rx"}
+            assert all(entry["size"] * 2 == len(entry["hex"])
+                       for entry in packet_payload["entries"])
+            assert not any("packet" in filename.lower()
+                           for _, _, filenames in os.walk(os.path.join(root, "data"))
+                           for filename in filenames)
             with socket.create_connection(("127.0.0.1", modbus_port), timeout=2) as sock:
                 sock.sendall(struct.pack(">HHHBBHH", 1, 0, 6, 1, 3, 1, 2))
                 response = bytearray()

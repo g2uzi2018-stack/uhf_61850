@@ -423,7 +423,8 @@ int main(int argc, char* argv[]) {
                     ? uhf::web::Iec61850ReloadHandler{}
                     : uhf::web::Iec61850ReloadHandler{
                           [runtime_pointer] { return runtime_pointer->reload_iec61850_model(); }},
-                runtime_pointer == nullptr ? nullptr : runtime_pointer->v3_snapshot_store());
+                runtime_pointer == nullptr ? nullptr : runtime_pointer->v3_snapshot_store(),
+                runtime_pointer == nullptr ? nullptr : runtime_pointer->v3_packet_trace());
             const int result = server.run();
             if (runtime) {
                 runtime->stop();

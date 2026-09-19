@@ -18,16 +18,28 @@ namespace {
 
 class V3SerialAdapter final : public v3::ISerialPort {
 public:
-    explicit V3SerialAdapter(acquisition::ISerialPort& port) : port_(port) {}
+    V3SerialAdapter(acquisition::ISerialPort& port, v3::PacketTraceBuffer& trace,
+                    v3::PacketSource source)
+        : port_(port), trace_(trace), source_(source) {}
     bool write_all(const std::uint8_t* data, std::size_t size) override {
-        return port_.write_all(data, size);
+        const bool written = port_.write_all(data, size);
+        if (written) {
+            trace_.record(source_, v3::PacketDirection::transmit, data, size);
+        }
+        return written;
     }
     bool read_some(std::uint8_t* data, std::size_t capacity,
                    std::chrono::milliseconds timeout, std::size_t& received) override {
-        return port_.read_some(data, capacity, timeout, received);
+        const bool read = port_.read_some(data, capacity, timeout, received);
+        if (read && received > 0U) {
+            trace_.record(source_, v3::PacketDirection::receive, data, received);
+        }
+        return read;
     }
 private:
     acquisition::ISerialPort& port_;
+    v3::PacketTraceBuffer& trace_;
+    v3::PacketSource source_;
 };
 
 std::optional<iec61850::SclModelDefinition> parse_file(
@@ -75,9 +87,13 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
         v3_pd_serial_port_ = std::make_unique<acquisition::PosixSerialPort>(options_.v3_pd_device);
         v3_current_serial_port_ = std::make_unique<acquisition::PosixSerialPort>(options_.v3_current_device);
         v3_temperature_serial_port_ = std::make_unique<acquisition::PosixSerialPort>(options_.v3_temperature_device);
-        v3_pd_adapter_ = std::make_unique<V3SerialAdapter>(*v3_pd_serial_port_);
-        v3_current_adapter_ = std::make_unique<V3SerialAdapter>(*v3_current_serial_port_);
-        v3_temperature_adapter_ = std::make_unique<V3SerialAdapter>(*v3_temperature_serial_port_);
+        v3_packet_trace_ = std::make_unique<v3::PacketTraceBuffer>();
+        v3_pd_adapter_ = std::make_unique<V3SerialAdapter>(
+            *v3_pd_serial_port_, *v3_packet_trace_, v3::PacketSource::pd);
+        v3_current_adapter_ = std::make_unique<V3SerialAdapter>(
+            *v3_current_serial_port_, *v3_packet_trace_, v3::PacketSource::current);
+        v3_temperature_adapter_ = std::make_unique<V3SerialAdapter>(
+            *v3_temperature_serial_port_, *v3_packet_trace_, v3::PacketSource::temperature);
         v3_snapshot_store_ = std::make_unique<v3::SnapshotStore>();
         v3_scheduler_ = std::make_unique<v3::AcquisitionScheduler>(
             *v3_pd_adapter_, *v3_current_adapter_, *v3_temperature_adapter_,
@@ -226,6 +242,10 @@ acquisition::SnapshotStore& GatewayRuntime::snapshot_store() noexcept {
 
 const v3::SnapshotStore* GatewayRuntime::v3_snapshot_store() const noexcept {
     return v3_snapshot_store_.get();
+}
+
+const v3::PacketTraceBuffer* GatewayRuntime::v3_packet_trace() const noexcept {
+    return v3_packet_trace_.get();
 }
 
 health::Input GatewayRuntime::health_input() const {
