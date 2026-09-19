@@ -323,6 +323,24 @@ def main():
             assert configuration["v3_pd_freshness_ms"] == 600000
             assert configuration["v3_current_freshness_ms"] == 5000
             assert configuration["v3_temperature_freshness_ms"] == 5000
+            connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
+            connection.request("GET", "/api/v1/events", headers={"Cookie": cookie})
+            events_response = connection.getresponse()
+            events_payload = json.loads(events_response.read())
+            connection.close()
+            assert events_response.status == 200
+            assert events_payload == {
+                "schema_version": 3,
+                "supported": False,
+                "reason": "v3 event policy is not configured",
+                "entries": [],
+            }
+            connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
+            connection.request("GET", "/api/v1/events/export.csv", headers={"Cookie": cookie})
+            event_export_response = connection.getresponse()
+            event_export_response.read()
+            connection.close()
+            assert event_export_response.status == 404
             config_version = configuration.pop("version")
             configuration["v3_alarm_thresholds"] = [
                 None, None, None, 9, None, None, None, None, None, 19, None, None

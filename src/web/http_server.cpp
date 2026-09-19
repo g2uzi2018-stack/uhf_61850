@@ -1589,6 +1589,11 @@ std::optional<std::string> HttpServer::frames_json() const {
 
 std::optional<std::string> HttpServer::events_json() const {
     try {
+        if (v3_snapshot_store_ != nullptr) {
+            return std::string{
+                "{\"schema_version\":3,\"supported\":false,"
+                "\"reason\":\"v3 event policy is not configured\",\"entries\":[]}\n"};
+        }
         storage::EventBundleStore store(data_root_ / "events");
         const std::vector<std::filesystem::path> paths = store.list(100U);
         std::string body = "{\"schema_version\":1,\"entries\":[";
@@ -1654,6 +1659,9 @@ std::optional<std::string> HttpServer::latest_frame_csv() const {
 
 std::optional<std::string> HttpServer::latest_event_csv() const {
     try {
+        if (v3_snapshot_store_ != nullptr) {
+            return std::nullopt;
+        }
         storage::EventBundleStore store(data_root_ / "events");
         const std::vector<std::filesystem::path> paths = store.list(1U);
         if (paths.empty()) {

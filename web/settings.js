@@ -41,6 +41,13 @@
         var input = form.elements[name];
         if (input.type === "checkbox") { input.checked = Boolean(value); } else { input.value = String(value); }
     }
+    function applyRuntimeMode(mode) {
+        document.querySelectorAll("[data-runtime]").forEach(function (element) {
+            element.hidden = element.getAttribute("data-runtime") !== mode;
+        });
+        document.getElementById("runtime-status").textContent =
+            (mode === "v3" ? "v3 三合一运行模式" : "兼容运行模式") + " · 配置版本 " + version;
+    }
     function loadSession() {
         return fetch("/api/v1/session", {credentials: "same-origin"}).then(function (response) {
             if (response.status === 401) { redirectToLogin(); throw new Error("authentication required"); }
@@ -74,7 +81,27 @@
             document.getElementById("runtime-status").textContent = "配置已加载 · 版本 " + version;
         });
     }
-    function load() { error.textContent = ""; return loadSession().then(loadConfig).catch(function (reason) { if (reason.message !== "authentication required") { showError("无法读取配置，请稍后重试。"); } }); }
+    function detectRuntimeMode() {
+        return fetch("/api/v1/snapshot/latest", {credentials: "same-origin"}).then(function (response) {
+            if (response.status === 503) { return null; }
+            if (!response.ok) { throw new Error("runtime mode failed"); }
+            return response.json();
+        }).then(function (snapshot) {
+            return snapshot && Number(snapshot.schema_version) === 3 ? "v3" : "legacy";
+        });
+    }
+    function load() {
+        error.textContent = "";
+        return loadSession().then(function () {
+            return Promise.all([loadConfig(), detectRuntimeMode()]);
+        }).then(function (results) {
+            applyRuntimeMode(results[1]);
+        }).catch(function (reason) {
+            if (reason.message !== "authentication required") {
+                showError("无法读取配置，请稍后重试。");
+            }
+        });
+    }
     form.addEventListener("submit", function (event) {
         event.preventDefault();
         var payload = Object.assign({}, configuration || {});

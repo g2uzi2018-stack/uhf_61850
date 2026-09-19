@@ -31,6 +31,10 @@ def main() -> int:
     network_javascript = (web_dir / "network.js").read_text(encoding="utf-8")
     logs_html = (web_dir / "logs.html").read_text(encoding="utf-8")
     logs_javascript = (web_dir / "logs.js").read_text(encoding="utf-8")
+    settings_html = (web_dir / "settings.html").read_text(encoding="utf-8")
+    settings_javascript = (web_dir / "settings.js").read_text(encoding="utf-8")
+    storage_html = (web_dir / "storage.html").read_text(encoding="utf-8")
+    storage_javascript = (web_dir / "storage.js").read_text(encoding="utf-8")
     login_javascript = (web_dir / "login.js").read_text(encoding="utf-8")
     stylesheet = (web_dir / "styles.css").read_text(encoding="utf-8")
 
@@ -100,6 +104,19 @@ def main() -> int:
     ):
         if marker not in (web_dir / "settings.html").read_text(encoding="utf-8") and marker not in (web_dir / "settings.js").read_text(encoding="utf-8"):
             fail(f"FTP settings are missing {marker!r}")
+    for marker in (
+        'data-runtime="legacy" hidden', 'data-runtime="v3" hidden',
+        "未继承旧版 dBm 事件策略", "detectRuntimeMode", "applyRuntimeMode",
+        "snapshot/latest", "schema_version",
+    ):
+        if marker not in settings_html and marker not in settings_javascript:
+            fail(f"runtime-aware settings are missing {marker!r}")
+    for marker in (
+        "v3 历史快照", "35 项计算值", "三源时间与质量", "applyRuntimeMode",
+        'fetchJson("/api/v1/frames")', 'mode === "v3"', "snapshot/latest",
+    ):
+        if marker not in storage_html and marker not in storage_javascript:
+            fail(f"runtime-aware storage page is missing {marker!r}")
     for marker in ("MMS 监听全部网口", "客户端连接设备当前 IP"):
         if marker not in (web_dir / "iec61850.html").read_text(encoding="utf-8") and marker not in (web_dir / "iec61850.js").read_text(encoding="utf-8"):
             fail(f"IEC endpoint guidance is missing {marker!r}")
