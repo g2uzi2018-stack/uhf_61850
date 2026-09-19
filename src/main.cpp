@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "app/build_info.hpp"
 #include "app/gateway_runtime.hpp"
+#include "activation/activation_manager.hpp"
 #include "activation/credential_file.hpp"
 #include "config/config_store.hpp"
 #include "logging/logger.hpp"
@@ -431,6 +432,21 @@ int main(int argc, char* argv[]) {
             }
             if (!options.tls_private_key_explicit) {
                 options.tls_private_key = options.state_directory / "tls" / "server.key";
+            }
+            if (options.v3_enabled) {
+                uhf::activation::Manager process_activation({
+                    options.activation_state,
+                    options.v3_device_id,
+                    options.v3_activation_key,
+                    options.v3_activation_code});
+                if (!process_activation.active()) {
+                    throw std::runtime_error(
+                        "v3 activation is required before acquisition and gateway services start");
+                }
+                // A successful first activation is now persisted.  Make the
+                // runtime independently re-verify that binding instead of
+                // writing the requested code a second time.
+                options.v3_activation_code.reset();
             }
             std::unique_ptr<uhf::app::GatewayRuntime> runtime;
             if (options.start_acquisition) {

@@ -204,6 +204,25 @@ def main():
     )
     assert invalid_serial.returncode == 2
     assert b"invalid --v3-current-serial" in invalid_serial.stderr
+    with tempfile.TemporaryDirectory(prefix="uhf-v3-web-only-gate-") as root:
+        web_only_port = free_port()
+        web_only_result = subprocess.run(
+            [
+                binary, "--web", "--http-recovery", "--v3",
+                "--no-acquisition", "--web-root", web_root,
+                "--state-dir", root,
+                "--listen", f"127.0.0.1:{web_only_port}",
+                "--no-modbus-rtu", "--no-iec61850",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=3,
+            check=False,
+        )
+        assert web_only_result.returncode == 1
+        assert b"v3 activation is required" in web_only_result.stderr
+        assert_port_closed(web_only_port)
+        assert not os.path.exists(os.path.join(root, "activation.state"))
     devices = [Device("pd"), Device("current"), Device("temperature")]
     for device in devices:
         device.start()
