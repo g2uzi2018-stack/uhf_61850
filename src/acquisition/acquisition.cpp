@@ -180,6 +180,57 @@ bool PosixSerialPort::read_some(
     return false;
 }
 
+ReconnectingSerialPort::ReconnectingSerialPort(
+    std::string device, SerialSettings settings)
+    : device_(std::move(device)), settings_(settings) {
+    if (!supported_serial_baud(settings_.baud) ||
+        (settings_.data_bits != 7U && settings_.data_bits != 8U) ||
+        (settings_.parity != SerialParity::none &&
+         settings_.parity != SerialParity::even &&
+         settings_.parity != SerialParity::odd) ||
+        (settings_.stop_bits != 1U && settings_.stop_bits != 2U)) {
+        throw std::invalid_argument("unsupported serial settings");
+    }
+}
+
+bool ReconnectingSerialPort::ensure_open() {
+    if (port_) {
+        return true;
+    }
+    try {
+        port_ = std::make_unique<PosixSerialPort>(device_, settings_);
+    } catch (const std::runtime_error&) {
+        return false;
+    }
+    return true;
+}
+
+bool ReconnectingSerialPort::write_all(
+    const std::uint8_t* data, std::size_t size) {
+    if (size == 0U) {
+        return true;
+    }
+    if (!ensure_open() || !port_->write_all(data, size)) {
+        port_.reset();
+        return false;
+    }
+    return true;
+}
+
+bool ReconnectingSerialPort::read_some(
+    std::uint8_t* data,
+    std::size_t capacity,
+    std::chrono::milliseconds timeout,
+    std::size_t& received) {
+    received = 0U;
+    if (!ensure_open() || !port_->read_some(data, capacity, timeout, received)) {
+        port_.reset();
+        received = 0U;
+        return false;
+    }
+    return true;
+}
+
 void SnapshotStore::publish(
     domain::ParsedSnapshot payload,
     std::chrono::steady_clock::time_point started_at,

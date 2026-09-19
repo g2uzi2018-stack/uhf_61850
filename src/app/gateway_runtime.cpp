@@ -176,12 +176,12 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
             throw std::invalid_argument(
                 "v3 mode requires explicit PTY/device paths; --simulate is for the legacy loopback");
         }
-        v3_pd_serial_port_ = std::make_unique<acquisition::PosixSerialPort>(
+        v3_pd_serial_port_ = std::make_unique<acquisition::ReconnectingSerialPort>(
             options_.v3_pd_device,
             acquisition::SerialSettings{
                 115200U, 8U, acquisition::SerialParity::none, 1U});
         if (options_.v3_current_serial_settings) {
-            v3_current_serial_port_ = std::make_unique<acquisition::PosixSerialPort>(
+            v3_current_serial_port_ = std::make_unique<acquisition::ReconnectingSerialPort>(
                 options_.v3_current_device, *options_.v3_current_serial_settings);
         } else {
             v3_current_serial_port_ = std::make_unique<UnavailableSerialPort>();
@@ -192,7 +192,7 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
                 "v3 current serial profile is unconfigured; device was not opened");
         }
         if (options_.v3_temperature_serial_settings) {
-            v3_temperature_serial_port_ = std::make_unique<acquisition::PosixSerialPort>(
+            v3_temperature_serial_port_ = std::make_unique<acquisition::ReconnectingSerialPort>(
                 options_.v3_temperature_device, *options_.v3_temperature_serial_settings);
         } else {
             v3_temperature_serial_port_ = std::make_unique<UnavailableSerialPort>();

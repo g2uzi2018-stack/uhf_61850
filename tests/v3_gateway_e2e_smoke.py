@@ -319,6 +319,7 @@ def main():
             "--v3-pd-device", devices[0].path,
             "--v3-current-device", "/definitely/missing-current-device",
             "--v3-temperature-device", "/definitely/missing-temperature-device",
+            "--v3-current-serial", "115200/8N1",
             "--v3-device-id-file", identity_file,
             "--v3-activation-key-file", key_file,
             "--v3-activation-code-file", code_file,
@@ -328,15 +329,28 @@ def main():
         )
         try:
             wait_port(unconfigured_web_port)
-            connection = http.client.HTTPConnection(
-                "127.0.0.1", unconfigured_web_port, timeout=2
-            )
-            connection.request("GET", "/api/v1/snapshot/latest")
-            unconfigured_response = connection.getresponse()
-            unconfigured_snapshot = json.loads(unconfigured_response.read())
-            connection.close()
+            deadline = time.time() + 5
+            unconfigured_snapshot = None
+            while time.time() < deadline:
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", unconfigured_web_port, timeout=2
+                )
+                connection.request("GET", "/api/v1/snapshot/latest")
+                unconfigured_response = connection.getresponse()
+                candidate = json.loads(unconfigured_response.read())
+                connection.close()
+                assert unconfigured_response.status == 200
+                unconfigured_snapshot = candidate
+                if candidate["sources"]["pd"]["has_sample"]:
+                    break
+                time.sleep(0.05)
+            assert unconfigured_snapshot is not None
+            assert unconfigured_snapshot["sources"]["pd"]["has_sample"] is True
+            assert unconfigured_snapshot["sources"]["pd"]["online"] is True
             assert unconfigured_response.status == 200
             assert unconfigured_snapshot["sources"]["current"]["has_sample"] is False
+            assert unconfigured_snapshot["sources"]["current"]["last_attempt_ms"] is not None
+            assert unconfigured_snapshot["sources"]["current"]["consecutive_failures"] >= 1
             assert unconfigured_snapshot["sources"]["temperature"]["has_sample"] is False
         finally:
             unconfigured_process.send_signal(signal.SIGTERM)

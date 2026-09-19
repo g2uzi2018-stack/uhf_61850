@@ -49,6 +49,33 @@ private:
     int file_descriptor_;
 };
 
+// Keeps a configured device path available to a long-running collector even
+// when the underlying tty is absent at startup or is recreated after a
+// disconnect.  A failed I/O operation drops the stale descriptor; the next
+// collector attempt opens and configures the path again.
+class ReconnectingSerialPort final : public ISerialPort {
+public:
+    explicit ReconnectingSerialPort(
+        std::string device, SerialSettings settings = {});
+
+    ReconnectingSerialPort(const ReconnectingSerialPort&) = delete;
+    ReconnectingSerialPort& operator=(const ReconnectingSerialPort&) = delete;
+
+    bool write_all(const std::uint8_t* data, std::size_t size) override;
+    bool read_some(
+        std::uint8_t* data,
+        std::size_t capacity,
+        std::chrono::milliseconds timeout,
+        std::size_t& received) override;
+
+private:
+    bool ensure_open();
+
+    std::string device_;
+    SerialSettings settings_;
+    std::unique_ptr<PosixSerialPort> port_;
+};
+
 struct AcquisitionOptions {
     std::uint8_t slave_id{1U};
     std::chrono::milliseconds response_timeout{150};
