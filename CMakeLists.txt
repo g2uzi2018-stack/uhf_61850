@@ -1255,6 +1255,14 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}/web"
         )
         add_test(
+            NAME uhf_v3_host_sim_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/v3_host_sim_smoke.py"
+                "${PROJECT_SOURCE_DIR}/tools/v3_host_sim.py"
+                "$<TARGET_FILE:uhf-gatewayd>"
+                "${PROJECT_SOURCE_DIR}/web"
+        )
+        add_test(
             NAME uhf_iec61850_icd_web_smoke
             COMMAND "${Python3_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/tests/iec61850_icd_web_smoke.py"

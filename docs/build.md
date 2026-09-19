@@ -56,11 +56,21 @@ format-check 是可选的 CMake 目标；安装 clang-format 后执行：
 0600），开发服务停止后可删除整个 `build/` 目录重新初始化。正式发布安装由
 `uhf-auth-init` 预置认证状态，并将一次性密码保留为 root-only 文件。
 
-该交互式开发服务仍用于旧 PD1000 兼容页面。正式 v3 主程序的三 PTY 自动模拟入口为：
+该交互式开发服务仍用于旧 PD1000 兼容页面。正式 v3 主程序的三 PTY 交互式模拟入口为：
+
+    python3 tools/v3_host_sim.py
+
+脚本启动真实的 `build/host/uhf-gatewayd --v3`，在终端打印只绑定
+`127.0.0.1` 的地址和一次性管理员口令；按 Ctrl-C 后会停止守护进程并删除随机测试
+身份、测试密钥、激活状态和采集数据。可用 `--binary`、`--web-port` 和
+`--modbus-port` 指定其他本机构建或端口。它不包含生产默认密钥，也不能替代正式制造
+配置。自动回归入口为：
 
     ctest --test-dir build/host --output-on-failure -R '^uhf_v3_gateway_e2e$'
 
-该测试实际启动 `uhf-gatewayd --v3`，通过受保护临时文件提供测试身份/密钥/激活码，并贯通三路 PTY、采集调度、HTTP/WebSocket、配置热加载和 Modbus/TCP；它不会读取本机 485，也不会修改产品 `/etc` 配置。`tools/run-web-local.sh` 使用 PD1000 PTY 模拟器；
+    ctest --test-dir build/host --output-on-failure -R '^uhf_v3_host_sim_smoke$'
+
+这些测试实际启动 `uhf-gatewayd --v3`，通过受保护临时文件提供测试身份/密钥/激活码，并贯通三路 PTY、采集调度、HTTP/WebSocket、配置热加载和 Modbus/TCP；它们不会读取本机 485，也不会修改产品 `/etc` 配置。`tools/run-web-local.sh` 使用 PD1000 PTY 模拟器；
 `--http-recovery` 是仅供可信本地开发网络使用的明文恢复模式。产品服务默认启用
 HTTPS，启动时生成自签名证书，证书替换、业务配置、网络事务、Modbus、IEC 61850
 和持久化均可在 host 测试中验证；真实串口、电气收发、双网口链路和板级厂商网络
