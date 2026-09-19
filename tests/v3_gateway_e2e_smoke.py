@@ -45,6 +45,8 @@ class Device:
         self.thread = threading.Thread(target=self.run, daemon=True)
         self.request_lock = threading.Lock()
         self.request_log = []
+        self.value_lock = threading.Lock()
+        self.current_base = 10
 
     def start(self):
         self.thread.start()
@@ -59,10 +61,16 @@ class Device:
         with self.request_lock:
             return list(self.request_log)
 
+    def set_current_base(self, value):
+        with self.value_lock:
+            self.current_base = value
+
     def registers(self, start, count):
         values = [0] * count
         if self.kind == "current":
-            values = [(10 + index) & 0xFFFF for index in range(count)]
+            with self.value_lock:
+                current_base = self.current_base
+            values = [(current_base + index) & 0xFFFF for index in range(count)]
         elif self.kind == "temperature":
             values = [200 + 10 * index for index in range(count)]
         else:
@@ -132,6 +140,7 @@ def distinct_free_port(*excluded):
 
 def main():
     binary, web_root = sys.argv[1:3]
+    iec_probe = sys.argv[3] if len(sys.argv) > 3 else None
     partial_scale = subprocess.run(
         [binary, "--web", "--v3-current-multiplier", "1"],
         stdout=subprocess.PIPE,
@@ -165,6 +174,7 @@ def main():
         device.start()
     web_port = free_port()
     modbus_port = distinct_free_port(web_port)
+    iec_port = distinct_free_port(web_port, modbus_port) if iec_probe else None
     identity = "host-e2e-board"
     key = "host-e2e-key"
     code = base64.b32encode(hmac.new(key.encode(), identity.encode(), hashlib.sha256).digest()[:12]).decode().rstrip("=")
@@ -227,7 +237,7 @@ def main():
                    "--data-dir", os.path.join(root, "data"),
                    "--listen", f"127.0.0.1:{web_port}",
                    "--modbus-tcp-listen", f"127.0.0.1:{modbus_port}",
-                   "--no-modbus-rtu", "--no-iec61850",
+                   "--no-modbus-rtu",
                    "--v3-pd-device", devices[0].path,
                    "--v3-current-device", devices[1].path,
                    "--v3-temperature-device", devices[2].path,
@@ -236,6 +246,10 @@ def main():
                    "--v3-device-id-file", identity_file,
                    "--v3-activation-key-file", key_file,
                    "--v3-activation-code-file", code_file]
+        if iec_probe:
+            command.extend(["--iec61850-listen", f"127.0.0.1:{iec_port}"])
+        else:
+            command.append("--no-iec61850")
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             wait_port(web_port)
@@ -410,6 +424,32 @@ def main():
             else:
                 raise AssertionError("v3 alarm thresholds were not hot reloaded")
             assert not alarms[1]["valid"] and not alarms[1]["active"]
+            if iec_probe:
+                probe = subprocess.Popen(
+                    [
+                        iec_probe,
+                        "--v3-probe",
+                        str(iec_port),
+                        "UHFPD1PDMON",
+                        "30",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1,
+                )
+                try:
+                    ready, _, _ = select.select([probe.stdout], [], [], 5)
+                    assert ready, "IEC v3 probe did not become ready"
+                    assert probe.stdout.readline().strip() == "IEC_V3_PROBE_READY"
+                    devices[1].set_current_base(30)
+                    probe_stdout, probe_stderr = probe.communicate(timeout=10)
+                    assert probe.returncode == 0, probe_stderr
+                    assert "IEC 61850 running v3 gateway probe: OK" in probe_stdout
+                finally:
+                    if probe.poll() is None:
+                        probe.kill()
+                        probe.wait(timeout=2)
             connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
             connection.request("GET", "/api/v1/packets", headers={"Cookie": cookie})
             packet_response = connection.getresponse()

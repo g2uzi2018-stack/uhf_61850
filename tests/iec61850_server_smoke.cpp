@@ -276,6 +276,131 @@ bool probe_running_model(const char* port_text, const char* prefix) {
     return point_ok && report_ok;
 }
 
+bool probe_v3_running_model(
+    const char* port_text, const char* prefix, const char* expected_text) {
+    std::uint16_t port = 0U;
+    const auto parsed_port = std::from_chars(
+        port_text, port_text + std::char_traits<char>::length(port_text), port);
+    if (parsed_port.ec != std::errc{} ||
+        parsed_port.ptr != port_text + std::char_traits<char>::length(port_text)) {
+        return false;
+    }
+    std::size_t parsed_characters = 0U;
+    float expected = 0.0F;
+    try {
+        expected = std::stof(expected_text, &parsed_characters);
+    } catch (...) {
+        return false;
+    }
+    if (parsed_characters != std::char_traits<char>::length(expected_text) ||
+        !std::isfinite(expected)) {
+        return false;
+    }
+
+    IedConnection connection = IedConnection_create();
+    if (connection == nullptr) {
+        return false;
+    }
+    IedClientError error = IED_ERROR_OK;
+    IedConnection_setConnectTimeout(connection, 2000U);
+    IedConnection_connect(connection, &error, "127.0.0.1", port);
+    bool ok = expect(error == IED_ERROR_OK, "connect to running v3 gateway MMS server");
+
+    ClientDataSet data_set = nullptr;
+    if (ok) {
+        data_set = IedConnection_readDataSetValues(
+            connection,
+            &error,
+            (std::string(prefix) + "/LLN0.DSV3Measurements").c_str(),
+            nullptr);
+        ok = expect(
+            error == IED_ERROR_OK && data_set != nullptr &&
+                ClientDataSet_getDataSetSize(data_set) == 41,
+            "running v3 gateway exposes the 41-point measurement data set") && ok;
+    }
+    if (data_set != nullptr) {
+        ClientDataSet_destroy(data_set);
+    }
+
+    const std::string rcb_reference =
+        std::string(prefix) + "/LLN0.RP.RPV3Measurements";
+    ClientReportControlBlock rcb = nullptr;
+    ReportState report_state;
+    if (ok) {
+        rcb = IedConnection_getRCBValues(
+            connection, &error, rcb_reference.c_str(), nullptr);
+        ok = expect(
+            error == IED_ERROR_OK && rcb != nullptr &&
+                !ClientReportControlBlock_isBuffered(rcb),
+            "running v3 gateway exposes the measurement URCB") && ok;
+    }
+    if (ok) {
+        IedConnection_installReportHandler(
+            connection,
+            rcb_reference.c_str(),
+            ClientReportControlBlock_getRptId(rcb),
+            report_callback,
+            &report_state);
+        ClientReportControlBlock_setTrgOps(rcb, TRG_OPT_DATA_CHANGED);
+        ClientReportControlBlock_setRptEna(rcb, true);
+        IedConnection_setRCBValues(
+            connection,
+            &error,
+            rcb,
+            RCB_ELEMENT_RPT_ENA | RCB_ELEMENT_TRG_OPS,
+            true);
+        ok = expect(error == IED_ERROR_OK, "enable running v3 gateway measurement URCB") && ok;
+    }
+
+    if (ok) {
+        std::cout << "IEC_V3_PROBE_READY\n" << std::flush;
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(8);
+        while ((!report_state.first_measurement_changed.load() ||
+                std::fabs(static_cast<double>(
+                    report_state.first_measurement_value.load()) - expected) >= 0.01) &&
+               std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        ok = expect(
+            report_state.count.load() > 0U && report_state.data_set_size.load() == 41 &&
+                report_state.first_measurement_changed.load() &&
+                std::fabs(static_cast<double>(
+                    report_state.first_measurement_value.load()) - expected) < 0.01,
+            "running v3 gateway emits the expected Ia data-change report") && ok;
+    }
+
+    if (ok) {
+        const std::string value_reference = std::string(prefix) + "/MMXU1.AnIn1.mag.f";
+        MmsValue* value = IedConnection_readObject(
+            connection, &error, value_reference.c_str(), IEC61850_FC_MX);
+        const bool value_read = error == IED_ERROR_OK;
+        const Quality quality = IedConnection_readQualityValue(
+            connection,
+            &error,
+            (std::string(prefix) + "/MMXU1.AnIn1.q").c_str(),
+            IEC61850_FC_MX);
+        ok = expect(
+            value_read && error == IED_ERROR_OK && value != nullptr &&
+                std::fabs(static_cast<double>(MmsValue_toFloat(value)) - expected) < 0.01 &&
+                quality == static_cast<Quality>(QUALITY_VALIDITY_GOOD),
+            "running v3 gateway serves the reported Ia value with good quality") && ok;
+        if (value != nullptr) {
+            MmsValue_delete(value);
+        }
+    }
+
+    if (rcb != nullptr) {
+        ClientReportControlBlock_setRptEna(rcb, false);
+        IedConnection_setRCBValues(
+            connection, &error, rcb, RCB_ELEMENT_RPT_ENA, true);
+        ok = expect(error == IED_ERROR_OK, "disable running v3 gateway measurement URCB") && ok;
+        ClientReportControlBlock_destroy(rcb);
+    }
+    IedConnection_close(connection);
+    IedConnection_destroy(connection);
+    return ok;
+}
+
 bool v3_model_is_readable() {
     uhf::v3::FreshnessLimits freshness;
     freshness.current = std::chrono::milliseconds(250);
@@ -561,6 +686,13 @@ int main(int argc, char* argv[]) {
         const bool ok = probe_running_model(argv[2], argv[3]);
         if (ok) {
             std::cout << "IEC 61850 running model probe: OK\n";
+        }
+        return ok ? 0 : 1;
+    }
+    if (argc == 5 && std::string(argv[1]) == "--v3-probe") {
+        const bool ok = probe_v3_running_model(argv[2], argv[3], argv[4]);
+        if (ok) {
+            std::cout << "IEC 61850 running v3 gateway probe: OK\n";
         }
         return ok ? 0 : 1;
     }

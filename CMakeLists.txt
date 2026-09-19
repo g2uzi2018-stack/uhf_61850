@@ -1247,13 +1247,24 @@ if(BUILD_TESTING)
                 "$<TARGET_FILE:uhf-gatewayd>"
                 "${PROJECT_SOURCE_DIR}/web"
         )
-        add_test(
-            NAME uhf_v3_gateway_e2e
-            COMMAND "${Python3_EXECUTABLE}"
-                "${PROJECT_SOURCE_DIR}/tests/v3_gateway_e2e_smoke.py"
-                "$<TARGET_FILE:uhf-gatewayd>"
-                "${PROJECT_SOURCE_DIR}/web"
-        )
+        if(UHF_ENABLE_IEC61850)
+            add_test(
+                NAME uhf_v3_gateway_e2e
+                COMMAND "${Python3_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/v3_gateway_e2e_smoke.py"
+                    "$<TARGET_FILE:uhf-gatewayd>"
+                    "${PROJECT_SOURCE_DIR}/web"
+                    "$<TARGET_FILE:uhf_iec61850_server_smoke>"
+            )
+        else()
+            add_test(
+                NAME uhf_v3_gateway_e2e
+                COMMAND "${Python3_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/v3_gateway_e2e_smoke.py"
+                    "$<TARGET_FILE:uhf-gatewayd>"
+                    "${PROJECT_SOURCE_DIR}/web"
+            )
+        endif()
         add_test(
             NAME uhf_v3_host_sim_smoke
             COMMAND "${Python3_EXECUTABLE}"
