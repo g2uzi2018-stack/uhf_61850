@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "app/build_info.hpp"
 #include "app/gateway_runtime.hpp"
+#include "activation/credential_file.hpp"
 #include "config/config_store.hpp"
 #include "logging/logger.hpp"
 #include "platform/privileged/unix_socket.hpp"
@@ -54,6 +55,12 @@ struct WebOptions {
     std::string v3_device_id;
     std::string v3_activation_key;
     std::optional<std::string> v3_activation_code;
+    bool v3_device_id_explicit{false};
+    bool v3_activation_key_explicit{false};
+    bool v3_activation_code_explicit{false};
+    std::optional<std::filesystem::path> v3_device_id_file;
+    std::optional<std::filesystem::path> v3_activation_key_file;
+    std::optional<std::filesystem::path> v3_activation_code_file;
     std::filesystem::path activation_state;
     float v3_current_multiplier{std::numeric_limits<float>::quiet_NaN()};
     float v3_current_offset{std::numeric_limits<float>::quiet_NaN()};
@@ -124,7 +131,9 @@ void print_usage() {
                  "[--simulate|--v3|--no-acquisition] [--acquisition-device PATH] "
                  "[--v3-pd-device PATH] [--v3-current-device PATH] [--v3-temperature-device PATH] "
                  "[--v3-current-serial BAUD/8N1] [--v3-temperature-serial BAUD/8N1] "
-                 "[--v3-device-id ID] [--v3-activation-key KEY] [--v3-activation-code CODE] "
+                 "[--v3-device-id ID|--v3-device-id-file PATH] "
+                 "[--v3-activation-key KEY|--v3-activation-key-file PATH] "
+                 "[--v3-activation-code CODE|--v3-activation-code-file PATH] "
                  "[--activation-state PATH] "
                  "[--v3-current-multiplier N] [--v3-current-offset N] "
                  "[--v3-temperature-multiplier N] [--v3-temperature-offset N] "
@@ -215,10 +224,19 @@ int main(int argc, char* argv[]) {
                 options.v3_temperature_serial_explicit = true;
             } else if (option == "--v3-device-id" && index + 1 < argc) {
                 options.v3_device_id = argv[++index];
+                options.v3_device_id_explicit = true;
+            } else if (option == "--v3-device-id-file" && index + 1 < argc) {
+                options.v3_device_id_file = std::filesystem::path(argv[++index]);
             } else if (option == "--v3-activation-key" && index + 1 < argc) {
                 options.v3_activation_key = argv[++index];
+                options.v3_activation_key_explicit = true;
+            } else if (option == "--v3-activation-key-file" && index + 1 < argc) {
+                options.v3_activation_key_file = std::filesystem::path(argv[++index]);
             } else if (option == "--v3-activation-code" && index + 1 < argc) {
                 options.v3_activation_code = std::string(argv[++index]);
+                options.v3_activation_code_explicit = true;
+            } else if (option == "--v3-activation-code-file" && index + 1 < argc) {
+                options.v3_activation_code_file = std::filesystem::path(argv[++index]);
             } else if (option == "--activation-state" && index + 1 < argc) {
                 options.activation_state = argv[++index];
             } else if (option == "--v3-current-multiplier" && index + 1 < argc) {
@@ -280,6 +298,41 @@ int main(int argc, char* argv[]) {
                 print_usage();
                 return 2;
             }
+        }
+
+        const auto load_credential = [](const std::optional<std::filesystem::path>& path,
+                                         std::string_view option_name,
+                                         std::string& destination) {
+            if (!path) return true;
+            std::string error;
+            const std::optional<std::string> value =
+                uhf::activation::read_credential_file(*path, error);
+            if (!value) {
+                std::cerr << "invalid " << option_name << ": " << error << '\n';
+                return false;
+            }
+            destination = *value;
+            return true;
+        };
+        if ((options.v3_device_id_explicit && options.v3_device_id_file) ||
+            (options.v3_activation_key_explicit && options.v3_activation_key_file) ||
+            (options.v3_activation_code_explicit && options.v3_activation_code_file)) {
+            std::cerr << "v3 provisioning values must use either inline or file input, not both\n";
+            return 2;
+        }
+        std::string activation_code;
+        if (!load_credential(
+                options.v3_device_id_file, "--v3-device-id-file", options.v3_device_id) ||
+            !load_credential(
+                options.v3_activation_key_file, "--v3-activation-key-file",
+                options.v3_activation_key) ||
+            !load_credential(
+                options.v3_activation_code_file, "--v3-activation-code-file",
+                activation_code)) {
+            return 2;
+        }
+        if (options.v3_activation_code_file) {
+            options.v3_activation_code = std::move(activation_code);
         }
 
         if (options.v3_current_multiplier_explicit !=

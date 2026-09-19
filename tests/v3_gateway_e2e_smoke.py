@@ -169,6 +169,15 @@ def main():
     key = "host-e2e-key"
     code = base64.b32encode(hmac.new(key.encode(), identity.encode(), hashlib.sha256).digest()[:12]).decode().rstrip("=")
     with tempfile.TemporaryDirectory(prefix="uhf-v3-e2e-") as root:
+        identity_file = os.path.join(root, "device-id")
+        key_file = os.path.join(root, "manufacturer-key")
+        code_file = os.path.join(root, "activation-code")
+        for path, value in (
+            (identity_file, identity), (key_file, key), (code_file, code)
+        ):
+            with open(path, "w", encoding="utf-8") as output:
+                output.write(value + "\n")
+            os.chmod(path, 0o600)
         unconfigured_state = os.path.join(root, "unconfigured")
         unconfigured_web_port = distinct_free_port(web_port, modbus_port)
         unconfigured_modbus_port = distinct_free_port(
@@ -184,8 +193,9 @@ def main():
             "--v3-pd-device", devices[0].path,
             "--v3-current-device", "/definitely/missing-current-device",
             "--v3-temperature-device", "/definitely/missing-temperature-device",
-            "--v3-device-id", identity, "--v3-activation-key", key,
-            "--v3-activation-code", code,
+            "--v3-device-id-file", identity_file,
+            "--v3-activation-key-file", key_file,
+            "--v3-activation-code-file", code_file,
         ]
         unconfigured_process = subprocess.Popen(
             unconfigured_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -223,8 +233,9 @@ def main():
                    "--v3-temperature-device", devices[2].path,
                    "--v3-current-serial", "115200/8N1",
                    "--v3-temperature-serial", "115200/8N1",
-                   "--v3-device-id", identity, "--v3-activation-key", key,
-                   "--v3-activation-code", code]
+                   "--v3-device-id-file", identity_file,
+                   "--v3-activation-key-file", key_file,
+                   "--v3-activation-code-file", code_file]
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             wait_port(web_port)

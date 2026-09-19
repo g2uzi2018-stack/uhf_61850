@@ -139,6 +139,7 @@ configure_file(
 add_executable(uhf-gatewayd
     src/main.cpp
     src/activation/activation_manager.cpp
+    src/activation/credential_file.cpp
     src/config/config_store.cpp
     src/app/gateway_runtime.cpp
     src/ftp/server.cpp
@@ -899,6 +900,7 @@ endif()
 add_executable(uhf_activation_smoke ${UHF_TEST_TARGET_OPTIONS}
     tests/activation_smoke.cpp
     src/activation/activation_manager.cpp
+    src/activation/credential_file.cpp
 )
 target_compile_features(uhf_activation_smoke PRIVATE cxx_std_17)
 target_include_directories(uhf_activation_smoke PRIVATE "${PROJECT_SOURCE_DIR}/src")
