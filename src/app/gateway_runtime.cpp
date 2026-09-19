@@ -160,6 +160,11 @@ GatewayRuntime::GatewayRuntime(GatewayRuntimeOptions options, logging::Logger& l
       logger_(logger),
     iec_current_bind_(options_.iec61850_bind),
       iec_current_port_(options_.iec61850_port) {
+#if !UHF_ENABLE_IEC61850
+    if (options_.start_iec61850) {
+        throw std::runtime_error("IEC 61850 support is disabled in this build");
+    }
+#endif
     if (options_.v3_enabled) {
         activation_manager_ = std::make_unique<activation::Manager>(
             options_.activation_options);

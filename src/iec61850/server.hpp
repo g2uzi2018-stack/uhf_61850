@@ -3,9 +3,13 @@
 
 #include "acquisition/acquisition.hpp"
 #include "iec61850/endpoint.hpp"
-#include "iec61850/model.hpp"
+#include "iec61850/scl_model.hpp"
 #include "iec61850/stats.hpp"
 #include "v3/acquisition.hpp"
+
+#if UHF_ENABLE_IEC61850
+#include "iec61850/model.hpp"
+#endif
 
 #include <atomic>
 #include <cstdint>
@@ -44,6 +48,7 @@ public:
     SclModelDefinition model_definition() const;
 
 private:
+#if UHF_ENABLE_IEC61850
     void start_locked();
     void stop_locked() noexcept;
     void update_loop();
@@ -53,11 +58,14 @@ private:
     void publish_v3_invalid_values();
     void update_communication_alarm(bool active, std::uint64_t timestamp_ms);
     void update_timestamp(DataAttribute* attribute, std::uint64_t timestamp_ms);
+#endif
 
     acquisition::SnapshotStore& snapshot_store_;
     ServerOptions options_;
+#if UHF_ENABLE_IEC61850
     std::unique_ptr<Model> model_;
     IedServer server_{nullptr};
+#endif
     std::atomic<bool> stop_requested_{false};
     std::atomic<bool> running_{false};
     std::thread update_worker_;

@@ -27,12 +27,20 @@ jobs:
         run: cmake --build --preset host-debug --parallel 2
       - name: Test
         run: ctest --test-dir build/host --output-on-failure --parallel 2
+      - name: Configure without IEC 61850
+        run: cmake -S . -B build/host-noiec -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug -DUHF_ENABLE_IEC61850=OFF
+      - name: Build gateway without IEC 61850
+        run: cmake --build build/host-noiec --parallel 2 --target uhf-gatewayd
+      - name: Test gateway without IEC 61850
+        run: ctest --test-dir build/host-noiec --output-on-failure -R '^(uhf_gatewayd_smoke|uhf_v3_gateway_e2e|uhf_iec61850_disabled_smoke)$'
       - name: Upload test logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: v3-product-regression-logs
-          path: build/host/Testing/Temporary/
+          path: |
+            build/host/Testing/Temporary/
+            build/host-noiec/Testing/Temporary/
           if-no-files-found: ignore
           retention-days: 7
 

@@ -129,6 +129,15 @@ if(UHF_ENABLE_IEC61850)
     add_subdirectory(third_party/libiec61850 EXCLUDE_FROM_ALL)
 endif()
 
+# Keep the capability macro on product/test targets in this directory.  Define
+# it after adding the bundled C stack so changing this product option does not
+# rebuild or leak product-only macros into third-party sources.
+if(UHF_ENABLE_IEC61850)
+    add_compile_definitions(UHF_ENABLE_IEC61850=1)
+else()
+    add_compile_definitions(UHF_ENABLE_IEC61850=0)
+endif()
+
 set(UHF_GENERATED_INCLUDE_DIR "${PROJECT_BINARY_DIR}/generated")
 configure_file(
     "${PROJECT_SOURCE_DIR}/src/app/build_info.hpp.in"
@@ -149,9 +158,7 @@ add_executable(uhf-gatewayd
     src/domain/snapshot.cpp
     src/modbus/tcp_server.cpp
     src/modbus/rtu_server.cpp
-    src/iec61850/model.cpp
     src/iec61850/scl_model.cpp
-    src/iec61850/server.cpp
     src/storage/frame_store.cpp
     src/storage/event_detector.cpp
     src/storage/event_store.cpp
@@ -182,6 +189,10 @@ find_package(Threads REQUIRED)
 target_link_libraries(uhf-gatewayd PRIVATE OpenSSL::Crypto OpenSSL::SSL Threads::Threads)
 
 if(UHF_ENABLE_IEC61850)
+    target_sources(uhf-gatewayd PRIVATE
+        src/iec61850/model.cpp
+        src/iec61850/server.cpp
+    )
     target_link_libraries(uhf-gatewayd PRIVATE iec61850)
     target_include_directories(uhf-gatewayd PRIVATE
         "${PROJECT_SOURCE_DIR}/third_party/libiec61850/hal/inc"
@@ -194,6 +205,8 @@ if(UHF_ENABLE_IEC61850)
         "${PROJECT_SOURCE_DIR}/third_party/libiec61850/src/logging"
         "${PROJECT_BINARY_DIR}/third_party/libiec61850/config"
     )
+else()
+    target_sources(uhf-gatewayd PRIVATE src/iec61850/server_disabled.cpp)
 endif()
 
 target_compile_features(uhf-gatewayd PRIVATE cxx_std_17)
@@ -1261,6 +1274,13 @@ if(BUILD_TESTING)
                 NAME uhf_v3_gateway_e2e
                 COMMAND "${Python3_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/v3_gateway_e2e_smoke.py"
+                    "$<TARGET_FILE:uhf-gatewayd>"
+                    "${PROJECT_SOURCE_DIR}/web"
+            )
+            add_test(
+                NAME uhf_iec61850_disabled_smoke
+                COMMAND "${Python3_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/iec61850_disabled_smoke.py"
                     "$<TARGET_FILE:uhf-gatewayd>"
                     "${PROJECT_SOURCE_DIR}/web"
             )
