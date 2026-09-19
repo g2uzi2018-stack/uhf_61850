@@ -42,9 +42,11 @@ def main() -> int:
             prefix / "web/login.js",
             prefix / "etc/uhf-gateway/defaults.json",
             prefix / "etc/uhf-gateway/network.json",
+            prefix / "etc/uhf-gateway/v3-runtime.env.example",
             prefix / "config/schema.json",
             prefix / "config/defaults.json",
             prefix / "config/network.json",
+            prefix / "config/v3-runtime.env.example",
             prefix / "config/UHFPD1.icd",
             prefix / "config/manifest.json",
             prefix / "libexec/uhf-gateway/uhf-gateway-hook",
@@ -66,6 +68,8 @@ def main() -> int:
         )
         if defaults.get("modbus_tcp_bind") != "192.168.3.230":
             fail("product default does not bind Modbus/TCP to eth0")
+        if defaults.get("overview_title") != "综合监测管理机":
+            fail("installed defaults still use the legacy single-purpose overview title")
         if (prefix / "web/index.html").read_text(encoding="utf-8").find("https://") >= 0:
             fail("web tree unexpectedly references a remote asset")
         if (prefix / "libexec/uhf-gateway/uhf-gateway-hook").stat().st_mode & 0o111 == 0:

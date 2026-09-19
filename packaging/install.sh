@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-    printf 'usage: %s --package DIR [--root DIR] [--version VERSION] [--no-systemd] [--skip-arch] [--skip-hardware]\n' "$0" >&2
+    printf 'usage: %s --package DIR [--root DIR] [--version VERSION] [--no-systemd] [--skip-arch] [--skip-hardware] [--v3-runtime-env-file FILE --v3-device-id-file FILE --v3-manufacturer-key-file FILE --v3-activation-code-file FILE]\n' "$0" >&2
 }
 
 package_dir=
@@ -11,6 +11,10 @@ version=
 no_systemd=false
 skip_arch=false
 skip_hardware=false
+v3_runtime_env_file=
+v3_device_id_file=
+v3_manufacturer_key_file=
+v3_activation_code_file=
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --package)
@@ -39,6 +43,26 @@ while [[ $# -gt 0 ]]; do
         --skip-hardware)
             skip_hardware=true
             shift
+            ;;
+        --v3-runtime-env-file)
+            [[ $# -ge 2 ]] || { usage; exit 2; }
+            v3_runtime_env_file=$2
+            shift 2
+            ;;
+        --v3-device-id-file)
+            [[ $# -ge 2 ]] || { usage; exit 2; }
+            v3_device_id_file=$2
+            shift 2
+            ;;
+        --v3-manufacturer-key-file)
+            [[ $# -ge 2 ]] || { usage; exit 2; }
+            v3_manufacturer_key_file=$2
+            shift 2
+            ;;
+        --v3-activation-code-file)
+            [[ $# -ge 2 ]] || { usage; exit 2; }
+            v3_activation_code_file=$2
+            shift 2
             ;;
         *)
             usage
@@ -87,6 +111,79 @@ current_link="${install_root}/current"
 previous_link="${install_root}/previous"
 state_dir="${path_prefix}/var/lib/uhf-gateway"
 state_file="${state_dir}/release-state.json"
+v3_runtime_env_target="${path_prefix}/etc/uhf-gateway/v3-runtime.env"
+v3_device_id_target="${path_prefix}/etc/uhf-gateway/v3-device-id"
+v3_manufacturer_key_target="${path_prefix}/etc/uhf-gateway/v3-manufacturer-key"
+v3_activation_code_target="${path_prefix}/etc/uhf-gateway/v3-activation-code"
+
+validate_provisioning_file() {
+    local label=$1
+    local path=$2
+    local kind=$3
+    local bytes=
+    if [[ ! -f "$path" || -L "$path" ]]; then
+        printf '%s must be a regular non-link file: %s\n' "$label" "$path" >&2
+        exit 2
+    fi
+    bytes=$(wc -c <"$path")
+    if [[ ! "$bytes" =~ ^[0-9]+$ || "$bytes" -lt 1 || "$bytes" -gt 4096 ]]; then
+        printf '%s must contain 1..4096 bytes: %s\n' "$label" "$path" >&2
+        exit 2
+    fi
+    if [[ "$kind" == runtime ]]; then
+        local variable=
+        local matches=
+        for variable in UHF_V3_PD_DEVICE UHF_V3_CURRENT_DEVICE UHF_V3_TEMPERATURE_DEVICE; do
+            matches=$(grep -Ec "^${variable}=/[^[:space:]]+$" "$path" || true)
+            if [[ "$matches" != 1 ]]; then
+                printf '%s must define %s exactly once as an absolute path\n' "$label" "$variable" >&2
+                exit 2
+            fi
+        done
+        if grep -Evq '^(#.*|[[:space:]]*|UHF_V3_(PD|CURRENT|TEMPERATURE)_DEVICE=/[A-Za-z0-9._/:@+-]+)$' "$path"; then
+            printf '%s contains a placeholder, unsupported variable, or unsafe path character\n' "$label" >&2
+            exit 2
+        fi
+        if grep -q 'REPLACE_' "$path"; then
+            printf '%s still contains an unconfigured REPLACE_ placeholder\n' "$label" >&2
+            exit 2
+        fi
+    else
+        local lines=
+        lines=$(awk 'END { print NR }' "$path")
+        if [[ "$bytes" -gt 258 || "$lines" != 1 ]] ||
+           ! grep -Eq '[^[:space:]]' "$path"; then
+            printf '%s must contain one value of at most 256 bytes plus a line ending\n' "$label" >&2
+            exit 2
+        fi
+    fi
+}
+
+require_or_validate_provisioning() {
+    local label=$1
+    local source=$2
+    local target=$3
+    local kind=$4
+    if [[ (-e "$target" || -L "$target") && (! -f "$target" || -L "$target") ]]; then
+        printf '%s target must be a regular non-link file: %s\n' "$label" "$target" >&2
+        exit 2
+    fi
+    if [[ -n "$source" ]]; then
+        validate_provisioning_file "$label" "$source" "$kind"
+    else
+        if [[ ! -e "$target" ]]; then
+            printf '%s is required before enabling the v3 service; use the matching installer option\n' "$label" >&2
+            exit 2
+        fi
+        validate_provisioning_file "$label" "$target" "$kind"
+    fi
+}
+
+require_or_validate_provisioning "v3 runtime environment" "$v3_runtime_env_file" "$v3_runtime_env_target" runtime
+require_or_validate_provisioning "v3 device identity" "$v3_device_id_file" "$v3_device_id_target" credential
+require_or_validate_provisioning "v3 manufacturer key" "$v3_manufacturer_key_file" "$v3_manufacturer_key_target" credential
+require_or_validate_provisioning "v3 activation code" "$v3_activation_code_file" "$v3_activation_code_target" credential
+
 old_current_target=
 if [[ -L "$current_link" ]]; then
     old_current_target=$(readlink -f "$current_link")
@@ -161,6 +258,7 @@ mv -T "$temporary_release" "$release_dir"
 
 mkdir -p "${path_prefix}/etc/uhf-gateway" \
     "${path_prefix}/etc/systemd/system" \
+    "${path_prefix}/etc/systemd/system/uhf-gateway.service.d" \
     "${path_prefix}/etc/systemd/timesyncd.conf.d" \
     "${path_prefix}/etc/rsyslog.d" \
     "${path_prefix}/etc/logrotate.d" \
@@ -193,6 +291,52 @@ if [[ "$no_systemd" == false ]]; then
         chmod 0640 "$log_file"
     fi
 fi
+
+install_provisioning_file() {
+    local source=$1
+    local target=$2
+    if [[ (-e "$target" || -L "$target") && (! -f "$target" || -L "$target") ]]; then
+        printf 'v3 provisioning target must be a regular non-link file: %s\n' "$target" >&2
+        exit 1
+    fi
+    if [[ -n "$source" && (! -e "$target" || ! "$source" -ef "$target") ]]; then
+        install -m 0600 "$source" "$target"
+    fi
+    if [[ -e "$target" ]]; then
+        if [[ "$no_systemd" == false ]]; then
+            chown root:uhfgateway "$target"
+            chmod 0640 "$target"
+        else
+            chmod 0600 "$target"
+        fi
+    fi
+}
+
+install_provisioning_file "$v3_runtime_env_file" "$v3_runtime_env_target"
+install_provisioning_file "$v3_device_id_file" "$v3_device_id_target"
+install_provisioning_file "$v3_manufacturer_key_file" "$v3_manufacturer_key_target"
+install_provisioning_file "$v3_activation_code_file" "$v3_activation_code_target"
+
+write_v3_device_policy() {
+    if [[ ! -f "$v3_runtime_env_target" ]]; then
+        return
+    fi
+    local policy="${path_prefix}/etc/systemd/system/uhf-gateway.service.d/v3-devices.conf"
+    local temporary="${policy}.tmp.$$"
+    local variable=
+    local device=
+    printf '[Service]\n' >"$temporary"
+    for variable in UHF_V3_PD_DEVICE UHF_V3_CURRENT_DEVICE UHF_V3_TEMPERATURE_DEVICE; do
+        device=$(grep -E "^${variable}=" "$v3_runtime_env_target")
+        device=${device#*=}
+        printf 'DeviceAllow=%s rw\n' "$device" >>"$temporary"
+    done
+    chmod 0644 "$temporary"
+    mv -Tf "$temporary" "$policy"
+}
+
+write_v3_device_policy
+
 "$release_dir/bin/uhf-auth-init" --state-dir "$state_dir"
 "$release_dir/bin/uhf-tls-init" --state-dir "$state_dir"
 if [[ "$no_systemd" == false ]]; then

@@ -51,6 +51,7 @@ def main() -> int:
             release / "bin/uhf-tls-init",
             release / "web/index.html",
             release / "config/defaults.json",
+            release / "config/v3-runtime.env.example",
             release / "config/UHFPD1.icd",
             release / "share/uhf-gateway/systemd/uhf-gateway.service",
             release / "share/uhf-gateway/rsyslog/uhf-gateway.conf",
@@ -72,6 +73,9 @@ def main() -> int:
             fail("release metadata is invalid or contains a password")
         if not archive.is_file():
             fail("release archive is missing")
+        example = (release / "config/v3-runtime.env.example").read_text(encoding="utf-8")
+        if "REPLACE_PD_SERIAL" not in example or "manufacturer" in example.lower():
+            fail("v3 runtime example is missing placeholders or contains secret material")
         with tarfile.open(archive, "r:gz") as package:
             names = set(package.getnames())
         if "uhf-gateway-smoke-1/bin/uhf-gatewayd" not in names:

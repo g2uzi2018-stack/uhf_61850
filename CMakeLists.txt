@@ -1471,12 +1471,14 @@ install(FILES
     config/defaults.json
     config/schema.json
     config/network.json
+    config/v3-runtime.env.example
     DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/uhf-gateway")
 install(DIRECTORY web/ DESTINATION web)
 install(FILES
     config/defaults.json
     config/schema.json
     config/network.json
+    config/v3-runtime.env.example
     config/UHFPD1.icd
     third_party/manifest.json
     DESTINATION config

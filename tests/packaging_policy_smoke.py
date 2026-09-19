@@ -34,6 +34,8 @@ def main() -> int:
     require(logrotate, "missingok", "logrotate missingok")
     require(logrotate, "systemctl kill -s HUP rsyslog.service", "log reopen")
     require(installer, "systemctl enable uhf-gateway.service", "installer service enable")
+    require(installer, "uhf-gateway.service.d/v3-devices.conf", "v3 device policy drop-in")
+    require(installer, "DeviceAllow=%s rw", "v3 device allowlist")
     require(installer, "chown \"root:${syslog_group}\"", "rsyslog directory ownership")
     require(installer, "chmod 0750 \"${path_prefix}/var/log/uhf-gateway\"", "rsyslog directory mode")
     require(installer, "install -o syslog -g \"$syslog_group\" -m 0640 /dev/null", "active log provisioning")

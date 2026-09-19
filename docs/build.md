@@ -56,7 +56,11 @@ format-check 是可选的 CMake 目标；安装 clang-format 后执行：
 0600），开发服务停止后可删除整个 `build/` 目录重新初始化。正式发布安装由
 `uhf-auth-init` 预置认证状态，并将一次性密码保留为 root-only 文件。
 
-该开发服务使用 PD1000 PTY 模拟器，不读取本机 485，也不会修改产品 `/etc` 配置；
+该交互式开发服务仍用于旧 PD1000 兼容页面。正式 v3 主程序的三 PTY 自动模拟入口为：
+
+    ctest --test-dir build/host --output-on-failure -R '^uhf_v3_gateway_e2e$'
+
+该测试实际启动 `uhf-gatewayd --v3`，通过受保护临时文件提供测试身份/密钥/激活码，并贯通三路 PTY、采集调度、HTTP/WebSocket、配置热加载和 Modbus/TCP；它不会读取本机 485，也不会修改产品 `/etc` 配置。`tools/run-web-local.sh` 使用 PD1000 PTY 模拟器；
 `--http-recovery` 是仅供可信本地开发网络使用的明文恢复模式。产品服务默认启用
 HTTPS，启动时生成自签名证书，证书替换、业务配置、网络事务、Modbus、IEC 61850
 和持久化均可在 host 测试中验证；真实串口、电气收发、双网口链路和板级厂商网络
@@ -72,7 +76,7 @@ Python 静态服务器。
 
     bash packaging/build-release.sh --build-dir build/host --version VERSION --output dist
 
-发布包包含二进制、离线 Web 资源、默认配置/schema、IEC 模型、许可证清单、systemd、
+发布包包含二进制、离线 Web 资源、默认配置/schema、v3 tty 配置模板、IEC 模型、许可证清单、systemd、
 rsyslog、logrotate、DHCP hook、认证初始化工具、预检脚本和原子安装脚本。安装到
 真实目标板前必须通过目标架构、端口、串口、磁盘、NTP 及受保护旧进程检查；当前远程
 机器关闭时只进行上述本地构建和模拟器验证。
