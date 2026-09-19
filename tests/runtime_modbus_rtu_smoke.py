@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tty
 
 
 def fail(message: str) -> None:
@@ -74,6 +75,8 @@ def main() -> int:
     web_dir = Path(sys.argv[2])
     web_port = free_port()
     master_fd, slave_fd = pty.openpty()
+    tty.setraw(master_fd)
+    tty.setraw(slave_fd)
     rtu_device = os.ttyname(slave_fd)
     with tempfile.TemporaryDirectory(prefix="uhf-web-rtu-") as state_text:
         state_dir = Path(state_text)

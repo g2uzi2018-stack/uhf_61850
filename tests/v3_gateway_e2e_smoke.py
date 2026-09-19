@@ -359,6 +359,55 @@ def main():
             assert configuration["v3_current_freshness_ms"] == 5000
             assert configuration["v3_temperature_freshness_ms"] == 5000
             rtu_unit_id = configuration["rtu_unit_id"]
+            history_entries = []
+            history_deadline = time.monotonic() + 3
+            while time.monotonic() < history_deadline:
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", web_port, timeout=2
+                )
+                connection.request(
+                    "GET", "/api/v1/frames", headers={"Cookie": cookie}
+                )
+                frames_response = connection.getresponse()
+                frames_payload = json.loads(frames_response.read())
+                connection.close()
+                assert frames_response.status == 200
+                assert frames_payload["schema_version"] == 3
+                history_entries = frames_payload["entries"]
+                if history_entries:
+                    break
+                time.sleep(0.05)
+            assert history_entries, "formal v3 history index remained empty"
+            with os.scandir(os.path.join(root, "data", "v3")) as persisted_entries:
+                assert any(
+                    entry.is_file() and entry.name.endswith(".bin")
+                    for entry in persisted_entries
+                ), "formal v3 history directory has no binary record"
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", web_port, timeout=2
+            )
+            connection.request(
+                "GET", "/api/v1/frames/export.csv", headers={"Cookie": cookie}
+            )
+            frame_export_response = connection.getresponse()
+            frame_export = frame_export_response.read().decode("utf-8")
+            frame_export_type = frame_export_response.getheader("Content-Type", "")
+            frame_export_disposition = frame_export_response.getheader(
+                "Content-Disposition", ""
+            )
+            connection.close()
+            assert frame_export_response.status == 200
+            assert frame_export_type.startswith("text/csv")
+            assert 'filename="latest-frame.csv"' in frame_export_disposition, repr(
+                frame_export_disposition
+            )
+            history_rows = [row.split(",") for row in frame_export.strip().splitlines()]
+            assert history_rows[0] == [
+                "generation", "timestamp_ms", "name", "valid", "value", "quality"
+            ]
+            assert len(history_rows) == 36
+            initial_ia = next(row for row in history_rows[1:] if row[2] == "Ia")
+            assert initial_ia[3] == "0" and initial_ia[4] == ""
             connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
             connection.request("GET", "/api/v1/events", headers={"Cookie": cookie})
             events_response = connection.getresponse()

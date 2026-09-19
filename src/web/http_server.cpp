@@ -2628,7 +2628,7 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
         const std::string headers =
             "Content-Disposition: attachment; filename=\"" +
             std::string(event_export ? "latest-event.csv" : "latest-frame.csv") +
-            "\r\nCache-Control: no-store\r\n";
+            "\"\r\nCache-Control: no-store\r\n";
         send_response(client_fd, tls, 200, "text/csv; charset=utf-8", *body, headers);
         return false;
     }
