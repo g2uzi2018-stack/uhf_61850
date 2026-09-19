@@ -138,6 +138,14 @@ def distinct_free_port(*excluded):
             return port
 
 
+def assert_port_closed(port):
+    with socket.socket() as sock:
+        sock.settimeout(0.2)
+        assert sock.connect_ex(("127.0.0.1", port)) != 0, (
+            f"activation-gated service unexpectedly listened on port {port}"
+        )
+
+
 def receive_exact(file_descriptor, size, timeout=2):
     payload = bytearray()
     deadline = time.monotonic() + timeout
@@ -219,6 +227,64 @@ def main():
             with open(path, "w", encoding="utf-8") as output:
                 output.write(value + "\n")
             os.chmod(path, 0o600)
+        invalid_code_file = os.path.join(root, "invalid-activation-code")
+        invalid_code = ("A" if code[0] != "A" else "B") + code[1:]
+        with open(invalid_code_file, "w", encoding="utf-8") as output:
+            output.write(invalid_code + "\n")
+        os.chmod(invalid_code_file, 0o600)
+        gated_state = os.path.join(root, "activation-gated")
+        gated_web_port = distinct_free_port(web_port, modbus_port)
+        gated_modbus_port = distinct_free_port(
+            web_port, modbus_port, gated_web_port
+        )
+        gated_iec_port = distinct_free_port(
+            web_port, modbus_port, gated_web_port, gated_modbus_port
+        )
+        gated_rtu_master, gated_rtu_slave = pty.openpty()
+        tty.setraw(gated_rtu_master)
+        tty.setraw(gated_rtu_slave)
+        gated_rtu_device = os.ttyname(gated_rtu_slave)
+        gated_request_counts = [len(device.requests()) for device in devices]
+        gated_command = [
+            binary, "--web", "--http-recovery", "--v3",
+            "--web-root", web_root, "--state-dir", gated_state,
+            "--data-dir", os.path.join(gated_state, "data"),
+            "--listen", f"127.0.0.1:{gated_web_port}",
+            "--modbus-tcp-listen", f"127.0.0.1:{gated_modbus_port}",
+            "--modbus-rtu-device", gated_rtu_device,
+            "--v3-pd-device", devices[0].path,
+            "--v3-current-device", devices[1].path,
+            "--v3-temperature-device", devices[2].path,
+            "--v3-current-serial", "115200/8N1",
+            "--v3-temperature-serial", "115200/8N1",
+            "--v3-device-id-file", identity_file,
+            "--v3-activation-key-file", key_file,
+            "--v3-activation-code-file", invalid_code_file,
+        ]
+        if iec_probe:
+            gated_command.extend(
+                ["--iec61850-listen", f"127.0.0.1:{gated_iec_port}"]
+            )
+        else:
+            gated_command.append("--no-iec61850")
+        gated_result = subprocess.run(
+            gated_command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=3,
+            check=False,
+        )
+        assert gated_result.returncode == 1
+        assert b"v3 activation is required" in gated_result.stderr
+        assert [len(device.requests()) for device in devices] == gated_request_counts
+        assert not os.path.exists(os.path.join(gated_state, "activation.state"))
+        assert_port_closed(gated_web_port)
+        assert_port_closed(gated_modbus_port)
+        if iec_probe:
+            assert_port_closed(gated_iec_port)
+        os.write(gated_rtu_master, frame(bytes((1, 3, 0, 1, 0, 2))))
+        assert not select.select([gated_rtu_master], [], [], 0.1)[0]
+
         unconfigured_state = os.path.join(root, "unconfigured")
         unconfigured_web_port = distinct_free_port(web_port, modbus_port)
         unconfigured_modbus_port = distinct_free_port(
@@ -260,6 +326,50 @@ def main():
             except subprocess.TimeoutExpired:
                 unconfigured_process.kill()
                 unconfigured_process.wait(timeout=2)
+
+        mismatch_identity_file = os.path.join(root, "mismatched-device-id")
+        with open(mismatch_identity_file, "w", encoding="utf-8") as output:
+            output.write("different-host-e2e-board\n")
+        os.chmod(mismatch_identity_file, 0o600)
+        mismatch_request_counts = [len(device.requests()) for device in devices]
+        mismatch_command = [
+            binary, "--web", "--http-recovery", "--v3",
+            "--web-root", web_root, "--state-dir", unconfigured_state,
+            "--data-dir", os.path.join(unconfigured_state, "data"),
+            "--listen", f"127.0.0.1:{gated_web_port}",
+            "--modbus-tcp-listen", f"127.0.0.1:{gated_modbus_port}",
+            "--modbus-rtu-device", gated_rtu_device,
+            "--v3-pd-device", devices[0].path,
+            "--v3-current-device", devices[1].path,
+            "--v3-temperature-device", devices[2].path,
+            "--v3-current-serial", "115200/8N1",
+            "--v3-temperature-serial", "115200/8N1",
+            "--v3-device-id-file", mismatch_identity_file,
+            "--v3-activation-key-file", key_file,
+        ]
+        if iec_probe:
+            mismatch_command.extend(
+                ["--iec61850-listen", f"127.0.0.1:{gated_iec_port}"]
+            )
+        else:
+            mismatch_command.append("--no-iec61850")
+        mismatch_result = subprocess.run(
+            mismatch_command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=3,
+            check=False,
+        )
+        assert mismatch_result.returncode == 1
+        assert b"v3 activation is required" in mismatch_result.stderr
+        assert [len(device.requests()) for device in devices] == mismatch_request_counts
+        assert_port_closed(gated_web_port)
+        assert_port_closed(gated_modbus_port)
+        if iec_probe:
+            assert_port_closed(gated_iec_port)
+        assert not select.select([gated_rtu_master], [], [], 0.1)[0]
+        os.close(gated_rtu_master)
+        os.close(gated_rtu_slave)
 
         time.sleep(0.1)
         pd_request_offset = len(devices[0].requests())
