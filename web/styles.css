@@ -309,10 +309,14 @@ noscript { position: fixed; z-index: 30; inset: 0; padding: 35vh 20px; backgroun
 .login-warning { display: flex; margin-top: 22px; padding: 12px 13px; border: 1px solid rgb(200 121 39 / 25%); border-radius: 8px; background: rgb(200 121 39 / 8%); flex-direction: column; gap: 2px; }
 .login-warning strong { color: #a56225; font-size: 11px; }
 .login-warning span { color: #7b6b58; font-size: 10px; }
-#login-form { display: flex; margin-top: 22px; flex-direction: column; gap: 15px; }
-#login-form label { display: flex; flex-direction: column; gap: 6px; color: #5e6e85; font-size: 11px; }
-#login-form input { width: 100%; padding: 11px 12px; border: 1px solid #cbd8e9; border-radius: 7px; outline: none; background: #f8fafd; color: var(--text); font-size: 13px; }
-#login-form input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb(79 140 255 / 10%); }
+#login-form, #activation-form { display: flex; margin-top: 22px; flex-direction: column; gap: 15px; }
+#login-form label, #activation-form label { display: flex; flex-direction: column; gap: 6px; color: #5e6e85; font-size: 11px; }
+#login-form input, #activation-form input { width: 100%; padding: 11px 12px; border: 1px solid #cbd8e9; border-radius: 7px; outline: none; background: #f8fafd; color: var(--text); font-size: 13px; }
+#login-form input:focus, #activation-form input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb(79 140 255 / 10%); }
+.activation-identity { display: flex; margin-top: 22px; padding: 12px 13px; border: 1px solid var(--line); border-radius: 8px; background: #f8fafd; flex-direction: column; gap: 5px; }
+.activation-identity strong { color: #5e6e85; font-size: 10px; }
+.activation-identity code { overflow-wrap: anywhere; color: var(--text); font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; }
+.form-success { min-height: 1em; margin: -4px 0; color: var(--green); font-size: 11px; }
 .login-button { width: 100%; margin-top: 3px; padding: 11px 15px; border-radius: 7px; font-size: 12px; }
 .login-footnote { margin-top: 22px; color: var(--muted); font-size: 10px; line-height: 1.7; }
 

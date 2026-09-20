@@ -67,6 +67,8 @@ required_files=(
     "bin/uhf-tls-init"
     "web/index.html"
     "web/login.html"
+    "web/activation.html"
+    "web/activation.js"
     "config/defaults.json"
     "config/schema.json"
     "config/network.json"

@@ -776,6 +776,33 @@ void send_redirect(int client_fd, SSL* tls, std::string_view location) {
     send_response(client_fd, tls, 302, "text/plain; charset=utf-8", "redirecting\n", headers);
 }
 
+bool send_static_file(
+    int client_fd,
+    SSL* tls,
+    const std::filesystem::path& document_root,
+    std::string_view request_path,
+    std::string_view extra_headers = {}) {
+    std::filesystem::path file;
+    if (!resolve_file(document_root, request_path, file)) {
+        send_response(client_fd, tls, 404, "text/plain; charset=utf-8", "not found\n");
+        return false;
+    }
+
+    std::ifstream input(file, std::ios::binary);
+    if (!input) {
+        send_error(client_fd, tls, 500, "internal server error");
+        return false;
+    }
+    std::ostringstream contents;
+    contents << input.rdbuf();
+    if (input.bad()) {
+        send_error(client_fd, tls, 500, "internal server error");
+        return false;
+    }
+    send_response(client_fd, tls, 200, content_type(file), contents.str(), extra_headers);
+    return true;
+}
+
 void append_utf8(std::string& value, unsigned int code_point) {
     if (code_point <= 0x7FU) {
         value.push_back(static_cast<char>(code_point));
@@ -1137,7 +1164,8 @@ HttpServer::HttpServer(
     Iec61850ModelProvider iec61850_model_provider,
     Iec61850ReloadHandler iec61850_reload_handler,
     const v3::SnapshotStore* v3_snapshot_store,
-    const v3::PacketTraceBuffer* v3_packet_trace)
+    const v3::PacketTraceBuffer* v3_packet_trace,
+    std::optional<ActivationWebOptions> activation)
     : document_root_(std::move(document_root)),
       bind_address_(std::move(bind_address)),
       port_(port),
@@ -1146,6 +1174,7 @@ HttpServer::HttpServer(
       snapshot_store_(snapshot_store),
       v3_snapshot_store_(v3_snapshot_store),
       v3_packet_trace_(v3_packet_trace),
+      activation_(std::move(activation)),
       health_input_provider_(std::move(health_input_provider)),
       iec61850_stats_provider_(std::move(iec61850_stats_provider)),
       iec61850_endpoint_provider_(std::move(iec61850_endpoint_provider)),
@@ -1157,6 +1186,9 @@ HttpServer::HttpServer(
       data_root_(std::move(data_root)),
       network_client_(network_client),
       reload_web_endpoint_(reload_web_endpoint) {
+    if (activation_ && (activation_->device_id.empty() || !activation_->activate)) {
+        throw std::invalid_argument("activation web options are incomplete");
+    }
     std::error_code error;
     document_root_ = std::filesystem::weakly_canonical(document_root_, error);
     if (error || !std::filesystem::is_directory(document_root_, error) || error) {
@@ -1180,6 +1212,10 @@ HttpServer::HttpServer(
                 });
         }
     }
+}
+
+bool HttpServer::activation_succeeded() const noexcept {
+    return activation_succeeded_.load();
 }
 
 health::Report HttpServer::health_report(std::chrono::steady_clock::time_point now) const {
@@ -1676,6 +1712,7 @@ std::optional<std::string> HttpServer::latest_event_csv() const {
 }
 
 int HttpServer::run() {
+    stop_requested_.store(false);
     const std::optional<WebListener> initial_listener =
         open_web_listener(bind_address_, port_);
     if (!initial_listener) {
@@ -1705,7 +1742,7 @@ int HttpServer::run() {
     (void)uhf::systemd::notify("READY=1\nSTATUS=web listener ready");
     auto next_watchdog = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 
-    while (true) {
+    while (!stop_requested_.load()) {
         if (reload_web_endpoint_ && config_store_ != nullptr) {
             const config::Snapshot configured = config_store_->snapshot();
             if (configured.version != applied_config_version) {
@@ -1754,6 +1791,9 @@ int HttpServer::run() {
             ::close(server_fd);
             return 1;
         }
+        if (stop_requested_.load()) {
+            break;
+        }
         if (poll_result == 0 || (listener.revents & POLLIN) == 0) {
             continue;
         }
@@ -1788,6 +1828,15 @@ int HttpServer::run() {
             ::close(client_fd);
         }
     }
+
+    ::close(server_fd);
+    if (ftp_server_ != nullptr) {
+        ftp_server_->stop();
+    }
+    while (active_http_count_.load() != 0U) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return 0;
 }
 
 void HttpServer::serve_client(int client_fd, sockaddr_in client_address) {
@@ -2015,6 +2064,133 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
     std::lock_guard<std::mutex> lock(state_mutex_);
     const auto now = std::chrono::steady_clock::now();
     cleanup_sessions(now);
+
+    if (activation_) {
+        if (request_path == "/api/v1/activation") {
+            if (parsed.method == "GET") {
+                send_json(
+                    client_fd,
+                    tls,
+                    200,
+                    "{\"active\":" +
+                        std::string(activation_succeeded_.load() ? "true" : "false") +
+                        ",\"device_id\":\"" + json_escape(activation_->device_id) + "\"}\n",
+                    "Cache-Control: no-store\r\n");
+                return false;
+            }
+            if (parsed.method != "POST") {
+                send_method_not_allowed(client_fd, tls, "GET, POST");
+                return false;
+            }
+
+            const std::string_view origin = header_value(parsed, "origin");
+            const std::string_view host = header_value(parsed, "host");
+            const std::string expected_origin =
+                (tls == nullptr ? "http://" : "https://") + std::string(host);
+            if (origin.empty() || host.empty() || origin != expected_origin) {
+                send_error(client_fd, tls, 403, "same-origin request required");
+                return false;
+            }
+            const std::string content_type_header =
+                lower_ascii(trim_ows(header_value(parsed, "content-type")));
+            if (content_type_header != "application/json" &&
+                content_type_header.rfind("application/json;", 0U) != 0U) {
+                send_error(client_fd, tls, 400, "JSON activation request required");
+                return false;
+            }
+
+            const auto failure_iterator = login_failures_.find(remote_address);
+            if (failure_iterator != login_failures_.end() &&
+                failure_iterator->second.blocked_until > now) {
+                send_error(
+                    client_fd,
+                    tls,
+                    429,
+                    "too many activation attempts",
+                    "Retry-After: 30\r\nCache-Control: no-store\r\n");
+                return false;
+            }
+
+            std::string code;
+            if (parsed.body.empty() ||
+                !json_string_field(parsed.body, "code", code, 128U)) {
+                send_error(client_fd, tls, 400, "invalid activation request");
+                return false;
+            }
+            bool activated = false;
+            try {
+                activated = activation_->activate && activation_->activate(code);
+            } catch (...) {
+                send_error(client_fd, tls, 500, "unable to persist activation");
+                return false;
+            }
+            if (!activated) {
+                if (login_failures_.find(remote_address) == login_failures_.end() &&
+                    login_failures_.size() >= kMaxLoginFailureRecords) {
+                    login_failures_.erase(login_failures_.begin());
+                }
+                LoginFailures& failures = login_failures_[remote_address];
+                if (failures.window_started.time_since_epoch().count() == 0 ||
+                    now - failures.window_started >= kLoginFailureWindow) {
+                    failures.count = 0U;
+                    failures.window_started = now;
+                    failures.blocked_until = {};
+                }
+                ++failures.count;
+                if (failures.count >= 5U) {
+                    failures.blocked_until = now + kLoginBlockTime;
+                    failures.count = 0U;
+                }
+                send_error(
+                    client_fd,
+                    tls,
+                    401,
+                    "activation failed",
+                    "Cache-Control: no-store\r\n");
+                return false;
+            }
+
+            login_failures_.erase(remote_address);
+            send_json(
+                client_fd,
+                tls,
+                200,
+                "{\"activated\":true,\"starting\":true}\n",
+                "Cache-Control: no-store\r\n");
+            activation_succeeded_.store(true);
+            stop_requested_.store(true);
+            return false;
+        }
+
+        if (request_path.rfind("/api/", 0U) == 0U || request_path == "/healthz" ||
+            request_path.rfind("/ws/", 0U) == 0U) {
+            send_error(
+                client_fd,
+                tls,
+                403,
+                "activation required",
+                "Cache-Control: no-store\r\n");
+            return false;
+        }
+        if (parsed.method != "GET") {
+            send_method_not_allowed(client_fd, tls, "GET");
+            return false;
+        }
+        if (request_path == "/overview.html" || request_path == "/activation" ||
+            request_path == "/activation.html") {
+            request_path = "/activation.html";
+        } else if (request_path != "/activation.js" && request_path != "/styles.css") {
+            send_redirect(client_fd, tls, "/activation");
+            return false;
+        }
+        (void)send_static_file(
+            client_fd,
+            tls,
+            document_root_,
+            request_path,
+            "Cache-Control: no-store\r\n");
+        return false;
+    }
 
     if (request_path == "/ws/v1/telemetry") {
         if (parsed.method != "GET" ||
@@ -3045,26 +3221,7 @@ bool HttpServer::handle_client(int client_fd, SSL* tls, std::string remote_addre
         return false;
     }
 
-    std::filesystem::path file;
-    if (!resolve_file(document_root_, request_path, file)) {
-        send_response(client_fd, tls, 404, "text/plain; charset=utf-8", "not found\n");
-        return false;
-    }
-
-    std::ifstream input(file, std::ios::binary);
-    if (!input) {
-        send_error(client_fd, tls, 500, "internal server error");
-        return false;
-    }
-    std::ostringstream contents;
-    contents << input.rdbuf();
-    if (input.bad()) {
-        send_error(client_fd, tls, 500, "internal server error");
-        return false;
-    }
-
-    const std::string body = contents.str();
-    send_response(client_fd, tls, 200, content_type(file), body);
+    (void)send_static_file(client_fd, tls, document_root_, request_path);
     return false;
 }
 

@@ -440,8 +440,64 @@ int main(int argc, char* argv[]) {
                     options.v3_activation_key,
                     options.v3_activation_code});
                 if (!process_activation.active()) {
-                    throw std::runtime_error(
-                        "v3 activation is required before acquisition and gateway services start");
+                    if (options.v3_activation_code || process_activation.expected_code().empty()) {
+                        throw std::runtime_error(
+                            "v3 activation is required before acquisition and gateway services start");
+                    }
+
+                    const std::filesystem::path activation_state = options.activation_state;
+                    const std::string activation_device_id = options.v3_device_id;
+                    const std::string activation_key = options.v3_activation_key;
+                    uhf::web::HttpServer activation_server(
+                        options.document_root,
+                        options.bind_address,
+                        options.port,
+                        options.state_directory,
+                        nullptr,
+                        {},
+                        nullptr,
+                        options.tls_enabled,
+                        uhf::web::TlsFiles{
+                            options.tls_certificate, options.tls_private_key},
+                        &logger,
+                        options.data_directory,
+                        nullptr,
+                        false,
+                        {},
+                        {},
+                        {},
+                        {},
+                        nullptr,
+                        nullptr,
+                        uhf::web::ActivationWebOptions{
+                            activation_device_id,
+                            [activation_state, activation_device_id, activation_key](
+                                std::string_view code) {
+                                uhf::activation::Manager attempt({
+                                    activation_state,
+                                    activation_device_id,
+                                    activation_key,
+                                    std::string(code)});
+                                return attempt.active();
+                            }});
+                    logger.log(
+                        uhf::logging::Level::warning,
+                        uhf::logging::Component::system,
+                        "activation.required",
+                        "Only the activation page is available until activation succeeds");
+                    if (activation_server.run() != 0 ||
+                        !activation_server.activation_succeeded()) {
+                        throw std::runtime_error("v3 activation web service stopped");
+                    }
+                    uhf::activation::Manager persisted_activation({
+                        options.activation_state,
+                        options.v3_device_id,
+                        options.v3_activation_key,
+                        std::nullopt});
+                    if (!persisted_activation.active()) {
+                        throw std::runtime_error(
+                            "v3 activation persistence verification failed");
+                    }
                 }
                 // A successful first activation is now persisted.  Make the
                 // runtime independently re-verify that binding instead of

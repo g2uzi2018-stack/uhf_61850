@@ -49,7 +49,6 @@ def main() -> int:
         "--v3-temperature-device ${UHF_V3_TEMPERATURE_DEVICE}",
         "--v3-device-id-file /etc/uhf-gateway/v3-device-id",
         "--v3-activation-key-file /etc/uhf-gateway/v3-manufacturer-key",
-        "--v3-activation-code-file /etc/uhf-gateway/v3-activation-code",
         "WatchdogSec=20s",
         "Restart=on-failure",
         "StartLimitBurst=5",
@@ -64,6 +63,8 @@ def main() -> int:
         "CapabilityBoundingSet=CAP_NET_BIND_SERVICE",
     ):
         require(gateway, fragment, "uhf-gateway.service")
+    if "v3-activation-code" in gateway:
+        fail("uhf-gateway.service bypasses the activation-only Web flow")
 
     privileged = units["uhf-privileged.service"]
     for fragment in (

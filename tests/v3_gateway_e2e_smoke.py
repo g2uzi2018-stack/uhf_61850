@@ -431,6 +431,7 @@ def main():
             "--v3-temperature-serial", "115200/8N1",
             "--v3-device-id-file", mismatch_identity_file,
             "--v3-activation-key-file", key_file,
+            "--v3-activation-code-file", code_file,
         ]
         if iec_probe:
             mismatch_command.extend(
@@ -457,7 +458,8 @@ def main():
         os.close(gated_rtu_slave)
 
         time.sleep(0.1)
-        pd_request_offset = len(devices[0].requests())
+        request_offsets = [len(device.requests()) for device in devices]
+        pd_request_offset = request_offsets[0]
         runtime_rtu_device = os.path.join(root, "modbus-rtu-device")
         runtime_current_device = os.path.join(root, "current-device")
         os.symlink(devices[1].path, runtime_current_device)
@@ -473,8 +475,7 @@ def main():
                    "--v3-current-serial", "115200/8N1",
                    "--v3-temperature-serial", "115200/8N1",
                    "--v3-device-id-file", identity_file,
-                   "--v3-activation-key-file", key_file,
-                   "--v3-activation-code-file", code_file]
+                   "--v3-activation-key-file", key_file]
         if iec_probe:
             command.extend(["--iec61850-listen", f"127.0.0.1:{iec_port}"])
         else:
@@ -482,18 +483,105 @@ def main():
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             wait_port(web_port)
+            time.sleep(0.2)
+            assert [len(device.requests()) for device in devices] == request_offsets
+            assert_port_closed(modbus_port)
+            if iec_probe:
+                assert_port_closed(iec_port)
+            assert not select.select([rtu_master], [], [], 0.1)[0]
+
+            connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
+            connection.request("GET", "/api/v1/activation")
+            activation_status_response = connection.getresponse()
+            activation_status = json.loads(activation_status_response.read())
+            connection.close()
+            assert activation_status_response.status == 200
+            assert activation_status == {"active": False, "device_id": identity}
+
+            connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
+            connection.request("GET", "/activation.html")
+            activation_page_response = connection.getresponse()
+            activation_page = activation_page_response.read().decode("utf-8")
+            connection.close()
+            assert activation_page_response.status == 200
+            assert 'id="activation-form"' in activation_page
+
+            connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
+            connection.request("GET", "/api/v1/snapshot/latest")
+            locked_response = connection.getresponse()
+            locked_payload = json.loads(locked_response.read())
+            connection.close()
+            assert locked_response.status == 403
+            assert locked_payload == {"error": "activation required"}
+
+            invalid_body = json.dumps({"code": invalid_code}, separators=(",", ":"))
+            connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
+            connection.request(
+                "POST",
+                "/api/v1/activation",
+                body=invalid_body,
+                headers={"Content-Type": "application/json"},
+            )
+            cross_origin_response = connection.getresponse()
+            cross_origin_response.read()
+            connection.close()
+            assert cross_origin_response.status == 403
+            assert not os.path.exists(os.path.join(root, "activation.state"))
+
+            connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
+            connection.request(
+                "POST",
+                "/api/v1/activation",
+                body=invalid_body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Origin": f"http://127.0.0.1:{web_port}",
+                },
+            )
+            invalid_activation_response = connection.getresponse()
+            invalid_activation_response.read()
+            connection.close()
+            assert invalid_activation_response.status == 401
+            assert not os.path.exists(os.path.join(root, "activation.state"))
+            assert [len(device.requests()) for device in devices] == request_offsets
+
+            connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=2)
+            connection.request(
+                "POST",
+                "/api/v1/activation",
+                body=json.dumps({"code": code}, separators=(",", ":")),
+                headers={
+                    "Content-Type": "application/json; charset=utf-8",
+                    "Origin": f"http://127.0.0.1:{web_port}",
+                },
+            )
+            activation_response = connection.getresponse()
+            activation_payload = json.loads(activation_response.read())
+            connection.close()
+            assert activation_response.status == 200
+            assert activation_payload == {"activated": True, "starting": True}
+            activation_state = os.path.join(root, "activation.state")
+            assert os.path.isfile(activation_state)
+            assert os.stat(activation_state).st_mode & 0o777 == 0o600
+
             deadline = time.time() + 8
             body = None
             while time.time() < deadline:
-                connection = http.client.HTTPConnection("127.0.0.1", web_port, timeout=1)
-                connection.request("GET", "/api/v1/snapshot/latest")
-                response = connection.getresponse()
-                candidate = response.read()
-                connection.close()
-                if response.status == 200:
-                    body = json.loads(candidate)
-                    if body["sources"]["current"]["has_sample"] and body["sources"]["temperature"]["has_sample"]:
-                        break
+                try:
+                    connection = http.client.HTTPConnection(
+                        "127.0.0.1", web_port, timeout=1
+                    )
+                    connection.request("GET", "/api/v1/snapshot/latest")
+                    response = connection.getresponse()
+                    candidate = response.read()
+                    connection.close()
+                    if response.status == 200:
+                        body = json.loads(candidate)
+                        if (body["sources"]["current"]["has_sample"] and
+                                body["sources"]["temperature"]["has_sample"]):
+                            break
+                except (OSError, http.client.HTTPException):
+                    pass
                 time.sleep(0.1)
             assert body is not None and body["sources"]["current"]["online"]
             assert body["sources"]["temperature"]["online"]

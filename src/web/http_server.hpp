@@ -39,6 +39,12 @@ using Iec61850EndpointProvider =
     std::function<std::optional<iec61850::RuntimeEndpoint>()>;
 using Iec61850ModelProvider = std::function<std::optional<iec61850::SclModelDefinition>()>;
 using Iec61850ReloadHandler = std::function<bool()>;
+using ActivationHandler = std::function<bool(std::string_view)>;
+
+struct ActivationWebOptions {
+    std::string device_id;
+    ActivationHandler activate;
+};
 
 class HttpServer {
 public:
@@ -61,9 +67,11 @@ public:
         Iec61850ModelProvider iec61850_model_provider = {},
         Iec61850ReloadHandler iec61850_reload_handler = {},
         const v3::SnapshotStore* v3_snapshot_store = nullptr,
-        const v3::PacketTraceBuffer* v3_packet_trace = nullptr);
+        const v3::PacketTraceBuffer* v3_packet_trace = nullptr,
+        std::optional<ActivationWebOptions> activation = std::nullopt);
 
     int run();
+    bool activation_succeeded() const noexcept;
 
 private:
     struct Session {
@@ -102,6 +110,7 @@ private:
     const acquisition::SnapshotStore* snapshot_store_{nullptr};
     const v3::SnapshotStore* v3_snapshot_store_{nullptr};
     const v3::PacketTraceBuffer* v3_packet_trace_{nullptr};
+    std::optional<ActivationWebOptions> activation_;
     HealthInputProvider health_input_provider_;
     Iec61850StatsProvider iec61850_stats_provider_;
     Iec61850EndpointProvider iec61850_endpoint_provider_;
@@ -121,6 +130,8 @@ private:
     std::mutex state_mutex_;
     std::atomic<std::size_t> active_http_count_{0U};
     std::atomic<std::size_t> active_websocket_count_{0U};
+    std::atomic<bool> stop_requested_{false};
+    std::atomic<bool> activation_succeeded_{false};
 };
 
 }  // namespace uhf::web

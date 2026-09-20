@@ -38,7 +38,7 @@ def install(
     root: Path,
     package: Path,
     target: Path,
-    provisioning: tuple[Path, Path, Path, Path] | None = None,
+    provisioning: tuple[Path, Path, Path] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     arguments = [
         "bash",
@@ -52,7 +52,7 @@ def install(
         "--skip-hardware",
     ]
     if provisioning is not None:
-        runtime, identity, key, code = provisioning
+        runtime, identity, key = provisioning
         arguments.extend(
             [
                 "--v3-runtime-env-file",
@@ -61,8 +61,6 @@ def install(
                 str(identity),
                 "--v3-manufacturer-key-file",
                 str(key),
-                "--v3-activation-code-file",
-                str(code),
             ]
         )
     return subprocess.run(
@@ -111,11 +109,9 @@ def main() -> int:
         )
         identity = provisioning_root / "device-id"
         key = provisioning_root / "manufacturer-key"
-        code = provisioning_root / "activation-code"
         identity.write_text("test-board\n", encoding="utf-8")
         key.write_text("test-key-not-for-production\n", encoding="utf-8")
-        code.write_text("AAAAA-AAAAA-AAAAA-AAAAA\n", encoding="utf-8")
-        provisioning = (runtime, identity, key, code)
+        provisioning = (runtime, identity, key)
         missing_root = temporary_root / "missing-target"
         missing = install(root, first, missing_root)
         if missing.returncode == 0 or "v3 runtime environment is required" not in missing.stderr:
@@ -127,7 +123,7 @@ def main() -> int:
             root,
             first,
             rejected_root,
-            (root / "config/v3-runtime.env.example", identity, key, code),
+            (root / "config/v3-runtime.env.example", identity, key),
         )
         if rejected.returncode == 0 or "REPLACE_" not in rejected.stderr:
             fail("installer accepted an unconfigured v3 runtime template")
@@ -173,7 +169,6 @@ def main() -> int:
             "v3-runtime.env": runtime.read_text(encoding="utf-8"),
             "v3-device-id": identity.read_text(encoding="utf-8"),
             "v3-manufacturer-key": key.read_text(encoding="utf-8"),
-            "v3-activation-code": code.read_text(encoding="utf-8"),
         }
         for name, expected_contents in expected_provisioning.items():
             installed = config_directory / name

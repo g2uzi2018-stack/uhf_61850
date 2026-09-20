@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-    printf 'usage: %s --package DIR [--root DIR] [--version VERSION] [--no-systemd] [--skip-arch] [--skip-hardware] [--v3-runtime-env-file FILE --v3-device-id-file FILE --v3-manufacturer-key-file FILE --v3-activation-code-file FILE]\n' "$0" >&2
+    printf 'usage: %s --package DIR [--root DIR] [--version VERSION] [--no-systemd] [--skip-arch] [--skip-hardware] [--v3-runtime-env-file FILE --v3-device-id-file FILE --v3-manufacturer-key-file FILE]\n' "$0" >&2
 }
 
 package_dir=
@@ -14,7 +14,6 @@ skip_hardware=false
 v3_runtime_env_file=
 v3_device_id_file=
 v3_manufacturer_key_file=
-v3_activation_code_file=
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --package)
@@ -57,11 +56,6 @@ while [[ $# -gt 0 ]]; do
         --v3-manufacturer-key-file)
             [[ $# -ge 2 ]] || { usage; exit 2; }
             v3_manufacturer_key_file=$2
-            shift 2
-            ;;
-        --v3-activation-code-file)
-            [[ $# -ge 2 ]] || { usage; exit 2; }
-            v3_activation_code_file=$2
             shift 2
             ;;
         *)
@@ -114,7 +108,6 @@ state_file="${state_dir}/release-state.json"
 v3_runtime_env_target="${path_prefix}/etc/uhf-gateway/v3-runtime.env"
 v3_device_id_target="${path_prefix}/etc/uhf-gateway/v3-device-id"
 v3_manufacturer_key_target="${path_prefix}/etc/uhf-gateway/v3-manufacturer-key"
-v3_activation_code_target="${path_prefix}/etc/uhf-gateway/v3-activation-code"
 
 validate_provisioning_file() {
     local label=$1
@@ -182,7 +175,6 @@ require_or_validate_provisioning() {
 require_or_validate_provisioning "v3 runtime environment" "$v3_runtime_env_file" "$v3_runtime_env_target" runtime
 require_or_validate_provisioning "v3 device identity" "$v3_device_id_file" "$v3_device_id_target" credential
 require_or_validate_provisioning "v3 manufacturer key" "$v3_manufacturer_key_file" "$v3_manufacturer_key_target" credential
-require_or_validate_provisioning "v3 activation code" "$v3_activation_code_file" "$v3_activation_code_target" credential
 
 old_current_target=
 if [[ -L "$current_link" ]]; then
@@ -315,7 +307,6 @@ install_provisioning_file() {
 install_provisioning_file "$v3_runtime_env_file" "$v3_runtime_env_target"
 install_provisioning_file "$v3_device_id_file" "$v3_device_id_target"
 install_provisioning_file "$v3_manufacturer_key_file" "$v3_manufacturer_key_target"
-install_provisioning_file "$v3_activation_code_file" "$v3_activation_code_target"
 
 write_v3_device_policy() {
     if [[ ! -f "$v3_runtime_env_target" ]]; then

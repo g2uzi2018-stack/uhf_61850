@@ -7,7 +7,6 @@ ConditionFileIsExecutable=/opt/uhf-gateway/current/bin/uhf-gatewayd
 ConditionPathExists=/etc/uhf-gateway/v3-runtime.env
 ConditionPathExists=/etc/uhf-gateway/v3-device-id
 ConditionPathExists=/etc/uhf-gateway/v3-manufacturer-key
-ConditionPathExists=/etc/uhf-gateway/v3-activation-code
 StartLimitIntervalSec=120s
 StartLimitBurst=5
 
@@ -19,7 +18,7 @@ Group=uhfgateway
 SupplementaryGroups=dialout
 WorkingDirectory=/opt/uhf-gateway/current
 EnvironmentFile=/etc/uhf-gateway/v3-runtime.env
-ExecStart=/opt/uhf-gateway/current/bin/uhf-gatewayd --web --v3 --web-root /opt/uhf-gateway/current/web --state-dir /var/lib/uhf-gateway --config /var/lib/uhf-gateway/config.json --data-dir /var/lib/uhf-gateway/data --privileged-socket /run/uhf-gateway/privileged.sock --v3-pd-device ${UHF_V3_PD_DEVICE} --v3-current-device ${UHF_V3_CURRENT_DEVICE} --v3-temperature-device ${UHF_V3_TEMPERATURE_DEVICE} --v3-device-id-file /etc/uhf-gateway/v3-device-id --v3-activation-key-file /etc/uhf-gateway/v3-manufacturer-key --v3-activation-code-file /etc/uhf-gateway/v3-activation-code
+ExecStart=/opt/uhf-gateway/current/bin/uhf-gatewayd --web --v3 --web-root /opt/uhf-gateway/current/web --state-dir /var/lib/uhf-gateway --config /var/lib/uhf-gateway/config.json --data-dir /var/lib/uhf-gateway/data --privileged-socket /run/uhf-gateway/privileged.sock --v3-pd-device ${UHF_V3_PD_DEVICE} --v3-current-device ${UHF_V3_CURRENT_DEVICE} --v3-temperature-device ${UHF_V3_TEMPERATURE_DEVICE} --v3-device-id-file /etc/uhf-gateway/v3-device-id --v3-activation-key-file /etc/uhf-gateway/v3-manufacturer-key
 Restart=on-failure
 RestartSec=2s
 WatchdogSec=20s

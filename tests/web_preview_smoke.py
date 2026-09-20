@@ -15,7 +15,8 @@ def main() -> int:
 
     web_dir = Path(sys.argv[1])
     required_files = (
-        "index.html", "overview.html", "login.html", "styles.css", "app.js", "overview.js", "login.js"
+        "index.html", "overview.html", "login.html", "activation.html", "styles.css",
+        "app.js", "overview.js", "login.js", "activation.js"
     )
     for filename in required_files:
         if not (web_dir / filename).is_file():
@@ -24,6 +25,7 @@ def main() -> int:
     html = (web_dir / "index.html").read_text(encoding="utf-8")
     maintenance_javascript = (web_dir / "maintenance.js").read_text(encoding="utf-8")
     login_html = (web_dir / "login.html").read_text(encoding="utf-8")
+    activation_html = (web_dir / "activation.html").read_text(encoding="utf-8")
     javascript = (web_dir / "app.js").read_text(encoding="utf-8")
     overview_html = (web_dir / "overview.html").read_text(encoding="utf-8")
     overview_javascript = (web_dir / "overview.js").read_text(encoding="utf-8")
@@ -36,6 +38,7 @@ def main() -> int:
     storage_html = (web_dir / "storage.html").read_text(encoding="utf-8")
     storage_javascript = (web_dir / "storage.js").read_text(encoding="utf-8")
     login_javascript = (web_dir / "login.js").read_text(encoding="utf-8")
+    activation_javascript = (web_dir / "activation.js").read_text(encoding="utf-8")
     stylesheet = (web_dir / "styles.css").read_text(encoding="utf-8")
 
     for marker in ("用户管理", "本地开发模式", "HTTPS", "transport-badge", "checklist-progress", "admin", 'id="password-modal"', 'id="password-form"'):
@@ -47,6 +50,9 @@ def main() -> int:
     for marker in ("登录控制台", "初始密码", 'id="login-form"'):
         if marker not in login_html:
             fail(f"login.html is missing {marker!r}")
+    for marker in ("激活设备", "设备标识", 'id="activation-form"', "采集、转发、IEC 61850"):
+        if marker not in activation_html:
+            fail(f"activation.html is missing {marker!r}")
     for marker in ('data-action="change-password"', "showToast", "updateChecklistProgress", "password-form"):
         if marker not in javascript:
             fail(f"app.js is missing {marker!r}")
@@ -85,6 +91,9 @@ def main() -> int:
     for marker in ("api/v1/session", "same-origin", "登录尝试过于频繁", "location.protocol"):
         if marker not in login_javascript:
             fail(f"login.js is missing {marker!r}")
+    for marker in ("api/v1/activation", "device_id", "same-origin", "激活成功", "api/v1/overview"):
+        if marker not in activation_javascript:
+            fail(f"activation.js is missing {marker!r}")
     for marker in (
         "三路采集报文",
         "最多 256 条",
@@ -120,7 +129,7 @@ def main() -> int:
     for marker in ("MMS 监听全部网口", "客户端连接设备当前 IP"):
         if marker not in (web_dir / "iec61850.html").read_text(encoding="utf-8") and marker not in (web_dir / "iec61850.js").read_text(encoding="utf-8"):
             fail(f"IEC endpoint guidance is missing {marker!r}")
-    for marker in (".sidebar", ".panel", "@media", ".modal"):
+    for marker in (".sidebar", ".panel", "@media", ".modal", ".activation-identity", "#activation-form"):
         if marker not in stylesheet:
             fail(f"styles.css is missing {marker!r}")
     if any(host in html for host in ("cdn.", "cdnjs.", "unpkg.com")):

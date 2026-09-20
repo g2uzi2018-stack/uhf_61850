@@ -45,14 +45,13 @@ bash /tmp/uhf-deploy-VERSION/uhf-gateway-VERSION/preflight.sh \
 
 ## 3. 准备 v3 制造配置
 
-随包 systemd 单元只启动 `--v3`，不会静默回退到旧 PD1000。首次安装前必须在目标板外准备四个文件；不要把它们放进源码或发布包：
+随包 systemd 单元只启动 `--v3`，不会静默回退到旧 PD1000。首次安装前必须在目标板外准备三个文件；不要把它们放进源码或发布包：
 
 - `v3-runtime.env`：从包内 `config/v3-runtime.env.example` 复制，填入已核实的局放、电流和温度 tty 绝对路径。安装器拒绝仍含 `REPLACE_` 的模板、额外环境变量和含空格/控制字符的路径。
 - `v3-device-id`：由制造流程确认的单行设备标识。
 - `v3-manufacturer-key`：单行厂家密钥。不得使用仓库测试值。
-- `v3-activation-code`：与该设备标识和厂家密钥对应的单行首次激活码。
 
-四个输入文件在交给安装器前应设为 `0600`。安装器将它们复制到 `/etc/uhf-gateway`，正式系统上设为 `root:uhfgateway 0640`，升级时若未传新文件则保留原内容。它还会从三个已校验的 tty 路径生成精确的 `DeviceAllow` systemd drop-in。设备标识来源、真实 tty、RS485 方向控制、厂家密钥和激活码金样本没有确认时，不执行真实安装。
+三个输入文件在交给安装器前应设为 `0600`。安装器将它们复制到 `/etc/uhf-gateway`，正式系统上设为 `root:uhfgateway 0640`，升级时若未传新文件则保留原内容。它还会从三个已校验的 tty 路径生成精确的 `DeviceAllow` systemd drop-in。设备标识来源、真实 tty、RS485 方向控制、厂家密钥和激活码金样本没有确认时，不执行真实安装。
 
 ## 4. 安装
 
@@ -65,8 +64,7 @@ release=/tmp/uhf-deploy-VERSION/uhf-gateway-VERSION
 bash "$release/install.sh" --package "$release" \
   --v3-runtime-env-file /root/provision/v3-runtime.env \
   --v3-device-id-file /root/provision/v3-device-id \
-  --v3-manufacturer-key-file /root/provision/v3-manufacturer-key \
-  --v3-activation-code-file /root/provision/v3-activation-code
+  --v3-manufacturer-key-file /root/provision/v3-manufacturer-key
 '
 ```
 
@@ -74,7 +72,9 @@ bash "$release/install.sh" --package "$release" \
 
 注意：`uhf-privileged.service` 启动时会根据 `/etc/uhf-gateway/network.json` 应用持久网络配置。现场网络未确认前，不要为了刷新网页而单独重启该服务。
 
-缺少任一制造文件时，首次正式安装会在复制 release、切换 `current` 或重启服务之前明确失败。升级已配置的设备时可省略四个选项，安装器会校验并保留 `/etc/uhf-gateway` 中的现有文件。
+缺少任一制造文件时，首次正式安装会在复制 release、切换 `current` 或重启服务之前明确失败。升级已配置的设备时可省略三个选项，安装器会校验并保留 `/etc/uhf-gateway` 中的现有文件。
+
+首次启动且尚无有效绑定状态时，服务只开放激活页面，不启动三路采集、Modbus、IEC 61850、FTP 或其他 Web API。浏览器核对页面显示的设备标识，输入厂家提供的激活码；持久化并复核成功后，同一进程才启动完整服务。激活码不再作为 systemd 命令行参数或 `/etc/uhf-gateway` 制造文件保存。开发/制造自动化仍可显式使用守护进程的 `--v3-activation-code-file` 兼容入口，但正式 systemd 单元不会使用它。
 
 ## 5. 验收检查
 

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="综合监测管理机设备激活">
+    <title>设备激活 · UHF 61850</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="login-body">
+    <main class="login-layout">
+        <section class="login-card" aria-labelledby="activation-title">
+            <div class="login-brand"><div class="brand-mark">U</div><div><strong>UHF 61850</strong><span>综合监测管理机</span></div></div>
+            <div class="login-kicker">DEVICE ACTIVATION</div>
+            <h1 id="activation-title">激活设备</h1>
+            <p class="login-subtitle">设备尚未激活。采集、转发、IEC 61850 和数据管理功能当前均未启动。</p>
+            <div class="activation-identity"><strong>设备标识</strong><code id="device-id">正在读取…</code></div>
+            <form id="activation-form">
+                <label>激活码<input name="code" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="128" required></label>
+                <p class="form-error" id="activation-error" role="alert"></p>
+                <p class="form-success" id="activation-success" role="status"></p>
+                <button class="primary-button login-button" type="submit">激活并启动</button>
+            </form>
+            <p class="login-footnote" id="transport-footnote">当前为 HTTP 本地恢复模式。请仅在受信任的维护网络中输入激活码；产品部署默认启用 HTTPS。</p>
+        </section>
+    </main>
+    <noscript>此页面需要启用 JavaScript 才能激活设备。</noscript>
+    <script src="activation.js"></script>
+</body>
+</html>
